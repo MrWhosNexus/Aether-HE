@@ -16,6 +16,7 @@ Public API (kept stable so app_web.py doesn't need to know the backend):
   VirtualGamepad(mappings).open() / .is_open() / .update(depths) / .close()
 """
 import logging
+import os
 import sys
 from dataclasses import dataclass
 
@@ -44,6 +45,83 @@ if _BACKEND is None:
 
 # Legacy flag — app_web.py / UI use this to know whether gamepad capture works.
 EVDEV_AVAILABLE = _BACKEND is not None
+
+
+# --- ViGEmBus auto-installer (Windows only) --------------------------------
+#
+# vgamepad imports cleanly even when the ViGEmBus kernel driver isn't present;
+# the failure only shows up when VX360Gamepad() is constructed. We ship the
+# official ViGEmBus installer alongside the app so the user can install the
+# driver in one click without leaving the app.
+
+def _vigembus_installer_path():
+    """Find the bundled ViGEmBus_Setup.exe.
+
+    PyInstaller --onedir puts data files under sys._MEIPASS; in source the
+    installer lives in vendor/ next to gamepad.py.
+    """
+    here = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    p = os.path.join(here, "vendor", "ViGEmBus_Setup.exe")
+    return p if os.path.exists(p) else None
+
+
+def install_vigembus_driver():
+    """Run the bundled ViGEmBus installer with UAC elevation. Returns
+    {"ok": bool, "error": str, "exit_code": int}. Windows only.
+    """
+    if not sys.platform.startswith("win"):
+        return {"ok": False, "error": "ViGEmBus is Windows-only"}
+    setup = _vigembus_installer_path()
+    if not setup:
+        return {"ok": False, "error": "ViGEmBus_Setup.exe not bundled with this build"}
+    try:
+        import ctypes
+        SEE_MASK_NOCLOSEPROCESS = 0x40
+        SEE_MASK_NOASYNC = 0x100
+        class SHELLEXECUTEINFOW(ctypes.Structure):
+            _fields_ = [
+                ("cbSize", ctypes.c_ulong), ("fMask", ctypes.c_ulong),
+                ("hwnd", ctypes.c_void_p), ("lpVerb", ctypes.c_wchar_p),
+                ("lpFile", ctypes.c_wchar_p), ("lpParameters", ctypes.c_wchar_p),
+                ("lpDirectory", ctypes.c_wchar_p), ("nShow", ctypes.c_int),
+                ("hInstApp", ctypes.c_void_p), ("lpIDList", ctypes.c_void_p),
+                ("lpClass", ctypes.c_wchar_p), ("hkeyClass", ctypes.c_void_p),
+                ("dwHotKey", ctypes.c_ulong), ("hIcon", ctypes.c_void_p),
+                ("hProcess", ctypes.c_void_p),
+            ]
+        sei = SHELLEXECUTEINFOW()
+        sei.cbSize = ctypes.sizeof(sei)
+        sei.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC
+        sei.lpVerb = "runas"      # UAC elevation
+        sei.lpFile = setup
+        sei.lpParameters = "/quiet /norestart"   # ViGEmBus uses WiX → MSI flags
+        sei.nShow = 1
+        if not ctypes.windll.shell32.ShellExecuteExW(ctypes.byref(sei)):
+            err = ctypes.windll.kernel32.GetLastError()
+            # 1223 == ERROR_CANCELLED (user declined UAC)
+            return {"ok": False, "error": f"installer launch failed (code {err})"}
+        ctypes.windll.kernel32.WaitForSingleObject(sei.hProcess, 0xFFFFFFFF)
+        code = ctypes.c_ulong(0)
+        ctypes.windll.kernel32.GetExitCodeProcess(sei.hProcess, ctypes.byref(code))
+        ctypes.windll.kernel32.CloseHandle(sei.hProcess)
+        return {"ok": code.value == 0, "exit_code": code.value,
+                "error": "" if code.value == 0 else f"installer exited {code.value}"}
+    except Exception as ex:
+        return {"ok": False, "error": f"{type(ex).__name__}: {ex}"}
+
+
+def vigembus_present():
+    """Cheap probe — try to instantiate a virtual pad and immediately reset.
+    Returns True if the driver is installed and accepting clients."""
+    if _BACKEND != "vgamepad" or _vg is None:
+        return False
+    try:
+        p = _vg.VX360Gamepad()
+        try: p.reset(); p.update()
+        except Exception: pass
+        return True
+    except Exception:
+        return False
 
 
 @dataclass(frozen=True)

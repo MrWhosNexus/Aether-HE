@@ -8,6 +8,9 @@ venv/
 .DS_Store
 *.swp
 # PyInstaller build outputs (rebuild via build_installer.bat)
-build/
-dist/
+/build/
+/dist/
 *.spec.bak
+# Vendored binary installers (re-downloaded by build_installer.bat)
+vendor/*.exe
+vendor/*.msi

@@ -804,11 +804,38 @@
     };
 
     // Gamepad: push the current map then toggle capture on/off.
+    const [gamepadError, setGamepadError] = useState(null); // {msg, needsDriver}
     const handleGamepadToggle = on => {
       setGamepadOn(on);
-      if (on) apiCall("set_gamepad_map", gamepadMap);
+      if (on) {
+        setGamepadError(null);
+        apiCall("set_gamepad_map", gamepadMap);
+      }
       apiCall("set_gamepad_capture", on).then(r => {
-        if (!(r && r.ok)) setGamepadOn(false);
+        if (!(r && r.ok)) {
+          setGamepadOn(false);
+          setGamepadError({
+            msg: r && r.error || "failed",
+            needsDriver: !!(r && r.needs_vigembus)
+          });
+        } else {
+          setGamepadError(null);
+        }
+      });
+    };
+    const handleInstallVigem = async () => {
+      setGamepadError({
+        msg: "installing ViGEmBus (approve the UAC prompt)…",
+        needsDriver: false,
+        installing: true
+      });
+      const r = await apiCall("install_vigembus");
+      if (r && r.ok) setGamepadError({
+        msg: "ViGEmBus installed — try capture again.",
+        needsDriver: false
+      });else setGamepadError({
+        msg: r && r.error || "install failed",
+        needsDriver: true
       });
     };
     const handleGamepadMapApply = map => {
@@ -1238,7 +1265,9 @@
       onToggle: handleGamepadToggle,
       map: gamepadMap,
       onApplyMap: handleGamepadMapApply,
-      defaultMap: DEFAULT_PAD_MAP
+      defaultMap: DEFAULT_PAD_MAP,
+      error: gamepadError,
+      onInstallDriver: handleInstallVigem
     }), section === "other" && /*#__PURE__*/React.createElement(OtherSection, null))), /*#__PURE__*/React.createElement(ThemePopup, {
       open: themeOpen,
       onClose: () => setThemeOpen(false),

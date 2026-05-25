@@ -1506,7 +1506,7 @@ const PAD_AXES = [
 ];
 const axisMeta = (id) => PAD_AXES.find(a => a.id === id) || PAD_AXES[0];
 
-const GamepadSection = ({ connected, enabled, onToggle, map, onApplyMap, defaultMap }) => {
+const GamepadSection = ({ connected, enabled, onToggle, map, onApplyMap, defaultMap, error, onInstallDriver }) => {
   const rows = map || [];
   const setRow = (i, patch) => onApplyMap(rows.map((r, j) => j === i ? { ...r, ...patch } : r));
   const addRow = () => onApplyMap([...rows, { key: "W", axis: "RT", direction: 1, threshold_mm: 1.5 }]);
@@ -1540,6 +1540,17 @@ const GamepadSection = ({ connected, enabled, onToggle, map, onApplyMap, default
             ? <span className="text-emerald-400">● Capturing → "Aula Win60 HE Virtual Gamepad"</span>
             : <span className="text-slate-500">○ Idle</span>}
         </div>
+        {error && (
+          <div className="mt-3 rounded-md border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-[11.5px] text-rose-100 flex items-center justify-between gap-3">
+            <span className="font-mono">{error.msg}</span>
+            {error.needsDriver && (
+              <button onClick={onInstallDriver}
+                className="shrink-0 px-3 h-7 rounded-md border border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] font-display text-[10.5px] uppercase tracking-[0.16em] hover:bg-[var(--accent)]/25">
+                Install ViGEmBus
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Mapping rows */}

@@ -36610,7 +36610,9 @@
     onToggle,
     map,
     onApplyMap,
-    defaultMap
+    defaultMap,
+    error,
+    onInstallDriver
   }) => {
     const rows = map || [];
     const setRow = (i, patch) => onApplyMap(rows.map((r, j) => j === i ? {
@@ -36655,7 +36657,14 @@
       className: "text-emerald-400"
     }, "\u25CF Capturing \u2192 \"Aula Win60 HE Virtual Gamepad\"") : /*#__PURE__*/React.createElement("span", {
       className: "text-slate-500"
-    }, "\u25CB Idle"))), /*#__PURE__*/React.createElement("div", {
+    }, "\u25CB Idle")), error && /*#__PURE__*/React.createElement("div", {
+      className: "mt-3 rounded-md border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-[11.5px] text-rose-100 flex items-center justify-between gap-3"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "font-mono"
+    }, error.msg), error.needsDriver && /*#__PURE__*/React.createElement("button", {
+      onClick: onInstallDriver,
+      className: "shrink-0 px-3 h-7 rounded-md border border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] font-display text-[10.5px] uppercase tracking-[0.16em] hover:bg-[var(--accent)]/25"
+    }, "Install ViGEmBus"))), /*#__PURE__*/React.createElement("div", {
       className: "rounded-xl border border-white/[0.06] bg-white/[0.02] p-5"
     }, /*#__PURE__*/React.createElement("div", {
       className: "flex items-center justify-between mb-3"
@@ -38149,11 +38158,38 @@
     };
 
     // Gamepad: push the current map then toggle capture on/off.
+    const [gamepadError, setGamepadError] = useState(null); // {msg, needsDriver}
     const handleGamepadToggle = on => {
       setGamepadOn(on);
-      if (on) apiCall("set_gamepad_map", gamepadMap);
+      if (on) {
+        setGamepadError(null);
+        apiCall("set_gamepad_map", gamepadMap);
+      }
       apiCall("set_gamepad_capture", on).then(r => {
-        if (!(r && r.ok)) setGamepadOn(false);
+        if (!(r && r.ok)) {
+          setGamepadOn(false);
+          setGamepadError({
+            msg: r && r.error || "failed",
+            needsDriver: !!(r && r.needs_vigembus)
+          });
+        } else {
+          setGamepadError(null);
+        }
+      });
+    };
+    const handleInstallVigem = async () => {
+      setGamepadError({
+        msg: "installing ViGEmBus (approve the UAC prompt)…",
+        needsDriver: false,
+        installing: true
+      });
+      const r = await apiCall("install_vigembus");
+      if (r && r.ok) setGamepadError({
+        msg: "ViGEmBus installed — try capture again.",
+        needsDriver: false
+      });else setGamepadError({
+        msg: r && r.error || "install failed",
+        needsDriver: true
       });
     };
     const handleGamepadMapApply = map => {
@@ -38583,7 +38619,9 @@
       onToggle: handleGamepadToggle,
       map: gamepadMap,
       onApplyMap: handleGamepadMapApply,
-      defaultMap: DEFAULT_PAD_MAP
+      defaultMap: DEFAULT_PAD_MAP,
+      error: gamepadError,
+      onInstallDriver: handleInstallVigem
     }), section === "other" && /*#__PURE__*/React.createElement(OtherSection, null))), /*#__PURE__*/React.createElement(ThemePopup, {
       open: themeOpen,
       onClose: () => setThemeOpen(false),

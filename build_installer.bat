@@ -10,6 +10,12 @@ if not exist venv-web\Scripts\python.exe (
   exit /b 1
 )
 
+if not exist vendor\ViGEmBus_Setup.exe (
+  echo === Downloading ViGEmBus_Setup.exe ===
+  if not exist vendor mkdir vendor
+  powershell -NoProfile -Command "Invoke-WebRequest -Uri 'https://github.com/nefarius/ViGEmBus/releases/download/v1.22.0/ViGEmBus_1.22.0_x64_x86_arm64.exe' -OutFile 'vendor\ViGEmBus_Setup.exe'" || exit /b 1
+)
+
 echo === Rebuilding UI runtime ===
 venv-web\Scripts\python.exe ui\runtime_src\build_runtime.py || exit /b 1
 

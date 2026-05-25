@@ -2104,7 +2104,9 @@
     onToggle,
     map,
     onApplyMap,
-    defaultMap
+    defaultMap,
+    error,
+    onInstallDriver
   }) => {
     const rows = map || [];
     const setRow = (i, patch) => onApplyMap(rows.map((r, j) => j === i ? {
@@ -2149,7 +2151,14 @@
       className: "text-emerald-400"
     }, "\u25CF Capturing \u2192 \"Aula Win60 HE Virtual Gamepad\"") : /*#__PURE__*/React.createElement("span", {
       className: "text-slate-500"
-    }, "\u25CB Idle"))), /*#__PURE__*/React.createElement("div", {
+    }, "\u25CB Idle")), error && /*#__PURE__*/React.createElement("div", {
+      className: "mt-3 rounded-md border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-[11.5px] text-rose-100 flex items-center justify-between gap-3"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "font-mono"
+    }, error.msg), error.needsDriver && /*#__PURE__*/React.createElement("button", {
+      onClick: onInstallDriver,
+      className: "shrink-0 px-3 h-7 rounded-md border border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] font-display text-[10.5px] uppercase tracking-[0.16em] hover:bg-[var(--accent)]/25"
+    }, "Install ViGEmBus"))), /*#__PURE__*/React.createElement("div", {
       className: "rounded-xl border border-white/[0.06] bg-white/[0.02] p-5"
     }, /*#__PURE__*/React.createElement("div", {
       className: "flex items-center justify-between mb-3"

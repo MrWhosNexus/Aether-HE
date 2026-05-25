@@ -348,7 +348,12 @@ class Api:
             if self.pad:
                 self.pad.close()
                 self.pad = None
-            return {"ok": False, "error": str(e)}
+            # Surface a hint for the React UI when the failure is the missing
+            # kernel driver, so it can offer the one-click installer.
+            msg = str(e)
+            need_driver = (sys.platform.startswith("win")
+                           and "ViGEmBus" in msg)
+            return {"ok": False, "error": msg, "needs_vigembus": need_driver}
 
     def set_gamepad_map(self, mappings):
         """Set the key→control mappings for the virtual gamepad. Each entry:
@@ -370,8 +375,18 @@ class Api:
             return {"ok": False, "error": str(e)}
 
     def gamepad_status(self):
-        return {"ok": True, "capturing": bool(self._pad_thread and self._pad_thread.is_alive()),
-                "evdev": gamepad.EVDEV_AVAILABLE}
+        return {"ok": True,
+                "capturing": bool(self._pad_thread and self._pad_thread.is_alive()),
+                "evdev": gamepad.EVDEV_AVAILABLE,
+                "platform": sys.platform,
+                "vigembus": gamepad.vigembus_present() if sys.platform.startswith("win") else None,
+                "can_install_vigembus": bool(
+                    sys.platform.startswith("win") and gamepad._vigembus_installer_path()
+                )}
+
+    def install_vigembus(self):
+        """Run the bundled ViGEmBus installer (Windows). Prompts UAC."""
+        return gamepad.install_vigembus_driver()
 
     def _gamepad_loop(self):
         import time
