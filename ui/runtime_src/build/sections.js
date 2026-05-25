@@ -154,18 +154,6 @@
           size: 13
         })
       }, {
-        id: "combo",
-        label: "Key Combination",
-        icon: /*#__PURE__*/React.createElement(ILink, {
-          size: 13
-        })
-      }, {
-        id: "macro",
-        label: "Macro",
-        icon: /*#__PURE__*/React.createElement(ICpu, {
-          size: 13
-        })
-      }, {
         id: "adv",
         label: "Advanced",
         icon: /*#__PURE__*/React.createElement(IZap, {

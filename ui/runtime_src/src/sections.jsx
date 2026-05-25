@@ -112,11 +112,11 @@ const KeymapSection = ({ selectedKey, selectedCount = 0, onRemap, onResetKey }) 
 
   return (
     <div>
+      {/* Combo + Macro were duplicates of Remap Key (same picker UI rendered).
+          Removed until each has its own distinct binding flow + HID wiring. */}
       <SubTabs active={tab} onChange={setTab}
         tabs={[
           { id: "remap", label: "Remap Key", icon: <IKeyboard size={13}/> },
-          { id: "combo", label: "Key Combination", icon: <ILink size={13}/> },
-          { id: "macro", label: "Macro", icon: <ICpu size={13}/> },
           { id: "adv",   label: "Advanced", icon: <IZap size={13}/> },
         ]}/>
 

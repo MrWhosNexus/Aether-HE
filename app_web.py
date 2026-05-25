@@ -507,12 +507,12 @@ class Api:
         return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
 
 
-# Minimal native injection. The React UI (ui/index_runtime.html) now drives ALL
-# HID directly through window.pywebview.api — there is no DOM/CSS scraping here
-# anymore. This only adds the two things the in-page app can't do itself:
-#   1) stop a physical keypress from activating the focused WebKit button, so
-#      pressing keys for Travel Test / Calibration is safe; and
-#   2) an optional WASD -> virtual-gamepad capture toggle (a host-only feature).
+# Minimal native injection. The React UI (ui/index_runtime.html) drives ALL HID
+# through window.pywebview.api; this only adds one thing the in-page app can't
+# do itself: stop a physical keypress from activating the focused WebKit button,
+# so pressing keys for Travel Test / Calibration is safe.
+# (A floating "PAD off" capture toggle used to live here too; it bypassed React
+# state and fought the GAMEPAD tab's own toggle, so it's gone. Use that tab.)
 NATIVE_JS = r"""
 (() => {
   function isEditable(el) {
@@ -524,25 +524,7 @@ NATIVE_JS = r"""
     }, true);
   });
 
-  const api = window.pywebview && window.pywebview.api;
-  if (!api || !api.set_gamepad_capture) return;
-  const pad = document.createElement('button');
-  pad.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:9999;padding:6px 12px;'
-    + 'border-radius:999px;font:11px/1 monospace;letter-spacing:.12em;cursor:pointer;'
-    + 'background:rgba(20,24,38,.9);border:1px solid rgba(255,255,255,.1);color:#94a3b8;'
-    + 'backdrop-filter:blur(8px)';
-  pad.textContent = 'PAD \u00b7 off';
-  document.body.appendChild(pad);
-  pad.addEventListener('click', async () => {
-    const next = !window.__padCapture;
-    const r = await api.set_gamepad_capture(next);
-    window.__padCapture = !!(r && r.ok && next);
-    pad.textContent = window.__padCapture ? 'PAD \u00b7 capture' : 'PAD \u00b7 off';
-    pad.style.color = window.__padCapture ? '#34d399' : (r && r.ok ? '#94a3b8' : '#fb7185');
-    pad.style.borderColor = window.__padCapture ? 'rgba(52,211,153,.4)'
-      : (r && r.ok ? 'rgba(255,255,255,.1)' : 'rgba(251,113,133,.4)');
-  });
-  console.log('AETHER native shell: key-suppression + gamepad capture ready');
+  console.log('AETHER native shell: key-suppression ready');
 })();
 """
 
