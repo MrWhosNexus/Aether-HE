@@ -17,7 +17,8 @@ import random
 import threading
 import time
 
-FPS = 18
+FPS = 120  # maxed for smoothness — board sustains ~1200 fps of writes, so this is
+           # far under the HID limit; motion is time-based so speed is unchanged.
 
 
 def _scale(rgb, f):
@@ -149,9 +150,11 @@ class PerKeyEffectEngine:
             "twinkle": self._g_twinkle, "wave": self._g_wave, "breath": self._g_breath,
             "ripple": self._g_ripple, "autorip": self._g_ripple, "aurora": self._g_aurora,
             "striation": self._g_striation, "radar": self._g_radar, "cross": self._g_cross,
-            "fireworks": self._g_fireworks, "reactive": self._g_reactive,
+            "fireworks": self._g_fireworks, "frenzy": self._g_frenzy,
+            "reactive": self._g_reactive,
             "neon": self._g_breath, "speedres": self._g_speedres, "static": self._g_static,
-            "rain": self._g_rain, "comet": self._g_comet, "tide": self._g_tide,
+            "rain": self._g_rain, "comet": self._g_comet, "tide": self._g_slopewave,
+            "autorip": self._g_autorip, "striation": self._g_striation,
             "calibrate": self._g_calibrate,
         }
         t0 = time.time()
@@ -200,22 +203,67 @@ class PerKeyEffectEngine:
             frame[idx] = _scale(_palette_at(z.palette, self._flow(z, idx) * span + t * flow), z.bright)
 
     def _g_striation(self, z, t, frame):
-        # Clean solid color stripes that step over time (not per-frame flicker).
-        # Orientation picks the stripe axis: "v" = vertical bars (vary across x),
-        # "h" = horizontal bars (vary down y), "both" = a moving checker/grid that
-        # blends the two axes. Each stripe is one solid palette color.
-        n = max(1, len(z.palette))
-        stripes = max(n, 6)
-        shift = int(t * (2.0 + z.speed * 5.0))   # visible stepping (was too slow)
-        orient = getattr(z, "orient", "v")
+        # Shooting stars: bright heads fly horizontally across rows leaving a
+        # fading trail, in random palette colors, over the background. New stars
+        # spawn on random rows; faster Speed = quicker, more frequent stars.
+        # direction 1 = right->left, otherwise left->right.
+        st = z.state
+        if "rows" not in st:
+            rows = {}
+            for idx in z.indices:
+                rows.setdefault(idx // 22, []).append(idx)
+            st["rows"] = rows
+            st["row_keys"] = list(rows.keys())
+            st["last_spawn"] = t
+        rows = st["rows"]
+        stars = st.setdefault("stars", [])
+
+        spawn_int = max(0.07, 0.45 - z.speed * 0.36)   # gap between new stars
+        if t - st["last_spawn"] >= spawn_int:
+            st["last_spawn"] = t
+            stars.append([t, random.choice(st["row_keys"]), random.choice(z.palette)])
+
         for idx in z.indices:
-            if orient == "h":
-                base = int(self._ny(idx) * stripes)
-            elif orient == "both":
-                base = int(self._nx(idx) * stripes) + int(self._ny(idx) * stripes)
-            else:  # "v"
-                base = int(self._nx(idx) * stripes)
-            frame[idx] = _scale(z.palette[(base + shift) % n], z.bright)
+            frame[idx] = _scale(z.bg, z.bright)
+
+        vx = 0.7 + z.speed * 2.2        # board-widths / second
+        trail = 0.30
+        rtl = (z.direction == 1)
+        alive = []
+        for star in stars:
+            t0, r, col = star
+            head = (t - t0) * vx
+            if head - trail > 1.1:
+                continue
+            alive.append(star)
+            for idx in rows[r]:
+                x = self._nx(idx)
+                d = (head - (1.0 - x)) if rtl else (head - x)   # distance behind head
+                if 0.0 <= d < trail:
+                    g = 1.0 - d / trail
+                    frame[idx] = _scale(_lerp(frame[idx], col, g * g), z.bright)
+        st["stars"] = alive
+
+    def _g_slopewave(self, z, t, frame):
+        # Wave-like: vertical color bands with a slope, scrolling horizontally so
+        # they read as diagonal stripes flowing across the board. Smooth (samples
+        # the palette continuously), multi-color, and direction-aware. Used by
+        # Striation / Tide / Auto-Ripple. Slope varies a touch per mode so they
+        # aren't identical.
+        slope = {"striation": 0.55, "tide": 0.30, "autorip": 0.95}.get(z.mode, 0.5)
+        span = max(1, len(z.palette))
+        flow = 0.35 + z.speed * 1.9
+        d = z.direction
+        if d in (2, 3):                       # up/down → bands flow vertically
+            sign = -1 if d == 2 else 1
+            for idx in z.indices:
+                pos = (self._ny(idx) + slope * self._nx(idx)) * span
+                frame[idx] = _scale(_palette_at(z.palette, pos + sign * t * flow), z.bright)
+        else:                                 # left/right → bands flow horizontally
+            sign = -1 if d == 1 else 1
+            for idx in z.indices:
+                pos = (self._nx(idx) + slope * self._ny(idx)) * span
+                frame[idx] = _scale(_palette_at(z.palette, pos + sign * t * flow), z.bright)
 
     def _g_aurora(self, z, t, frame):
         # Soft diagonal palette drift fading in/out over the background.
@@ -263,6 +311,40 @@ class PerKeyEffectEngine:
                     frame[idx] = _scale(_lerp(frame[idx], col, g), z.bright)
         z.state["rips"] = alive
 
+    def _g_autorip(self, z, t, frame):
+        # Auto Ripple: vertical wavefronts born at the CENTER that travel outward
+        # to both sides (left & right), running across the board, then fade as they
+        # reach the edges. New ripples spawn automatically; multi-color over the bg.
+        # direction picks the axis/origin: default = horizontal from center;
+        #   1 = horizontal toward center (edges -> middle)
+        #   2 = vertical from center (out top & bottom)
+        #   3 = vertical toward center
+        rips = z.state.setdefault("rips", [])
+        gap = max(0.7, 1.8 - z.speed * 1.0)        # fewer drops by default (pond-like)
+        if t - z.state.get("last_spawn", 0.0) >= gap:
+            z.state["last_spawn"] = t
+            rips.append((t, random.choice(z.palette)))
+        for idx in z.indices:
+            frame[idx] = _scale(z.bg, z.bright)
+        flow = 0.14 + z.speed * 0.7                # slower spread by default
+        band = 0.21                                # wavefront ~3 keys wider (larger groups)
+        vertical = z.direction in (2, 3)
+        inward = z.direction in (1, 3)
+        alive = []
+        for (t0, col) in rips:
+            r = (t - t0) * flow
+            if r > 0.62:
+                continue
+            alive.append((t0, col))
+            rr = (0.5 - r) if inward else r          # toward-center vs from-center
+            g0 = max(0.0, 1.0 - r / 0.58)
+            for idx in z.indices:
+                p = self._ny(idx) if vertical else self._nx(idx)
+                d = min(abs(p - (0.5 + rr)), abs(p - (0.5 - rr)))  # two fronts off center
+                if d < band:
+                    frame[idx] = _scale(_lerp(frame[idx], col, g0 * (1.0 - d / band)), z.bright)
+        z.state["rips"] = alive
+
     def _g_speedres(self, z, t, frame):
         # Speed Respond: the board fills row-by-row along the chosen direction, and
         # the fill LEVEL rises the faster you click. Each fresh key press bumps the
@@ -274,20 +356,21 @@ class PerKeyEffectEngine:
         dt = max(0.0, t - last_t)
         st["last_t"] = t
 
-        # Count NEW presses this frame (rising edges across the actuation point).
+        # Count NEW presses this frame (rising edges). Low threshold so even light
+        # taps register (keys may be configured down near 0.1 mm actuation).
         new_hits = 0
         for idx in z.indices:
             mm = self._depths.get(idx, 0.0)
-            if mm > 0.6 and idx not in pressed:
+            if mm > 0.35 and idx not in pressed:
                 pressed.add(idx)
                 new_hits += 1
-            elif mm < 0.3 and idx in pressed:
+            elif mm < 0.2 and idx in pressed:
                 pressed.discard(idx)
 
         level = st.get("level", 0.0)
-        level += new_hits * (0.18 + z.speed * 0.22)     # each click pushes the fill up
-        level -= dt * (0.25 + (1.0 - z.speed) * 0.5)    # and it constantly recedes
-        level = max(0.0, min(1.0, level))
+        level += new_hits * (0.22 + z.speed * 0.10)     # each press builds the fill up (fast)
+        level -= dt * (0.34 + (1.0 - z.speed) * 0.30)   # recedes when you stop typing
+        level = max(0.0, min(1.0, level))               # more typing -> more lights
         st["level"] = level
 
         col = _palette_at(z.palette, t * (0.3 + z.speed))
@@ -312,19 +395,38 @@ class PerKeyEffectEngine:
             frame[idx] = _scale(_lerp(z.bg, col, min(1.0, max(0.12, 1.0 - sweep * 3.0))), z.bright)
 
     def _g_cross(self, z, t, frame):
-        cx = math.sin(t * (0.4 + z.speed * 1.5)) * 0.5 + 0.5
-        cy = math.cos(t * (0.3 + z.speed * 1.2)) * 0.5 + 0.5
-        col = _palette_at(z.palette, t * (0.2 + z.speed))
+        # Press-reactive: pressing a key lights exactly ITS row and ITS column
+        # (one row + one column, by device row/col index), fading over a short life.
+        crosses = z.state.setdefault("crosses", [])   # (t0, prow, pcol, col)
+        pressed = z.state.setdefault("pressed", set())
         for idx in z.indices:
-            near = min(abs(self._nx(idx) - cx), abs(self._ny(idx) - cy))
-            frame[idx] = _scale(_lerp(z.bg, col, max(0.0, 1.0 - near * 8.0)), z.bright)
+            mm = self._depths.get(idx, 0.0)
+            if mm > 0.5 and idx not in pressed:
+                pressed.add(idx)
+                crosses.append((t, idx // 22, idx % 22, random.choice(z.palette)))
+            elif mm < 0.25 and idx in pressed:
+                pressed.discard(idx)
+        for idx in z.indices:
+            frame[idx] = _scale(z.bg, z.bright)
+        life = 0.45 + (1.0 - z.speed) * 0.7
+        alive = []
+        for (t0, prow, pcol, col) in crosses:
+            age = (t - t0) / life
+            if age >= 1.0:
+                continue
+            alive.append((t0, prow, pcol, col))
+            g = 1.0 - age
+            for idx in z.indices:
+                if idx // 22 == prow or idx % 22 == pcol:
+                    frame[idx] = _scale(_lerp(frame[idx], col, g), z.bright)
+        z.state["crosses"] = alive
 
-    def _g_fireworks(self, z, t, frame):
+    def _g_frenzy(self, z, t, frame):
+        # Automatic continuous bursts popping all over the board as expanding rings
+        # of color that fade — a busy, energetic ambient effect (no key press).
         for idx in z.indices:
             frame[idx] = _scale(z.bg, z.bright)
         bursts = z.state.setdefault("bursts", [])
-        # Spawn bursts often enough that the board is reliably active, and seed
-        # one immediately so the effect never starts on an empty (black) frame.
         if not bursts and not z.state.get("seeded"):
             z.state["seeded"] = True
             bursts.append((t, random.choice(z.palette), random.random(), random.random()))
@@ -341,6 +443,39 @@ class PerKeyEffectEngine:
                 d = math.hypot(self._nx(idx) - bx, self._ny(idx) - by)
                 if abs(d - radius) < 0.09:
                     frame[idx] = _scale(_lerp(frame[idx], col, 1.0 - age), 1.0)
+        z.state["bursts"] = alive
+
+    def _g_fireworks(self, z, t, frame):
+        # Press-reactive explosion: pressing a key detonates a burst that expands
+        # outward through the surrounding keys then fades — like an explosion at
+        # that key. Random palette color per press, over the background.
+        bursts = z.state.setdefault("bursts", [])
+        pressed = z.state.setdefault("pressed", set())
+        for idx in z.indices:
+            mm = self._depths.get(idx, 0.0)
+            if mm > 0.5 and idx not in pressed:
+                pressed.add(idx)
+                bursts.append((t, random.choice(z.palette), self._nx(idx), self._ny(idx)))
+            elif mm < 0.25 and idx in pressed:
+                pressed.discard(idx)
+        for idx in z.indices:
+            frame[idx] = _scale(z.bg, z.bright)
+        life = 0.6 + (1.0 - z.speed) * 0.6
+        alive = []
+        for (t0, col, bx, by) in bursts:
+            age = (t - t0) / life
+            if age >= 1.0:
+                continue
+            alive.append((t0, col, bx, by))
+            radius = age * 0.6                  # explosion front expands outward
+            fade = 1.0 - age
+            for idx in z.indices:
+                d = math.hypot(self._nx(idx) - bx, self._ny(idx) - by)
+                if d <= radius + 0.06:
+                    # bright at the wavefront, softer toward the (already-passed) core
+                    edge = 1.0 - abs(d - radius) * 4.0
+                    g = max(0.15 * fade, max(0.0, edge) * fade)
+                    frame[idx] = _scale(_lerp(frame[idx], col, g), z.bright)
         z.state["bursts"] = alive
 
     def _g_rain(self, z, t, frame):

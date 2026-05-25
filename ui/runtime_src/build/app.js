@@ -164,6 +164,13 @@
       dir: "none",
       full: true
     },
+    frenzy: {
+      byte: 11,
+      bg: true,
+      speed: true,
+      dir: "none",
+      full: true
+    },
     speedres: {
       byte: 12,
       bg: true,
@@ -573,7 +580,10 @@
     const [section, setSection] = useState("actuation");
     const [profile, setProfile] = useState("p1");
     const [layer, setLayer] = useState("default");
-    const [selectedKeys, setSelectedKeys] = useState(() => new Set(["W", "A", "S", "D"]));
+
+    // Empty by default → actuation/dead-band/switch apply to ALL keys until you
+    // pick a subset (set_trigger_codes treats an empty selection as every key).
+    const [selectedKeys, setSelectedKeys] = useState(() => new Set());
     const [actuation, setActuation] = useState(1.70);
     const [rtPress, setRtPress] = useState(0.05);
     const [rtRelease, setRtRelease] = useState(0.05);
@@ -618,7 +628,7 @@
     }];
     const [gamepadOn, setGamepadOn] = useState(false);
     const [gamepadMap, setGamepadMap] = useState(DEFAULT_PAD_MAP);
-    const [colors, setColors] = useState(["#ff1f5a"]);
+    const [colors, setColors] = useState(["#a6143a"]); // darker default (user pref)
     const [bgColor, setBgColor] = useState("#000000");
     const [perKeyColors, setPerKeyColors] = useState({});
     const [zones, setZones] = useState([]); // effect zones for Custom mode
@@ -790,13 +800,7 @@
     const handleCalibrate = start => {
       setCalibrating(start);
       if (start) setCalibratedKeys(new Set());
-      if (start) {
-        apiCall("calibrate", true, false);
-      } else {
-        // Stop first; only once the reader is torn down do we restart the lighting
-        // engine, so the two don't race for the device (which left it un-reverted).
-        apiCall("calibrate", false, false).then(() => setLightNonce(n => n + 1));
-      }
+      apiCall("calibrate", start, false); // lighting keeps running during calibration
     };
 
     // Gamepad: push the current map then toggle capture on/off.
@@ -881,7 +885,6 @@
     const lightTimer = useRef(null);
     useEffect(() => {
       if (!connected) return;
-      if (calibrating) return; // calibration owns the board LEDs
       if (pattern === "custom") return; // custom effect (below) owns the engine
       clearTimeout(lightTimer.current);
       lightTimer.current = setTimeout(() => {
@@ -907,7 +910,6 @@
     // animated effect), otherwise static per-key colors.
     useEffect(() => {
       if (!connected || pattern !== "custom") return;
-      if (calibrating) return; // calibration owns the board LEDs
       if (zones.length) {
         const bf = Math.max(0, Math.min(1, bgBright / 100));
         const bgScaled = hexToRgbArr(bgColor).map(c => Math.round(c * bf));
@@ -1184,7 +1186,8 @@
       setDeadBottom: setDeadBottom,
       switchId: switchId,
       onPickSwitch: handlePickSwitch,
-      liveDepth: liveMax
+      liveDepth: liveMax,
+      selectedCount: selectedKeys.size
     }), section === "lighting" && /*#__PURE__*/React.createElement(LightingSection, {
       colors: colors,
       setColors: setColors,

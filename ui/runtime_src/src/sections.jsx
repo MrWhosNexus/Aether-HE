@@ -364,8 +364,9 @@ const ActuationSection = ({
   calibrating, onCalibrate,
   deadTop, setDeadTop, deadBottom, setDeadBottom,
   switchId, onPickSwitch,
-  liveDepth = 0,
+  liveDepth = 0, selectedCount = 0,
 }) => {
+  const scope = selectedCount > 0 ? `${selectedCount} selected key${selectedCount > 1 ? "s" : ""}` : "ALL keys";
   const [tab, setTab] = useState("travel");
   return (
     <div>
@@ -397,9 +398,13 @@ const ActuationSection = ({
         <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5">
           {tab === "travel" && (
             <div>
-              <p className="text-[12px] text-slate-400 mb-5">
-                Select one or more keys on the keyboard above, then adjust their actuation point.
+              <p className="text-[12px] text-slate-400 mb-3">
+                Adjust the actuation point below. Select keys on the board to scope it; with none selected it applies to every key.
               </p>
+              <div className="mb-5 inline-flex items-center gap-2 px-3 h-7 rounded-md border border-[var(--accent)]/30 bg-[var(--accent)]/[0.06]">
+                <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-400">Applying to</span>
+                <span className="font-display text-[11px] uppercase tracking-[0.16em] text-[var(--accent)]">{scope}</span>
+              </div>
               <div className="mb-5">
                 <Slider label="Key Trigger Travel" value={actuation} min={0.1} max={4.0} step={0.05} unit="mm"
                         onChange={setActuation}/>
@@ -641,6 +646,7 @@ const LIGHT_MODES = [
   { id: "reactive", label: "Reactive",      icon: "☼" },
   { id: "striation",label: "Striation",     icon: "⦹" },
   { id: "fireworks",label: "Fireworks",     icon: "✻" },
+  { id: "frenzy",   label: "Frenzy",        icon: "✺" },
   { id: "autorip",  label: "Auto Ripple",   icon: "◈" },
   { id: "speedres", label: "Speed Respond", icon: "⦿" },
   { id: "rain",     label: "Rain",          icon: "☂" },
@@ -664,6 +670,7 @@ const MODE_CAPS = {
   twinkle:  { bg: true,  speed: true,  dir: "none",   full: true },
   custom:   { bg: false, speed: false, dir: "none",   full: false },
   fireworks:{ bg: true,  speed: true,  dir: "none",   full: true },
+  frenzy:   { bg: true,  speed: true,  dir: "none",   full: true },
   speedres: { bg: true,  speed: false, dir: "ud",     full: true },
   autorip:  { bg: true,  speed: true,  dir: "none",   full: true },
   striation:{ bg: true,  speed: true,  dir: "lr",     full: true },
@@ -764,7 +771,7 @@ const LightingSection = ({
   zones, onAddZone, onUpdateZone, onRemoveZone,
   selectedKeys, onSelectAll, onClearSelection
 }) => {
-  const palette = (colors && colors.length) ? colors : ["#9d4edd"];
+  const palette = colors || [];   // may be empty — user builds their own palette
   // Full RGB (rainbow) isn't meaningful for Static or per-key Custom.
   const fullColorOk = pattern !== "static" && pattern !== "custom";
   const [activeSlot, setActiveSlot] = useState(0);
@@ -775,13 +782,13 @@ const LightingSection = ({
   };
   const addSlot = () => {
     if (palette.length >= 4) return;
-    const seeds = ["#9d4edd","#00f5ff","#ff3d6e","#ffaa1f"];
-    const next = seeds[palette.length] || "#ffffff";
+    const seeds = ["#663390","#009fa6","#a62848","#a66e14"];  // ~2 tones darker defaults
+    const next = seeds[palette.length] || "#a6a6a6";
     setColors([...palette, next]);
     setActiveSlot(palette.length);
   };
   const removeSlot = (i) => {
-    if (palette.length <= 1) return;
+    if (palette.length <= 0) return;
     const p = palette.filter((_, idx) => idx !== i);
     setColors(p);
     if (activeSlot >= p.length) setActiveSlot(p.length - 1);
@@ -968,7 +975,15 @@ const LightingSection = ({
           <div>
             <div className="flex items-baseline justify-between mb-2">
               <span className="font-display text-[11px] uppercase tracking-[0.22em] text-slate-300">Effect colors · {palette.length}/4</span>
-              <span className="font-mono text-[10px] text-slate-500">click slot to recolor</span>
+              <div className="flex items-center gap-3">
+                {palette.length > 0 && (
+                  <button onClick={() => setColors([])}
+                    className="font-mono text-[10px] uppercase tracking-[0.16em] text-slate-400 hover:text-rose-300">
+                    Clear all
+                  </button>
+                )}
+                <span className="font-mono text-[10px] text-slate-500">click slot to recolor</span>
+              </div>
             </div>
             <div className="flex items-stretch gap-2 mb-3">
               {palette.map((c, i) => {
@@ -987,7 +1002,7 @@ const LightingSection = ({
                              onClick={(e) => e.stopPropagation()}
                              className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"/>
                     </button>
-                    {palette.length > 1 && (
+                    {palette.length > 0 && (
                       <button onClick={(e) => { e.stopPropagation(); removeSlot(i); }}
                               title="Remove"
                               className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-slate-900 ring-1 ring-white/20 text-slate-300 hover:text-rose-300 grid place-items-center text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">

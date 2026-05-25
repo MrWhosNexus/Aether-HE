@@ -287,16 +287,9 @@ class Api:
     def calibrate(self, start, any_key=False):
         try:
             if start:
-                # Calibration takes sole ownership of the device: stop the lighting
-                # engine and any travel-test reader so nothing else touches the HID
-                # handle (that contention is what froze the UI). Board LED feedback
-                # is disabled for now — only the reader runs (on-screen highlight).
-                if self.fx:
-                    self.fx.stop()
-                if self.reader:
-                    self.reader.stop()
-                    self.reader = None
-                self._last_pkts = None
+                # Lighting keeps running during calibration (user's choice). The
+                # calibration reader uses a short blocking read so it shares the
+                # device with the lighting engine without busy-spinning the lock.
                 self._write(protocol.build_calibration(True, bool(any_key)))
                 self.calib_reader = device_state.CalibrationReader(self.dev, self.km)
                 self.calib_reader.start()
@@ -419,7 +412,7 @@ class Api:
         running analog reader). Other effects detach it."""
         if not self.fx:
             return
-        if any(m in ("reactive", "ripple", "speedres") for m in modes):
+        if any(m in ("reactive", "ripple", "speedres", "cross", "fireworks") for m in modes):
             if self.reader is None and self.km:
                 self.reader = device_state.LiveReader(self.dev, self.km)
                 self.reader.start()

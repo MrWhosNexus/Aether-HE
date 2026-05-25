@@ -106,7 +106,18 @@ class LiveReader:
                     self.dev._dev.set_nonblocking(True)
         except Exception:
             pass
+        last_open = 0.0
         while not self._stop.is_set():
+            # Re-arm the travel-test stream periodically. Actuation/dead-band
+            # config writes (also cmd 33) can stop the stream, so without this the
+            # live depth silently dies a moment after entering the Actuation tab.
+            now = time.time()
+            if now - last_open > 0.8:
+                last_open = now
+                try:
+                    self.dev.write(protocol.build_open_trigger_test(self.indices))
+                except Exception:
+                    pass
             r = None
             try:
                 with self.dev._lock:

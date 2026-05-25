@@ -435,8 +435,10 @@
     setDeadBottom,
     switchId,
     onPickSwitch,
-    liveDepth = 0
+    liveDepth = 0,
+    selectedCount = 0
   }) => {
+    const scope = selectedCount > 0 ? `${selectedCount} selected key${selectedCount > 1 ? "s" : ""}` : "ALL keys";
     const [tab, setTab] = useState("travel");
     return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(SubTabs, {
       active: tab,
@@ -493,8 +495,14 @@
     })), /*#__PURE__*/React.createElement("div", {
       className: "rounded-xl border border-white/[0.06] bg-white/[0.02] p-5"
     }, tab === "travel" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
-      className: "text-[12px] text-slate-400 mb-5"
-    }, "Select one or more keys on the keyboard above, then adjust their actuation point."), /*#__PURE__*/React.createElement("div", {
+      className: "text-[12px] text-slate-400 mb-3"
+    }, "Adjust the actuation point below. Select keys on the board to scope it; with none selected it applies to every key."), /*#__PURE__*/React.createElement("div", {
+      className: "mb-5 inline-flex items-center gap-2 px-3 h-7 rounded-md border border-[var(--accent)]/30 bg-[var(--accent)]/[0.06]"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "font-mono text-[10px] uppercase tracking-[0.18em] text-slate-400"
+    }, "Applying to"), /*#__PURE__*/React.createElement("span", {
+      className: "font-display text-[11px] uppercase tracking-[0.16em] text-[var(--accent)]"
+    }, scope)), /*#__PURE__*/React.createElement("div", {
       className: "mb-5"
     }, /*#__PURE__*/React.createElement(Slider, {
       label: "Key Trigger Travel",
@@ -847,6 +855,10 @@
     label: "Fireworks",
     icon: "✻"
   }, {
+    id: "frenzy",
+    label: "Frenzy",
+    icon: "✺"
+  }, {
     id: "autorip",
     label: "Auto Ripple",
     icon: "◈"
@@ -937,6 +949,12 @@
       full: false
     },
     fireworks: {
+      bg: true,
+      speed: true,
+      dir: "none",
+      full: true
+    },
+    frenzy: {
       bg: true,
       speed: true,
       dir: "none",
@@ -1141,7 +1159,7 @@
     onSelectAll,
     onClearSelection
   }) => {
-    const palette = colors && colors.length ? colors : ["#9d4edd"];
+    const palette = colors || []; // may be empty — user builds their own palette
     // Full RGB (rainbow) isn't meaningful for Static or per-key Custom.
     const fullColorOk = pattern !== "static" && pattern !== "custom";
     const [activeSlot, setActiveSlot] = useState(0);
@@ -1152,13 +1170,13 @@
     };
     const addSlot = () => {
       if (palette.length >= 4) return;
-      const seeds = ["#9d4edd", "#00f5ff", "#ff3d6e", "#ffaa1f"];
-      const next = seeds[palette.length] || "#ffffff";
+      const seeds = ["#663390", "#009fa6", "#a62848", "#a66e14"]; // ~2 tones darker defaults
+      const next = seeds[palette.length] || "#a6a6a6";
       setColors([...palette, next]);
       setActiveSlot(palette.length);
     };
     const removeSlot = i => {
-      if (palette.length <= 1) return;
+      if (palette.length <= 0) return;
       const p = palette.filter((_, idx) => idx !== i);
       setColors(p);
       if (activeSlot >= p.length) setActiveSlot(p.length - 1);
@@ -1369,9 +1387,14 @@
       className: "flex items-baseline justify-between mb-2"
     }, /*#__PURE__*/React.createElement("span", {
       className: "font-display text-[11px] uppercase tracking-[0.22em] text-slate-300"
-    }, "Effect colors \xB7 ", palette.length, "/4"), /*#__PURE__*/React.createElement("span", {
+    }, "Effect colors \xB7 ", palette.length, "/4"), /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-3"
+    }, palette.length > 0 && /*#__PURE__*/React.createElement("button", {
+      onClick: () => setColors([]),
+      className: "font-mono text-[10px] uppercase tracking-[0.16em] text-slate-400 hover:text-rose-300"
+    }, "Clear all"), /*#__PURE__*/React.createElement("span", {
       className: "font-mono text-[10px] text-slate-500"
-    }, "click slot to recolor")), /*#__PURE__*/React.createElement("div", {
+    }, "click slot to recolor"))), /*#__PURE__*/React.createElement("div", {
       className: "flex items-stretch gap-2 mb-3"
     }, palette.map((c, i) => {
       const isActive = activeSlot === i;
@@ -1397,7 +1420,7 @@
         onChange: e => setSlot(i, e.target.value),
         onClick: e => e.stopPropagation(),
         className: "absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-      })), palette.length > 1 && /*#__PURE__*/React.createElement("button", {
+      })), palette.length > 0 && /*#__PURE__*/React.createElement("button", {
         onClick: e => {
           e.stopPropagation();
           removeSlot(i);
