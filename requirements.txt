@@ -1,3 +1,20 @@
-customtkinter>=5.2
+# Aether — Aula WIN60 HE controller. Cross-platform (Linux + Windows).
+#   pip install -r requirements.txt
+
+# Native webview UI — GTK/WebKit on Linux, Edge WebView2 on Windows (preinstalled
+# on Win 10/11). This is what app_web.py uses.
+pywebview>=6.0
+
+# Keyboard HID I/O (cross-platform).
 hidapi>=0.14
-evdev>=1.9
+
+# Virtual gamepad via Linux uinput. LINUX ONLY — won't build on Windows, so it is
+# skipped there; the gamepad feature self-disables when evdev is unavailable.
+# (Windows port of the gamepad will use vgamepad + ViGEmBus.)
+evdev>=1.9; sys_platform == "linux"
+
+# Optional helpers:
+#   pyusb        — USB reset for a stuck interface (cycle_modes.py); needs a libusb backend.
+#   customtkinter — only for the legacy Tkinter UI (main.py); not needed for app_web.py.
+pyusb>=1.2
+customtkinter>=5.2
