@@ -1,0 +1,64 @@
+{
+  "device": [
+    {
+      "vid": "0x2E3C",
+      "pid": "0xC365",
+      "name": "WIN 60 HE",
+      "product": "SI2825HEARGB",
+      "company": "suoai",
+      "title": "狼蛛",
+      "logoType": "3",
+      "hasLight": true,
+      "width": "587",
+      "height": "217"
+    },
+    {
+      "vid": "0x2E3C",
+      "pid": "0xC365",
+      "name": "WIN 68 HE",
+      "product": "SI2828HEARGB",
+      "company": "suoai",
+      "title": "狼蛛",
+      "logoType": "3",
+      "hasLight": true,
+      "width": "625.5",
+      "height": "217"
+    },
+    {
+      "vid": "0x2E3C",
+      "pid": "0xC365",
+      "name": "WIN 60 HE",
+      "product": "SI2825KZHEARGB",
+      "company": "suoai",
+      "title": "狼蛛",
+      "logoType": "3",
+      "hasLight": true,
+      "width": "587",
+      "height": "217"
+    },
+    {
+      "vid": "0x2E3C",
+      "pid": "0xC365",
+      "name": "WIN 68 HE",
+      "product": "SI2828KZHEARGB",
+      "company": "suoai",
+      "title": "狼蛛",
+      "logoType": "3",
+      "hasLight": true,
+      "width": "625.5",
+      "height": "217"
+    },
+    {
+      "vid": "0x2E3C",
+      "pid": "0xC365",
+      "name": "KP-TE153",
+      "product": "SI2851UKKZHEARGB",
+      "company": "suoai",
+      "title": "狼蛛",
+      "logoType": "3",
+      "hasLight": true,
+      "width": "625.5",
+      "height": "217"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+# Python
+__pycache__/
+*.py[cod]
+# Local virtualenv (rebuild from requirements)
+venv-web/
+venv/
+# OS / editor
+.DS_Store
+*.swp

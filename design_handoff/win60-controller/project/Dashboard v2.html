@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>AETHER HE // Keyboard Hub</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-0: #07090f;
+    --bg-1: #0b0f19;
+    --bg-2: #111827;
+    --bg-3: #1a2235;
+    --line: rgba(148, 163, 184, 0.10);
+
+    --accent: #9d4edd;
+    --accent-2: #9d4edd;
+    --accent-gradient: #9d4edd;
+    --accent-fg: #1a0833;
+    --accent-glow: rgba(157, 78, 221, 0.45);
+  }
+
+  html, body { background: var(--bg-0); color: #e2e8f0; font-family: 'Inter', system-ui, sans-serif; }
+  .font-display { font-family: 'Rajdhani', sans-serif; letter-spacing: 0.04em; }
+  .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* Background atmosphere */
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background:
+      radial-gradient(900px 500px at 25% -8%, color-mix(in oklab, var(--accent) 30%, transparent), transparent 60%),
+      radial-gradient(1000px 600px at 100% 110%, color-mix(in oklab, var(--accent-2) 20%, transparent), transparent 60%),
+      linear-gradient(to bottom, rgba(255,255,255,0.012) 1px, transparent 1px) 0 0 / 100% 56px,
+      linear-gradient(to right,  rgba(255,255,255,0.012) 1px, transparent 1px) 0 0 / 56px 100%;
+  }
+
+  /* Background image layer (theme image mode) */
+  #__bg-image-layer {
+    position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background-size: cover; background-position: center;
+    display: none;
+  }
+
+  /* Range slider */
+  input[type="range"].aether {
+    -webkit-appearance: none; appearance: none;
+    height: 4px; border-radius: 999px; outline: none;
+    background: linear-gradient(to right, var(--accent) var(--pct,50%), rgba(148,163,184,0.18) var(--pct,50%));
+  }
+  input[type="range"].aether::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: #fff; border: 2px solid var(--accent);
+    box-shadow: 0 0 8px var(--accent-glow);
+    cursor: pointer;
+  }
+  input[type="range"].aether::-moz-range-thumb {
+    width: 14px; height: 14px; border-radius: 50%;
+    background: #fff; border: 2px solid var(--accent);
+    box-shadow: 0 0 8px var(--accent-glow);
+    cursor: pointer;
+  }
+
+  /* Color picker reset */
+  input[type="color"] { -webkit-appearance: none; appearance: none; border: none; padding: 0; cursor: pointer; }
+  input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+  input[type="color"]::-webkit-color-swatch { border: none; }
+  input[type="color"]::-moz-color-swatch { border: none; }
+
+  /* Pulse */
+  @keyframes pulseRing {
+    0%   { transform: scale(0.9); opacity: 0.9; }
+    70%  { transform: scale(2.6); opacity: 0; }
+    100% { transform: scale(0.9); opacity: 0; }
+  }
+  .pulse-ring::after {
+    content: ""; position: absolute; inset: 0; border-radius: 9999px;
+    background: currentColor; animation: pulseRing 1.8s ease-out infinite;
+  }
+
+  @keyframes flashWhite {
+    0%   { background-color: rgba(255,255,255,0.0); }
+    20%  { background-color: rgba(255,255,255,0.45); }
+    100% { background-color: rgba(255,255,255,0.0); }
+  }
+  .flash-on-click { animation: flashWhite 0.35s ease-out; }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #1f2937; border-radius: 999px; }
+  ::-webkit-scrollbar-thumb:hover { background: #334155; }
+
+  .bar-fill { transition: height 200ms cubic-bezier(.2,.7,.2,1); }
+
+  /* Smooth section fade-in */
+  @keyframes sectionIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .section-anim { animation: sectionIn 280ms cubic-bezier(.2,.7,.2,1); }
+
+  /* Popup animations */
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes popIn {
+    0%   { opacity: 0; transform: scale(0.92) translateY(8px); }
+    100% { opacity: 1; transform: scale(1) translateY(0); }
+  }
+</style>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body class="min-h-screen overflow-x-auto" style="min-width: 1280px;">
+<div id="__bg-image-layer"></div>
+<div id="root" class="relative z-10"></div>
+
+<script type="text/babel" src="icons.jsx" data-presets="react"></script>
+<script type="text/babel" src="keyboard.jsx" data-presets="react"></script>
+<script type="text/babel" src="sections.jsx" data-presets="react"></script>
+<script type="text/babel" src="theme-popup.jsx" data-presets="react"></script>
+
+<script type="text/babel" data-presets="react">
+(() => {
+const { useState, useEffect, useRef, useMemo } = React;
+const {
+  IFolder, IKeyboard, IBulb, IGauge, ICrosshair, IGrid, IPlug, IPower,
+  IChevron, IChevronD, ICheck, IEdit, IRefresh, IZap, ISave, ILink, IUnlink,
+  IPalette, IActivity, IWaves, ISettings, ITrash, IPlus, ICpu, ILayers, IMore, IDownload
+} = window.AetherIcons;
+
+const { KeyboardPanel } = window.AetherKeyboard;
+const { KeymapSection, ActuationSection, LightingSection, SOCDSection, OtherSection, ActuationToolbar } = window.AetherSections;
+const { ThemePopup, useTheme } = window.AetherTheme;
+
+/* ============================================================
+   Sidebar
+   ============================================================ */
+const SidebarLogo = () => (
+  <div className="px-4 pt-6 pb-5 flex items-center justify-center">
+    <img src="assets/logo.png" alt="" className="w-14 h-14 drop-shadow-[0_6px_24px_rgba(157,78,221,0.55)]"/>
+  </div>
+);
+
+const ProfileTree = ({ profiles, active, setActive }) => (
+  <div className="px-3 mt-1">
+    <button className="w-full flex items-center gap-2 px-2.5 h-8 rounded-md text-slate-200 hover:bg-white/[0.03]">
+      <IFolder size={14}/>
+      <span className="font-display text-[13px] uppercase tracking-[0.16em]">Profile</span>
+    </button>
+    <div className="ml-1 mt-1 flex flex-col">
+      {profiles.map(p => {
+        const isActive = active === p.id;
+        return (
+          <button key={p.id} onClick={() => setActive(p.id)}
+            className={`relative group flex items-center justify-between pl-6 pr-2.5 h-8 rounded-md text-left transition-colors
+                        ${isActive
+                          ? "bg-[var(--accent)]/12 text-slate-100"
+                          : "text-slate-500 hover:text-slate-200 hover:bg-white/[0.03]"}`}>
+            {isActive && <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] bg-[var(--accent)] rounded-r-full shadow-[0_0_8px_var(--accent-glow)]"/>}
+            <span className="font-display text-[12px] uppercase tracking-[0.14em] whitespace-nowrap">{p.name}</span>
+            {p.editable && (
+              <span className={`opacity-0 group-hover:opacity-100 ${isActive ? "opacity-60" : ""} text-slate-400`}>
+                <IEdit size={11}/>
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  </div>
+);
+
+const NAV_ITEMS = [
+  { id: "keymap",    label: "Keymap",    icon: <IKeyboard size={15}/> },
+  { id: "lighting",  label: "Lighting",  icon: <IBulb size={15}/> },
+  { id: "actuation", label: "Actuation", icon: <IGrid size={15}/> },
+  { id: "socd",      label: "SOCD",      icon: <ICrosshair size={15}/> },
+  { id: "other",     label: "Other",     icon: <IGrid size={15}/> },
+];
+
+const SidebarNav = ({ section, setSection }) => (
+  <div className="mt-auto px-3 pb-3">
+    <div className="flex flex-col gap-1">
+      {NAV_ITEMS.map(n => {
+        const isActive = section === n.id;
+        return (
+          <button key={n.id} onClick={() => setSection(n.id)}
+            className={`relative flex items-center gap-3 px-3 h-10 rounded-md transition-all
+                        ${isActive
+                          ? "bg-gradient-to-r from-[var(--accent)]/15 to-transparent text-slate-100"
+                          : "text-slate-500 hover:text-slate-200 hover:bg-white/[0.025]"}`}>
+            {isActive && <span className="absolute left-0 top-2 bottom-2 w-[3px] bg-[var(--accent)] rounded-r-full shadow-[0_0_8px_var(--accent-glow)]"/>}
+            <span className={isActive ? "text-[var(--accent)]" : ""}>{n.icon}</span>
+            <span className="font-display text-[13px] uppercase tracking-[0.18em]">{n.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  </div>
+);
+
+const SidebarFooter = ({ connected, onToggle, onOpenTheme }) => (
+  <div className="px-3 pb-3 border-t border-white/[0.05] pt-3">
+    <button onClick={onOpenTheme}
+      className="w-full flex items-center gap-2 px-2.5 h-9 mb-2 rounded-md border border-white/[0.06] bg-white/[0.025] text-slate-300 hover:text-slate-100 hover:border-white/20 font-display text-[11.5px] uppercase tracking-[0.18em] transition-all">
+      <IPalette size={13}/>
+      <span>Customize</span>
+      <span className="ml-auto w-3.5 h-3.5 rounded-full ring-1 ring-white/15"
+            style={{ background: "var(--accent-gradient, var(--accent))" }}/>
+    </button>
+    <div className="flex items-center gap-2 mb-2">
+      <span className="font-mono text-[10.5px] text-slate-500">Language:</span>
+      <select className="bg-white/[0.04] border border-white/[0.06] rounded text-[11px] text-slate-200 px-1 py-0.5 font-mono">
+        <option>English</option>
+        <option>日本語</option>
+        <option>한국어</option>
+        <option>简体中文</option>
+      </select>
+      <button className="ml-auto text-slate-400 hover:text-slate-200" title="Settings">
+        <ISettings size={14}/>
+      </button>
+    </div>
+    <button onClick={onToggle}
+      className={`w-full flex items-center justify-center gap-2 h-9 rounded-md border font-display text-[11.5px] uppercase tracking-[0.18em] transition-all
+                  ${connected
+                    ? "border-emerald-400/40 bg-emerald-500/15 text-emerald-200 shadow-[0_0_14px_rgba(52,211,153,0.4)]"
+                    : "border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] shadow-[0_0_14px_var(--accent-glow)]"}`}>
+      {connected ? <IPower size={13}/> : <IPlug size={13}/>}
+      {connected ? "Connected" : "Pair Device"}
+    </button>
+  </div>
+);
+
+/* ============================================================
+   App
+   ============================================================ */
+function App() {
+  const [theme, setTheme] = useTheme();
+  const [themeOpen, setThemeOpen] = useState(false);
+
+  const [connected, setConnected] = useState(true);
+  const [section, setSection] = useState("actuation");
+  const [profile, setProfile] = useState("p1");
+  const [layer, setLayer] = useState("default");
+
+  const [selectedKeys, setSelectedKeys] = useState(() => new Set(["W","A","S","D"]));
+  const [actuation, setActuation] = useState(1.70);
+  const [rtPress, setRtPress] = useState(0.05);
+  const [rtRelease, setRtRelease] = useState(0.05);
+  const [rtEnabled, setRtEnabled] = useState(false);
+  const [polling, setPolling] = useState(8);
+  const [travelTest, setTravelTest] = useState(false);
+
+  const [color, setColor] = useState("#ff1f5a");
+  const [pattern, setPattern] = useState("twinkle");
+  const [brightness, setBrightness] = useState(80);
+  const [speed, setSpeed] = useState(60);
+
+  const [socdMode, setSocdMode] = useState("last");
+  const [hotkey] = useState("Fn + R-Shift");
+  const [hotkeyEnabled, setHotkeyEnabled] = useState(true);
+
+  const profiles = [
+    { id: "default", name: "Profile Default" },
+    { id: "p1", name: "Profile 1", editable: true },
+    { id: "p2", name: "Profile 2", editable: true },
+    { id: "p3", name: "Profile 3", editable: true },
+    { id: "p4", name: "Profile 4", editable: true },
+  ];
+
+  const keyboardMode = section === "actuation"
+    ? "actuation"
+    : section === "lighting"
+      ? "lighting"
+      : section === "socd"
+        ? "socd"
+        : "keymap";
+
+  const ledMap = useMemo(() => {
+    if (section !== "lighting") return {};
+    const m = {};
+    window.AetherKeyboard.KB_ROWS.flat().forEach(([_, __, code]) => { m[code] = color; });
+    return m;
+  }, [section, color]);
+
+  const selectedKey = useMemo(() => Array.from(selectedKeys)[0] || null, [selectedKeys]);
+
+  return (
+    <div className="min-h-screen flex">
+      {/* Sidebar */}
+      <aside className="w-[220px] shrink-0 flex flex-col bg-gradient-to-b from-white/[0.018] to-transparent border-r border-white/[0.05] min-h-screen relative z-10">
+        <SidebarLogo/>
+        <ProfileTree profiles={profiles} active={profile} setActive={setProfile}/>
+        <SidebarNav section={section} setSection={setSection}/>
+        <SidebarFooter connected={connected} onToggle={() => setConnected(c => !c)} onOpenTheme={() => setThemeOpen(true)}/>
+      </aside>
+
+      {/* Main */}
+      <main className="flex-1 min-w-0 flex flex-col">
+        {/* Top: keyboard */}
+        <div className="px-6 lg:px-8 pt-8 pb-4">
+          <KeyboardPanel
+            mode={keyboardMode}
+            layer={layer}
+            selectedKeys={selectedKeys}
+            setSelectedKeys={setSelectedKeys}
+            actuationPoint={actuation}
+            rtPress={rtEnabled ? rtPress : 0}
+            rtRelease={rtEnabled ? rtRelease : 0}
+            ledMap={ledMap}
+            accent={theme.accent}
+            leftSlot={
+              section === "actuation" ? (
+                <ActuationToolbar
+                  onSelectAll={() => {
+                    const all = new Set(window.AetherKeyboard.KB_ROWS.flat().map(([_,__,c]) => c));
+                    setSelectedKeys(all);
+                  }}
+                  onSelectInvert={() => {
+                    const all = window.AetherKeyboard.KB_ROWS.flat().map(([_,__,c]) => c);
+                    setSelectedKeys(prev => new Set(all.filter(c => !prev.has(c))));
+                  }}
+                  onDeselectAll={() => setSelectedKeys(new Set())}
+                  onResetTrigger={() => { setActuation(1.70); setRtPress(0.05); setRtRelease(0.05); }}
+                />
+              ) : section === "keymap" ? (
+                <>
+                  {["default","fn"].map(l => (
+                    <button key={l} onClick={() => setLayer(l)}
+                      className={`px-3.5 h-9 rounded-md font-display text-[11.5px] uppercase tracking-[0.14em] border transition-all whitespace-nowrap
+                                  ${layer === l
+                                    ? "bg-[var(--accent)] border-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_18px_var(--accent-glow)]"
+                                    : "bg-white/[0.02] border-white/[0.06] text-slate-300 hover:border-white/20"}`}>
+                      {l === "default" ? "Default Layer" : "Fn Layer"}
+                    </button>
+                  ))}
+                </>
+              ) : null
+            }
+          />
+        </div>
+
+        {/* Bottom: section content */}
+        <div key={section} className="flex-1 border-t border-white/[0.05] px-6 lg:px-10 pt-5 pb-10 bg-gradient-to-b from-transparent to-white/[0.012] section-anim">
+          {section === "keymap"   && <KeymapSection selectedKey={selectedKey}/>}
+          {section === "actuation" && (
+            <ActuationSection
+              actuation={actuation} setActuation={setActuation}
+              rtPress={rtPress} setRtPress={setRtPress}
+              rtRelease={rtRelease} setRtRelease={setRtRelease}
+              rtEnabled={rtEnabled} setRtEnabled={setRtEnabled}
+              polling={polling} setPolling={setPolling}
+              travelTest={travelTest} setTravelTest={setTravelTest}
+            />
+          )}
+          {section === "lighting" && (
+            <LightingSection
+              color={color} setColor={setColor}
+              pattern={pattern} setPattern={setPattern}
+              brightness={brightness} setBrightness={setBrightness}
+              speed={speed} setSpeed={setSpeed}
+            />
+          )}
+          {section === "socd" && (
+            <SOCDSection
+              socdMode={socdMode} setSocdMode={setSocdMode}
+              hotkey={hotkey}
+              hotkeyEnabled={hotkeyEnabled} setHotkeyEnabled={setHotkeyEnabled}
+            />
+          )}
+          {section === "other" && <OtherSection/>}
+        </div>
+      </main>
+
+      {/* Theme Customizer popup */}
+      <ThemePopup open={themeOpen} onClose={() => setThemeOpen(false)} theme={theme} setTheme={setTheme}/>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+})();
+</script>
+</body>
+</html>

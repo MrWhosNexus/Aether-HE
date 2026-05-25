@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>AETHER HE // Keyboard Hub</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-0: #07080d;
+    --bg-1: #0b0d15;
+    --bg-2: #0f1220;
+    --bg-3: #161a29;
+    --line: rgba(148, 163, 184, 0.08);
+
+    --accent: #9d4edd;
+    --accent-2: #9d4edd;
+    --accent-gradient: #9d4edd;
+    --accent-fg: #1a0833;
+    --accent-glow: rgba(157, 78, 221, 0.45);
+  }
+
+  html, body { background: var(--bg-0); color: #e6e8f0; font-family: 'Inter', system-ui, sans-serif; }
+  .font-display { font-family: 'Rajdhani', sans-serif; letter-spacing: 0.02em; }
+  .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* Soft atmospheric backdrop — less grid noise, more Notion-y warmth */
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background:
+      radial-gradient(1200px 700px at 18% -10%, color-mix(in oklab, var(--accent) 22%, transparent), transparent 60%),
+      radial-gradient(900px 600px at 110% 30%, color-mix(in oklab, var(--accent-2) 14%, transparent), transparent 60%),
+      radial-gradient(1100px 500px at 50% 130%, rgba(255,255,255,0.025), transparent 60%);
+  }
+
+  #__bg-image-layer {
+    position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background-size: cover; background-position: center;
+    display: none;
+  }
+
+  /* Range slider */
+  input[type="range"].aether {
+    -webkit-appearance: none; appearance: none;
+    height: 4px; border-radius: 999px; outline: none;
+    background: linear-gradient(to right, var(--accent) var(--pct,50%), rgba(148,163,184,0.18) var(--pct,50%));
+  }
+  input[type="range"].aether::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: #fff; border: 2px solid var(--accent);
+    box-shadow: 0 0 8px var(--accent-glow);
+    cursor: pointer;
+  }
+  input[type="range"].aether::-moz-range-thumb {
+    width: 14px; height: 14px; border-radius: 50%;
+    background: #fff; border: 2px solid var(--accent);
+    box-shadow: 0 0 8px var(--accent-glow);
+    cursor: pointer;
+  }
+
+  input[type="color"] { -webkit-appearance: none; appearance: none; border: none; padding: 0; cursor: pointer; }
+  input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+  input[type="color"]::-webkit-color-swatch { border: none; }
+  input[type="color"]::-moz-color-swatch { border: none; }
+
+  /* Pulse */
+  @keyframes pulseRing {
+    0%   { transform: scale(0.9); opacity: 0.9; }
+    70%  { transform: scale(2.6); opacity: 0; }
+    100% { transform: scale(0.9); opacity: 0; }
+  }
+  .pulse-ring::after {
+    content: ""; position: absolute; inset: 0; border-radius: 9999px;
+    background: currentColor; animation: pulseRing 1.8s ease-out infinite;
+  }
+
+  @keyframes flashWhite {
+    0%   { background-color: rgba(255,255,255,0.0); }
+    20%  { background-color: rgba(255,255,255,0.45); }
+    100% { background-color: rgba(255,255,255,0.0); }
+  }
+  .flash-on-click { animation: flashWhite 0.35s ease-out; }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.18); border-radius: 999px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(148,163,184,0.3); }
+
+  .bar-fill { transition: height 200ms cubic-bezier(.2,.7,.2,1); }
+
+  /* Smooth section fade-in */
+  @keyframes sectionIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .section-anim { animation: sectionIn 320ms cubic-bezier(.2,.7,.2,1); }
+
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes popIn {
+    0%   { opacity: 0; transform: scale(0.92) translateY(8px); }
+    100% { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  /* Soft card — Notion/Apple Health style: subtle elevation, soft edges */
+  .surface {
+    background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015));
+    border: 1px solid rgba(255,255,255,0.04);
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.04) inset,
+      0 20px 60px -24px rgba(0,0,0,0.7),
+      0 4px 16px -8px rgba(0,0,0,0.4);
+  }
+  .surface-flat {
+    background: rgba(255,255,255,0.025);
+    border: 1px solid rgba(255,255,255,0.04);
+  }
+
+  /* Pill segmented nav */
+  .pill-active {
+    background: linear-gradient(180deg, color-mix(in oklab, var(--accent) 22%, transparent), color-mix(in oklab, var(--accent) 12%, transparent));
+    color: white;
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.12) inset,
+      0 8px 24px -10px var(--accent-glow);
+  }
+
+  /* Dropdown menu */
+  .menu-pop {
+    background: rgba(20, 24, 38, 0.95);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.06);
+    box-shadow: 0 20px 60px -16px rgba(0,0,0,0.7);
+  }
+</style>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body class="min-h-screen overflow-x-auto" style="min-width: 1200px;">
+<div id="__bg-image-layer"></div>
+<div id="root" class="relative z-10"></div>
+
+<script type="text/babel" src="icons.jsx" data-presets="react"></script>
+<script type="text/babel" src="keyboard.jsx" data-presets="react"></script>
+<script type="text/babel" src="sections.jsx" data-presets="react"></script>
+<script type="text/babel" src="theme-popup.jsx" data-presets="react"></script>
+
+<script type="text/babel" data-presets="react">
+(() => {
+const { useState, useEffect, useRef, useMemo } = React;
+const {
+  IFolder, IKeyboard, IBulb, IGauge, ICrosshair, IGrid, IPlug, IPower,
+  IChevron, IChevronD, ICheck, IEdit, IRefresh, IZap, ISave, ILink, IUnlink,
+  IPalette, IActivity, IWaves, ISettings, ITrash, IPlus, ICpu, ILayers, IMore, IDownload
+} = window.AetherIcons;
+
+const { KeyboardPanel } = window.AetherKeyboard;
+const { KeymapSection, ActuationSection, LightingSection, SOCDSection, OtherSection, ActuationToolbar } = window.AetherSections;
+const { ThemePopup, useTheme } = window.AetherTheme;
+
+const PROFILES = [
+  { id: "default", name: "Profile Default" },
+  { id: "p1",      name: "Profile 1", editable: true },
+  { id: "p2",      name: "Profile 2", editable: true },
+  { id: "p3",      name: "Profile 3", editable: true },
+  { id: "p4",      name: "Profile 4", editable: true },
+];
+
+const NAV = [
+  { id: "keymap",    label: "Keymap",    icon: <IKeyboard size={14}/> },
+  { id: "lighting",  label: "Lighting",  icon: <IBulb size={14}/> },
+  { id: "actuation", label: "Actuation", icon: <IGauge size={14}/> },
+  { id: "socd",      label: "SOCD",      icon: <ICrosshair size={14}/> },
+  { id: "other",     label: "Other",     icon: <IGrid size={14}/> },
+];
+
+/* ============================================================
+   Profile dropdown
+   ============================================================ */
+const ProfileDropdown = ({ value, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+  const current = PROFILES.find(p => p.id === value) || PROFILES[0];
+  return (
+    <div className="relative" ref={ref}>
+      <button onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-2.5 pl-2 pr-3 h-9 rounded-xl hover:bg-white/[0.04] transition-colors">
+        <span className="grid place-items-center w-6 h-6 rounded-md bg-white/[0.04] text-slate-400">
+          <IFolder size={12}/>
+        </span>
+        <span className="font-display text-[14px] font-medium text-slate-100">{current.name}</span>
+        <IChevronD size={13} className={`text-slate-500 transition-transform ${open ? "rotate-180" : ""}`}/>
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1.5 w-[220px] rounded-xl p-1.5 menu-pop z-50 animate-[fadeIn_140ms_ease-out]">
+          {PROFILES.map(p => {
+            const active = p.id === value;
+            return (
+              <button key={p.id} onClick={() => { onChange(p.id); setOpen(false); }}
+                className={`w-full flex items-center justify-between gap-2 pl-2.5 pr-2 h-9 rounded-lg text-left transition-colors
+                            ${active ? "bg-[var(--accent)]/15 text-slate-100" : "text-slate-300 hover:bg-white/[0.04] hover:text-slate-100"}`}>
+                <span className="flex items-center gap-2">
+                  <span className="font-display text-[13px]">{p.name}</span>
+                </span>
+                {active && <ICheck size={12} className="text-[var(--accent)]"/>}
+                {!active && p.editable && <IEdit size={11} className="text-slate-500 opacity-0 group-hover:opacity-100"/>}
+              </button>
+            );
+          })}
+          <div className="border-t border-white/[0.06] my-1.5"/>
+          <button className="w-full flex items-center gap-2 px-2.5 h-9 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-white/[0.04]">
+            <IPlus size={12}/>
+            <span className="font-display text-[12.5px] uppercase tracking-[0.14em]">New profile</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* ============================================================
+   Top bar — Notion-style page header
+   ============================================================ */
+const TopBar = ({ profile, setProfile, connected, setConnected, onOpenTheme }) => (
+  <header className="sticky top-0 z-40 bg-[var(--bg-0)]/70 backdrop-blur-xl border-b border-white/[0.04]">
+    <div className="max-w-[1400px] mx-auto px-6 lg:px-10 h-14 flex items-center gap-3">
+      {/* Logo + name */}
+      <div className="flex items-center gap-3">
+        <img src="assets/logo.png" alt="" className="w-8 h-8 drop-shadow-[0_4px_14px_rgba(157,78,221,0.55)]"/>
+        <div className="hidden md:block leading-tight">
+          <div className="font-display text-[14px] font-bold tracking-[0.14em] text-white">AETHER HE</div>
+          <div className="font-mono text-[9px] uppercase tracking-[0.26em] text-slate-500 -mt-0.5">Keyboard Hub</div>
+        </div>
+      </div>
+
+      <span className="mx-3 h-5 w-px bg-white/[0.06]"/>
+
+      {/* Profile selector */}
+      <ProfileDropdown value={profile} onChange={setProfile}/>
+
+      {/* Right cluster */}
+      <div className="ml-auto flex items-center gap-2">
+        {/* Device status */}
+        <div className="flex items-center gap-2 pl-2.5 pr-3 h-9 rounded-xl border border-white/[0.05] bg-white/[0.025]">
+          <span className="relative inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 text-emerald-400 pulse-ring"/>
+          <span className="font-display text-[12.5px] tracking-[0.04em] text-slate-100">WIN 60 HE</span>
+          <span className="font-mono text-[9.5px] uppercase tracking-[0.2em] text-emerald-300/85 ml-1">{connected ? "Linked" : "Offline"}</span>
+        </div>
+
+        {/* Theme btn */}
+        <button onClick={onOpenTheme}
+          className="flex items-center gap-2 pl-2.5 pr-3 h-9 rounded-xl border border-white/[0.05] bg-white/[0.025] text-slate-300 hover:text-white hover:border-white/15 transition-colors">
+          <span className="w-3.5 h-3.5 rounded-full ring-1 ring-white/15"
+                style={{ background: "var(--accent-gradient, var(--accent))" }}/>
+          <span className="font-display text-[12px] uppercase tracking-[0.16em]">Theme</span>
+        </button>
+
+        {/* Pair / connection */}
+        <button onClick={() => setConnected(c => !c)}
+          className={`flex items-center gap-2 pl-2.5 pr-3 h-9 rounded-xl border transition-all
+                      ${connected
+                        ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/15"
+                        : "border-[var(--accent)]/40 bg-[var(--accent)]/12 text-[var(--accent)]"}`}>
+          {connected ? <IPower size={13}/> : <IPlug size={13}/>}
+          <span className="font-display text-[12px] uppercase tracking-[0.16em]">{connected ? "Connected" : "Pair"}</span>
+        </button>
+
+        <button title="Settings"
+          className="w-9 h-9 rounded-xl border border-white/[0.05] bg-white/[0.025] text-slate-400 hover:text-white hover:border-white/15 grid place-items-center transition-colors">
+          <ISettings size={14}/>
+        </button>
+      </div>
+    </div>
+  </header>
+);
+
+/* ============================================================
+   Segmented pill nav
+   ============================================================ */
+const SectionNav = ({ section, setSection }) => (
+  <div className="flex justify-center">
+    <div className="inline-flex gap-1 p-1 rounded-2xl border border-white/[0.05] bg-white/[0.02] backdrop-blur-md">
+      {NAV.map(n => {
+        const active = section === n.id;
+        return (
+          <button key={n.id} onClick={() => setSection(n.id)}
+            className={`relative flex items-center gap-2 px-4 h-9 rounded-xl font-display text-[12px] uppercase tracking-[0.18em] transition-all
+                        ${active ? "pill-active" : "text-slate-400 hover:text-slate-100 hover:bg-white/[0.03]"}`}>
+            <span className={active ? "text-[var(--accent)]" : ""}>{n.icon}</span>
+            {n.label}
+          </button>
+        );
+      })}
+    </div>
+  </div>
+);
+
+/* ============================================================
+   Hero — keyboard preview card
+   ============================================================ */
+const HeroCard = ({ children, badge, breadcrumb }) => (
+  <section className="surface rounded-3xl px-6 lg:px-10 py-7 relative overflow-hidden">
+    {/* Soft accent halo behind keyboard */}
+    <div aria-hidden className="absolute -top-32 left-1/2 -translate-x-1/2 w-[820px] h-[420px] rounded-[50%] opacity-30 pointer-events-none blur-3xl"
+         style={{ background: "var(--accent-gradient, var(--accent))" }}/>
+    <div className="relative">
+      <div className="flex items-center justify-between mb-5">
+        <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-slate-500">{breadcrumb}</div>
+        {badge}
+      </div>
+      {children}
+    </div>
+  </section>
+);
+
+/* ============================================================
+   App
+   ============================================================ */
+function App() {
+  const [theme, setTheme] = useTheme();
+  const [themeOpen, setThemeOpen] = useState(false);
+
+  const [connected, setConnected] = useState(true);
+  const [section, setSection] = useState("actuation");
+  const [profile, setProfile] = useState("p1");
+  const [layer, setLayer] = useState("default");
+
+  const [selectedKeys, setSelectedKeys] = useState(() => new Set(["W","A","S","D"]));
+  const [actuation, setActuation] = useState(1.70);
+  const [rtPress, setRtPress] = useState(0.05);
+  const [rtRelease, setRtRelease] = useState(0.05);
+  const [rtEnabled, setRtEnabled] = useState(false);
+  const [polling, setPolling] = useState(8);
+  const [travelTest, setTravelTest] = useState(false);
+
+  const [colors, setColors] = useState(["#ff1f5a"]);
+  const [bgColor, setBgColor] = useState("#000000");
+  const [perKeyColors, setPerKeyColors] = useState({});
+  const [pattern, setPattern] = useState("twinkle");
+  const [brightness, setBrightness] = useState(80);
+  const [speed, setSpeed] = useState(60);
+
+  const [socdMode, setSocdMode] = useState("last");
+  const [hotkey] = useState("Fn + R-Shift");
+  const [hotkeyEnabled, setHotkeyEnabled] = useState(true);
+
+  const keyboardMode = section === "actuation" ? "actuation"
+                      : section === "lighting" ? "lighting"
+                      : section === "socd"     ? "socd"
+                                                : "keymap";
+
+  const ledMap = useMemo(() => {
+    if (section !== "lighting") return {};
+    const m = {};
+    // Effect color depends on pattern. For "static" all keys = colors[0].
+    // For others we cycle palette across keys. bgColor underlies un-effect keys.
+    window.AetherKeyboard.KB_ROWS.flat().forEach(([_, __, code], idx) => {
+      if (perKeyColors[code]) { m[code] = perKeyColors[code]; return; }
+      if (pattern === "static") { m[code] = colors[0]; return; }
+      // Simulated effect: every nth key gets an effect color, rest = bg
+      const hit = (idx % 6 === 0) || colors.length === 1;
+      m[code] = hit ? colors[idx % colors.length] : bgColor;
+    });
+    return m;
+  }, [section, colors, bgColor, perKeyColors, pattern]);
+
+  const selectedKey = useMemo(() => Array.from(selectedKeys)[0] || null, [selectedKeys]);
+
+  // Hero badge & breadcrumb vary by section
+  const breadcrumb = useMemo(() => {
+    const profName = PROFILES.find(p => p.id === profile)?.name || "Profile";
+    const secName = NAV.find(n => n.id === section)?.label || "";
+    return `${profName} · ${secName}`;
+  }, [profile, section]);
+
+  const heroBadge = section === "actuation" ? (
+    <div className="flex items-center gap-2">
+      <Stat label="Actuation" value={`${actuation.toFixed(2)}mm`}/>
+      <Stat label="Polling"   value={`${polling}KHz`}/>
+      <Stat label="Selected"  value={`${selectedKeys.size}`}/>
+    </div>
+  ) : section === "lighting" ? (
+    <div className="flex items-center gap-2">
+      <Stat label="Mode"       value={pattern}/>
+      <Stat label="Brightness" value={`${Math.round(brightness)}%`}/>
+      <Stat label="Colors"     value={`${colors.length}`}/>
+    </div>
+  ) : section === "socd" ? (
+    <div className="flex items-center gap-2">
+      <Stat label="Hotkey" value={hotkey}/>
+    </div>
+  ) : section === "keymap" ? (
+    <div className="flex items-center gap-2 p-1 rounded-xl border border-white/[0.06] bg-white/[0.02]">
+      {["default","fn"].map(l => (
+        <button key={l} onClick={() => setLayer(l)}
+          className={`px-3 h-7 rounded-lg font-display text-[11px] uppercase tracking-[0.16em] transition-all
+                      ${layer === l
+                        ? "bg-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_14px_var(--accent-glow)]"
+                        : "text-slate-400 hover:text-slate-100"}`}>
+          {l === "default" ? "Default Layer" : "Fn Layer"}
+        </button>
+      ))}
+    </div>
+  ) : null;
+
+  const leftSlot = section === "actuation" ? (
+    <ActuationToolbar
+      onSelectAll={() => {
+        const all = new Set(window.AetherKeyboard.KB_ROWS.flat().map(([_,__,c]) => c));
+        setSelectedKeys(all);
+      }}
+      onSelectInvert={() => {
+        const all = window.AetherKeyboard.KB_ROWS.flat().map(([_,__,c]) => c);
+        setSelectedKeys(prev => new Set(all.filter(c => !prev.has(c))));
+      }}
+      onDeselectAll={() => setSelectedKeys(new Set())}
+      onResetTrigger={() => { setActuation(1.70); setRtPress(0.05); setRtRelease(0.05); }}
+    />
+  ) : null;
+
+  return (
+    <>
+      <TopBar
+        profile={profile} setProfile={setProfile}
+        connected={connected} setConnected={setConnected}
+        onOpenTheme={() => setThemeOpen(true)}
+      />
+
+      <main className="max-w-[1400px] mx-auto px-6 lg:px-10 py-7 flex flex-col gap-6">
+        <SectionNav section={section} setSection={setSection}/>
+
+        <HeroCard breadcrumb={breadcrumb} badge={heroBadge}>
+          <KeyboardPanel
+            mode={keyboardMode}
+            layer={layer}
+            selectedKeys={selectedKeys}
+            setSelectedKeys={setSelectedKeys}
+            actuationPoint={actuation}
+            rtPress={rtEnabled ? rtPress : 0}
+            rtRelease={rtEnabled ? rtRelease : 0}
+            ledMap={ledMap}
+            accent={theme.accent}
+            showPill={false}
+            leftSlot={leftSlot}
+          />
+        </HeroCard>
+
+        {/* Section content card */}
+        <section key={section} className="surface rounded-3xl px-6 lg:px-10 py-7 section-anim">
+          {section === "keymap"    && <KeymapSection selectedKey={selectedKey}/>}
+          {section === "actuation" && (
+            <ActuationSection
+              actuation={actuation} setActuation={setActuation}
+              rtPress={rtPress} setRtPress={setRtPress}
+              rtRelease={rtRelease} setRtRelease={setRtRelease}
+              rtEnabled={rtEnabled} setRtEnabled={setRtEnabled}
+              polling={polling} setPolling={setPolling}
+              travelTest={travelTest} setTravelTest={setTravelTest}
+            />
+          )}
+          {section === "lighting" && (
+            <LightingSection
+              colors={colors} setColors={setColors}
+              bgColor={bgColor} setBgColor={setBgColor}
+              perKeyColors={perKeyColors} setPerKeyColors={setPerKeyColors}
+              pattern={pattern} setPattern={setPattern}
+              brightness={brightness} setBrightness={setBrightness}
+              speed={speed} setSpeed={setSpeed}
+              selectedKeys={selectedKeys}
+              onSelectAll={() => {
+                const all = new Set(window.AetherKeyboard.KB_ROWS.flat().map(([_,__,c]) => c));
+                setSelectedKeys(all);
+              }}
+              onClearSelection={() => setSelectedKeys(new Set())}
+            />
+          )}
+          {section === "socd" && (
+            <SOCDSection
+              socdMode={socdMode} setSocdMode={setSocdMode}
+              hotkey={hotkey}
+              hotkeyEnabled={hotkeyEnabled} setHotkeyEnabled={setHotkeyEnabled}
+            />
+          )}
+          {section === "other" && <OtherSection/>}
+        </section>
+      </main>
+
+      {/* Theme Customizer popup */}
+      <ThemePopup open={themeOpen} onClose={() => setThemeOpen(false)} theme={theme} setTheme={setTheme}/>
+    </>
+  );
+}
+
+const Stat = ({ label, value }) => (
+  <div className="flex items-baseline gap-1.5 px-3 py-1.5 rounded-xl border border-white/[0.05] bg-white/[0.02]">
+    <span className="font-mono text-[9px] uppercase tracking-[0.22em] text-slate-500">{label}</span>
+    <span className="font-mono text-[12px] text-slate-100">{value}</span>
+  </div>
+);
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+})();
+</script>
+</body>
+</html>

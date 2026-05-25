@@ -1,0 +1,1344 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title></title>
+    <link rel="icon" href="image/icon_keyboard.png">
+    <link rel="stylesheet" href="css/mainIndex8.min.css?v=1776651718038">
+    <script type="text/javascript" src="js/variable.min.js?v=1776651718038"></script>
+    <script type="text/javascript" src="js/gamePadKey.min.js?v=1776651718038"></script>
+    <script type="text/javascript" src="js/themes.min.js?v=1776651718038"></script>
+
+   <script type="text/javascript" src="js/wmIndex.min.js?v=1776651718038"></script>
+   <script type="text/javascript" src="js/agreement.min.js?v=1776651718038"></script>
+   <script type="text/javascript" src="js/language.min.js?v=1776651718038"></script>
+   <script type="text/javascript" src="js/clearCache.min.js?v=1776651718038"></script>
+
+    <style id="dynamic-css-variables">
+                :root {
+                    --alertColor: #5589ff;
+                    --bg-color1: rgba(24, 26, 30, 1);
+                    --bg-color2: rgb(14 16 22);
+                    --bg-color3: rgba(42, 45, 52, 1);
+                    --bg-color4: rgba(18, 19, 23, 1);
+                    --bg-color5: rgba(32, 35, 43, 1);
+                    --bg-color6: rgba(53, 57, 70, 1);
+                    --btn-bgColor: rgba(44, 48, 56, 1);
+                    --btn-ckBgColor: rgb(143, 144, 145);
+                    --btn-ckBgColor2: #6ca0ff70;
+                    --btn-ckHvColor: #5589ff;
+                    --btn-hvColor: #3f446f;
+                    --border-color: rgba(108, 126, 142, 1);
+                    --contrast-value: 20;
+                    --invert-value: 0;
+                    --devkey-color: #e0e0e0;
+                    --edit-color: rgba(0,0,0,0.2);
+                    --edit-hover-color: rgba(0,0,0,0.4);
+                    --font-color: #FFFFFF;
+                    --keyShadow-color: rgb(0, 0, 0);
+                    --keyBorder-color: #505050;
+                    --key-color: #494d51;
+                    --linear-color1: linear-gradient(180.00deg, rgba(31, 33, 40, 1),rgba(21, 22, 26) 100%);
+                    --text-color1: #ffa545;
+                    --text-color2: #ff5555;
+                    --text-color3: #52ff91;
+                    --switch-color: #fff;
+                    --shadow-color: rgba(0, 0, 0, 0.5);
+                    --close: url("../image/dark/icon_close.png");
+                    --settings: url("../image/dark/icon_set.png");
+                    --theme: url("../image/dark/icon_theme.png");
+                    --dir-left: url("../image/dark/icon_direction_left.png");
+                    --dir-right: url("../image/dark/icon_direction_right.png");
+                    --dir-up: url("../image/dark/icon_direction_up.png");
+                    --dir-down: url("../image/dark/icon_direction_down.png");
+                    --dir-gather: url("../image/dark/icon_direction_gather.png");
+                    --dir-spread: url("../image/dark/icon_direction_spread.png");
+                    --dir-clockwise: url("../image/dark/icon_direction_clockwise.png");
+                    --dir-anticlockwise: url("../image/dark/icon_direction_anticlockwise.png");
+                    --profile-add: url("../image/dark/icon_addProfile.png");
+                    --mac-edit: url("../image/dark/icon_edit.png");
+                    --mac-insert: url("../image/dark/icon_insert.png");
+                    --mac-clear: url("../image/dark/icon_clear.png");
+                    --mac-delete: url("../image/dark/icon_delete.png");
+                    --mac-moveUp: url("../image/dark/icon_moveUp.png");
+                    --mac-moveDown: url("../image/dark/icon_moveDown.png");
+                    --btn-save: url("../image/dark/icon_save.png");
+                    --profile-icon: url("../image/dark/icon_folder.png");
+                }
+                
+            </style>
+</head>
+
+
+<template id="mSlider">
+    <style>
+        :root{--slider-color: #feeefe}
+        .sliderView { display: flex; align-items: center; flex: 1; }
+        .sliderView .labSlider { flex: 1; width: 100%; }
+        .sliderView .labSlider input[type="range"] { width: 100%; height: 8px; border-radius: 4px; background: linear-gradient( to right, var(--slider-color) var(--fill-percent, 50%),#ddd var(--fill-percent, 50%) ); -webkit-appearance: none; appearance: none; cursor: pointer; position: relative; }
+        .sliderView .labSlider input[type="range"]::-webkit-slider-runnable-track { height: 8px; border-radius: 4px; background: transparent; }
+        .sliderView .labSlider input[type="range"]:disabled::-webkit-slider-runnable-track { background: linear-gradient(to right,#bbb var(--fill-percent, 50%),#777 var(--fill-percent, 50%)); }
+        .sliderView .labSlider input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 20px; background: #fff; border-radius: 4px; box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.15); margin-top: -6px; cursor: pointer; border: 1px solid #ccc; transition: background-color 0.2s ease, box-shadow 0.2s ease; }
+        .sliderView .labSlider input[type="range"]:disabled::-webkit-slider-thumb { background: #eee; border-color: #aaa; cursor: not-allowed; }
+        .sliderView .btnView { display: flex;gap: 4px;margin-left: 12px; }
+        .sliderView .btnView button, .numInputLabel { border-radius: 4px;border: 1px solid var(--border-color);background-color: var(--bg-color3);color: var(--font-color);font-weight: 600;height: 30px;padding: 0 10px;box-sizing: border-box;user-select: none;transition: background-color 0.2s ease, border-color 0.2s ease; }
+        .sliderView .btnView button { width: 30px;cursor: pointer; }
+        .sliderView .btnView button:active:not(:disabled) { background-color: #e0e0e0; }
+        .sliderView .btnView button:disabled { cursor: not-allowed;opacity: 0.5; }
+        .sliderView .btnView input[type="number"] { width: 35px;text-align: center;outline: none;border: none; background-color: transparent; color: var(--font-color); }
+        .sliderView .btnView input[type="number"]::-webkit-inner-spin-button,
+        .sliderView .btnView input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none;margin: 0; }
+        .sliderView .btnView input[type="number"] { -moz-appearance: textfield; }
+    </style>
+    <div class="sliderView">
+        <label class="labSlider">
+            <input id="slider" tabindex="-1" type="range" max="100" min="0" value="50">
+        </label>
+        <div class="btnView">
+            <button id="btnSub" tabindex="-1">-</button>
+            <label class="numInputLabel">
+                <input tabindex="-1" type="number" autocomplete="off" id="sliderEdit" class="numInput">mm
+            </label>
+            <button id="btnAdd" tabindex="-1">+</button>
+        </div>
+    </div>
+</template>
+<style>
+    #contianer {transform-origin: 0 0; width: 100vw;height: 100vh;}
+</style>
+
+<body class="main" id="wrapper">
+
+    <div id="alertDiv" class="alertDiv">
+        <label id="alertLabel"></label>
+    </div>
+    <div id="overlay" class="overlay">
+        <div id="confirm">
+            <p id="alertMessage"></p>
+            <div>
+                <button id="btnAlertOk" class="btn confirmBtn" i18n="btnOk">Yes</button>
+                <button id="btnAlertCancel" class="btn cancelBtn" i18n="btnCancel">No</button>
+            </div>
+        </div>
+    </div>
+    <div id="settingsDiv" class="overlay">
+        <div id="settingsInfo">
+            <button id="settingsClose"></button>
+            
+            <div class="settingsItem themeItem">
+                <label class="setItemTitle" i18n="theme">主题：</label>
+                <div class="themeSelector">
+                    <input id="themeLight" type="radio" name="themeColor" value="light"><label for="themeLight"></label>
+                    <input id="themeDark" type="radio" name="themeColor" value="dark"><label for="themeDark"></label>
+                    <input id="themeBlue" type="radio" name="themeColor" value="blue"><label class="themeColor" for="themeBlue"></label>
+                    <input id="themeGreen" type="radio" name="themeColor" value="green"><label class="themeColor" for="themeGreen"></label>
+                </div>
+            </div>
+            <div class="settingsItem">
+                <label class="setItemTitle" i18n="firmware">固件：</label>
+                <label id="firmwareInfo">已是最新版本</label>
+            </div>
+            <div class="settingsItem">
+                <label class="setItemTitle"></label>
+                <div class="downloadBtn" id="downloadBtn">
+                    <div class="downloadBar" id="progressBar"></div>
+                    <button id="btnUpdate" value="">检查更新</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="keyTip" class="keyTipDiv">
+        <div class="triangleUp"></div>
+        <div class="keyTipInfo">
+            <label id="keyTipName">Esc</label>
+            <label id="keyTipType" i18n="tipDefault">默认</label>
+            <label id="keyTipValue">A</label>
+        </div>
+        <div class="triangleDown"></div>
+    </div>
+    <div id="dksTriggerDiv" class="dksTriggerDiv">
+        <div class="dksTriggerTop"><input type="range" class="rangeSlider" id="dksTrigger" min="1" max="36" value="15"><label id="dksTriggerLabel" for="dksTrigger">1.5mm</label></div>
+        <div class="dksTriggerBottom">
+            <button id="dksTriApply" class="btn confirmBtn" i18n="btnOk">确认</button>
+            <button id="dksTriCancel" class="btn cancelBtn" i18n="btnCancel">取消</button>
+        </div>
+    </div>
+    <div id="macroDiv" class="overlay">
+        <div id="macroAlert" class="macroDiv macroAlert">
+            <div class="macroInfo">
+                <div class="miLeft">
+                    <div class="miTop">
+                        <button id="miInsert" class="btn miBtn"><div class="tooltip" i18n="insert"></div></button>
+                        <button id="miClear" class="btn miBtn"><div class="tooltip" i18n="clear"></div></button>
+                        <button id="miDelete" class="btn miBtn"><div class="tooltip" i18n="delete"></div></button>
+                        <button id="moveUp" class="btn miBtn"><div class="tooltip" i18n="up"></div></button>
+                        <button id="moveDown" class="btn miBtn"><div class="tooltip" i18n="down"></div></button>
+                    </div>
+                    <div id="macroItemList" class="miMiddle"></div>
+                    <div class="miBottom">
+                        <button id="btnRecordMacro" class="btn">
+                            <img src="image/icon_whiteDot.png" alt="">
+                            <label i18n="btnRecord">录制</label>
+                        </button>
+                        <div class="macroDelay">
+                            <label i18n="delay">延时：</label>
+                            
+
+                            <div class="mdRadioBox radioBox">
+                                <input type="radio" id="mdRadio1" class="cusRadio mdRadio" name="mdRadio" checked="checked">
+                                <label for="mdRadio1">
+                                    <span i18n="record">记录</span>
+                                    <svg width="24" height="24" viewBox="0 0 24 24">
+                                        <path d="M6 12L10.2426 16.2426L18.727 7.75732"></path>
+                                    </svg>
+                                </label>
+                            </div>
+
+                            <div class="mdRadioBox radioBox">
+                                <input type="radio" id="mdRadio2" class="cusRadio mdRadio" name="mdRadio">
+                                <label for="mdRadio2">
+                                    <span i18n="none">无</span>
+                                    <svg width="24" height="24" viewBox="0 0 24 24">
+                                        <path d="M6 12L10.2426 16.2426L18.727 7.75732"></path>
+                                    </svg>
+                                </label>
+                            </div>
+
+                            <div class="mdRadioBox radioBox">
+                                <input type="radio" id="mdRadio3" class="cusRadio mdRadio" name="mdRadio">
+                                <label for="mdRadio3">
+                                    <input type="text" id="mdDefault" class="input mdText" value="100"> ms
+                                    <svg width="24" height="24" viewBox="0 0 24 24">
+                                        <path d="M6 12L10.2426 16.2426L18.727 7.75732"></path>
+                                    </svg>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="miRight">
+                    <div id="mInfoDelayView">
+                        <label for="macroInfoDelay" i18n="delay">延时：</label><input class="input" type="text" id="macroInfoDelay" value="0"><label>ms</label>
+                    </div>
+                    <div id="mInfoEventView">
+                        
+                        <div id="mkeLabel" class="radioBox">
+                            <input type="radio" id="macroKeyboardEvent" class="cusRadio" name="macroEvent" checked="checked">
+                            <label for="macroKeyboardEvent">
+                                <span i18n="keyboardEvent">键盘事件</span>
+                                <svg viewBox="0 0 24 24" width="16" height="16">
+                                    <path d="M6 12L10.2426 16.2426L18.727 7.75732"/>
+                                </svg>
+                            </label>
+                        </div>
+
+                        <div id="mmeLabel" class="radioBox">
+                            <input type="radio" id="macroMouseEvent" class="cusRadio" name="macroEvent">
+                            <label for="macroMouseEvent">
+                                <span i18n="mouseEvent">鼠标事件</span>
+                                <svg viewBox="0 0 24 24" width="16" height="16">
+                                    <path d="M6 12L10.2426 16.2426L18.727 7.75732"/>
+                                </svg>
+                            </label>
+                        </div>
+                    </div>
+                    <div id="mInfoKeyView">
+                        <div id="mInfoKey"><label id="macroKeyLabel" for="macroKeyEdit" i18n="macKey">按键</label><input class="input" type="text" id="macroKeyEdit" readonly="readonly"></div>
+                        <div id="mInfoMouse">
+                            
+                            <div id="mMouseLeft" class="radioBox">
+                                <input type="radio" id="macroMouseLeft" class="cusRadio" name="macroMouse" checked="checked">
+                                <label for="macroMouseLeft">
+                                    <span i18n="MouseLeft">左键</span>
+                                    <svg viewBox="0 0 24 24" width="16" height="16">
+                                        <path d="M6 12L10.2426 16.2426L18.727 7.75732"/>
+                                    </svg>
+                                </label>
+                            </div>
+
+                            <div id="mMouseMiddle" class="radioBox">
+                                <input type="radio" id="macroMouseMiddle" class="cusRadio" name="macroMouse">
+                                <label for="macroMouseMiddle">
+                                    <span i18n="MouseMiddle">中键</span>
+                                    <svg viewBox="0 0 24 24" width="16" height="16">
+                                        <path d="M6 12L10.2426 16.2426L18.727 7.75732"/>
+                                    </svg>
+                                </label>
+                            </div>
+
+                            <div id="mMouseRight" class="radioBox">
+                                <input type="radio" id="macroMouseRight" class="cusRadio" name="macroMouse">
+                                <label for="macroMouseRight">
+                                    <span i18n="MouseRight">右键</span>
+                                    <svg viewBox="0 0 24 24" width="16" height="16">
+                                        <path d="M6 12L10.2426 16.2426L18.727 7.75732"/>
+                                    </svg>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="macroBtn">
+                <button id="btnMacroApply" class="btn confirmBtn" i18n="btnOk">确认</button>
+                <button id="btnMacroCancel" class="btn cancelBtn" i18n="btnCancel">取消</button>
+            </div>
+        </div>
+    </div>
+    <div id="advDiv" class="overlay">
+        <div class="macroDiv advAlert">
+            <div class="macroInfo">
+                <div class="aiLeft">
+                    <div class="aiTable">
+                        <div id="aiButtons">
+                            <input id="advTypeRadio1" type="radio" name="advTypeRadio" checked="checked"><label for="advTypeRadio1">DKS</label>
+                            <input id="advTypeRadio2" type="radio" name="advTypeRadio"><label for="advTypeRadio2">MT</label>
+                            <input id="advTypeRadio3" type="radio" name="advTypeRadio"><label for="advTypeRadio3">TGL</label>
+                            <input id="advTypeRadio4" type="radio" name="advTypeRadio"><label for="advTypeRadio4">RS</label>
+                            <input id="advTypeRadio5" type="radio" name="advTypeRadio"><label for="advTypeRadio5">RKRT</label>
+                        </div>
+                        <label id="advTypeInfo">DKS：Dynamically adjust the key process and the corresponding trigger event.</label>
+                    </div>
+                    <div id="tglDiv">
+                        <label for="tglEdit" i18n="advTglTip">持续触发按键，点击开启或关闭</label>
+                        <input type="text" id="tglEdit" class="tglTmInput" readonly="readonly">
+                    </div>
+                    <div id="rkrtDiv">
+                        <label for="rkrtEdit" i18n="key">Key</label>
+                        <input type="text" id="rkrtEdit" class="tglTmInput" readonly="readonly">
+                    </div>
+                    <div id="rsDiv">
+                        <div class="mtDivTop">
+                            <div class="mtDivLeft">
+                                <label for="rsEdit1" i18n="key1">Key1</label>
+                                <input type="text" id="rsEdit1" class="tglTmInput" readonly="">
+                            </div>
+                            <div class="mtDivRight">
+                                <label for="rsEdit2" i18n="key2">Key2</label>
+                                <input type="text" id="rsEdit2" class="tglTmInput" readonly="">
+                            </div>
+                        </div>
+                    </div>
+                    <div id="mtDiv">
+                        <div class="mtDivTop">
+                            <div class="mtDivLeft">
+                                <label for="mtEdit1" i18n="advMtTip1">单击触发按键</label>
+                                <input type="text" id="mtEdit1" class="tglTmInput" readonly="readonly">
+                            </div>
+                            <div class="mtDivRight">
+                                <label for="mtEdit2" i18n="advMtTip2">长按触发按键</label>
+                                <input type="text" id="mtEdit2" class="tglTmInput" readonly="readonly">
+                            </div>
+                        </div>
+                        <div class="mtDivBottom">
+                            <label class="mtPtLabel" i18n="holdDuration">触发长按时间</label>
+                            <div class="mtRangeDiv">
+                                <input id="mtRange" class="rangeSlider" type="range" min="15" max="100" value="15"><label id="labMtTime" for="mtRange">150ms</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="dksDiv">
+                        <table class="dksTable">
+                            <tr class="dksRow1">
+                                <td id="tabLeftTop"></td>
+                                <td id="col1">1.5mm</td>
+                                <td id="col2">3.6mm</td>
+                                <td id="col3">3.6mm</td>
+                                <td id="col4">1.5mm</td>
+                            </tr>
+                            <tr>
+                                <td id="tabLeftRow2"></td>
+                                <td><img class="dksArrowImg" src="image/icon_arrow_down1.png" alt=""></td>
+                                <td><img class="dksArrowImg" src="image/icon_arrow_down2.png" alt=""></td>
+                                <td><img class="dksArrowImg" src="image/icon_arrow_up1.png" alt=""></td>
+                                <td><img class="dksArrowImg" src="image/icon_arrow_up2.png" alt=""></td>
+                            </tr>
+                            <tr id="row1">
+                                <td><label><input type="text" id="dksEdit1" class="dksEdit input" readonly="readonly"></label></td>
+                                <td rowspan="4" colspan="4" class="dksInfo">
+                                    <div class="dksInfoBg">
+                                        <hr class="dksRowLine1">
+                                        <hr class="dksRowLine2">
+                                        <hr class="dksRowLine3">
+                                        <hr class="dksRowLine4">
+                                        <hr class="dksColLine1">
+                                        <hr class="dksColLine2">
+                                        <hr class="dksColLine3">
+                                        <hr class="dksColLine4">
+                                    </div>
+                                    <div id="dksInfoDetail" class="dksInfoDetail">
+                                        <input id="dksBtn1" type="checkbox"><label id="dksLabel1" for="dksBtn1">0</label>
+                                        <input id="dksBtn2" type="checkbox"><label id="dksLabel2" for="dksBtn2">1</label>
+                                        <input id="dksBtn3" type="checkbox"><label id="dksLabel3" for="dksBtn3">2</label>
+                                        <input id="dksBtn4" type="checkbox"><label id="dksLabel4" for="dksBtn4">3</label>
+                                        <input id="dksBtn5" type="checkbox"><label id="dksLabel5" for="dksBtn5">4</label>
+                                        <input id="dksBtn6" type="checkbox"><label id="dksLabel6" for="dksBtn6">5</label>
+                                        <input id="dksBtn7" type="checkbox"><label id="dksLabel7" for="dksBtn7">6</label>
+                                        <input id="dksBtn8" type="checkbox"><label id="dksLabel8" for="dksBtn8">7</label>
+                                        <input id="dksBtn9" type="checkbox"><label id="dksLabel9" for="dksBtn9">8</label>
+                                        <input id="dksBtn10" type="checkbox"><label id="dksLabel10" for="dksBtn10">9</label>
+                                        <input id="dksBtn11" type="checkbox"><label id="dksLabel11" for="dksBtn11">10</label>
+                                        <input id="dksBtn12" type="checkbox"><label id="dksLabel12" for="dksBtn12">11</label>
+                                        <input id="dksBtn13" type="checkbox"><label id="dksLabel13" for="dksBtn13">12</label>
+                                        <input id="dksBtn14" type="checkbox"><label id="dksLabel14" for="dksBtn14">13</label>
+                                        <input id="dksBtn15" type="checkbox"><label id="dksLabel15" for="dksBtn15">14</label>
+                                        <input id="dksBtn16" type="checkbox"><label id="dksLabel16" for="dksBtn16">15</label>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr id="row2">
+                                <td><label><input type="text" id="dksEdit2" class="dksEdit input" readonly="readonly"></label></td>
+                            </tr>
+                            <tr id="row3">
+                                <td><label><input type="text" id="dksEdit3" class="dksEdit input" readonly="readonly"></label></td>
+                            </tr>
+                            <tr id="row4">
+                                <td><label><input type="text" id="dksEdit4" class="dksEdit input" readonly="readonly"></label></td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+                <div class="aiRight">
+                    <div id="fixedKeySet2"></div>
+                </div>
+            </div>
+            <div class="macroBtn">
+                <button id="btnAdvApply" class="btn confirmBtn" i18n="btnOk">确认</button>
+                <button id="btnAdvCancel" class="btn cancelBtn" i18n="btnCancel">取消</button>
+            </div>
+        </div>
+    </div>
+    <div id="contianer">
+        <div id="startDiv" class="startDiv">
+            
+            
+            
+            <div class="startLeft">
+                
+                <div>
+                    <div class="start-step-view">
+                        
+                        <svg class="start-step-svg start-step-container">
+                            <rect class="start-step-background" width="100%" height="100%" mask="url(#start-step-mask-background)">
+                            </rect>
+                            <image x="50px" y="calc(50% - 50px)" width="100" height="100" xlink:href="image/icon_step1.png"></image>
+                            <image x="calc(50% - 50px)" y="calc(50% - 50px)" width="100" height="100" xlink:href="image/icon_step2.png"></image>
+                            <image x="calc(100% - 170px)" y="calc(50% - 50px)" width="100" height="100" xlink:href="image/icon_step3.png"></image>
+
+                            <mask id="start-step-mask-background" x="0" y="0">
+                                
+                                <line class="start-step-line" x1="120" y1="50%" x2="90%" y2="50%" stroke="grey" stroke-width="6"></line>
+                                
+                                <g>
+                                    <circle class="start-step-circle" cx="120" cy="50%" r="80"></circle>
+                                    <circle class="start-step-circle-outer" cx="120" cy="50%" r="120"></circle>
+                                </g>
+                                
+                                <g>
+                                    <circle class="start-step-circle" cx="50%" cy="50%" r="80"></circle>
+                                    <circle class="start-step-circle-outer" cx="50%" cy="50%" r="120"></circle>
+                                </g>
+                                
+                                <g>
+                                    <circle class="start-step-circle" cx="100%" cy="50%" r="80" style="transform: translateX(-120px);"></circle>
+                                    <circle class="start-step-circle-outer" cx="100%" cy="50%" r="120" style="transform: translateX(-120px);"></circle>
+                                </g>
+                            </mask>
+                        </svg>
+                        
+                        <div class="start-step-foreground" id="startStep">
+                            <div>
+                                <svg class="start-step-svg start-step-container">
+                                    
+                                    <defs>
+                                        <filter id="start-step-gooey" height="130%">
+                                            <feGaussianBlur in="SourceGraphic" stdDeviation="15" result="blur"></feGaussianBlur>
+                                            <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7" result="goo"></feColorMatrix>
+                                        </filter>
+                                    </defs>
+
+                                    <rect width="100%" height="100%" fill="var(--btn-ckBgColor)" mask="url(#start-step-mask-foreground)"></rect>
+                                    <image x="70px" y="calc(50% - 50px)" width="100" height="100" xlink:href="image/icon_step1.png"></image>
+                                    <image x="calc(50% - 50px)" y="calc(50% - 50px)" width="100" height="100" xlink:href="image/icon_step2.png"></image>
+                                    <image x="calc(100% - 170px)" y="calc(50% - 50px)" width="100" height="100" xlink:href="image/icon_step3.png"></image>
+                                    <mask id="start-step-mask-foreground" x="0" y="0">
+                                        
+                                        <line class="start-step-line" x1="120" y1="50%" x2="90%" y2="50%" stroke="var(--start-step-white)" stroke-width="6"></line>
+
+                                        
+                                        <g class="start-step-group" data-step="1">
+                                            <circle class="start-step-circle" cx="120" cy="50%" r="80" fill="var(--start-step-white)" stroke="var(--start-step-white)"></circle>
+                                            <line class="start-step-line" x1="120" y1="50%" x2="30%" y2="50%" stroke="var(--start-step-white)" stroke-width="14"></line>
+                                        </g>
+
+                                        
+                                        <g class="start-step-group" data-step="2">
+                                            <circle class="start-step-circle" cx="50%" cy="50%" r="80" fill="var(--start-step-white)" stroke="var(--start-step-white)"></circle>
+                                            <line class="start-step-line" x1="30%" y1="50%" x2="80%" y2="50%" stroke="var(--start-step-white)" stroke-width="14"></line>
+                                        </g>
+
+                                        
+                                        <g class="start-step-group" data-step="3">
+                                            <circle class="start-step-circle" cx="100%" cy="50%" r="80" fill="var(--start-step-white)" stroke="var(--start-step-white)" style="transform: translateX(-120px);"></circle>
+                                            <line class="start-step-line" x1="20" y1="50%" x2="98%" y2="50%" stroke="var(--start-step-white)" stroke-width="14"></line>
+                                        </g>
+                                    </mask>
+                                </svg>
+                            </div>
+                        </div>
+                        
+                        <div class="start-step-labels">
+                            <div class="start-step-label" i18n="connect" data-step="1">连接设备</div>
+                            <div class="start-step-label" i18n="allow" data-step="2">允许</div>
+                            <div class="start-step-label" i18n="update" data-step="3">设置</div>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 id="welcome"></h3>
+                <style>
+                    
+                </style>
+                <div>
+                <button id="btnSearch" class="bubbleContent">
+                    <div class="bubble-effect-item"></div>
+                    <div class="bubble-effect-item"></div>
+                    <div class="bubble-effect-item"></div>
+                    <div class="bubble-effect-item"></div>
+                    <div class="bubble-effect-item"></div>
+                    <div class="bubble-effect-item"></div>
+                    <div class="bubble-effect-item"></div>
+                    <div class="bubble-effect-item"></div>
+                    <div class="bubble-effect-item"></div>
+                    <div class="bubble-effect-item"></div>
+                    <span i18n="allowBrowser"></span>
+                </button>
+                </div>
+                
+                <div class="extraBtn">
+                   <button id="clearCache" i18n="clearCache" class="btn">清除缓存</button>
+                </div>
+                
+            </div>
+            <div class="startRight">
+                <div class="srInfo">
+                    <label class="srInfoTitle"><img src="image/icon_lock.png" alt=""><span id="domain"></span></label>
+                    <div class="srInfoDetail">
+                        <label>Hid Device</label>
+                    </div>
+                    <div class="srInfoBottom">
+                        <button class="srInfoBtn btn" i18n="btnConnect">Connect</button>
+                        <button class="srInfoBtn srInfoBtnEnd btn" i18n="btnCancel">Cancel</button>
+                    </div>
+                    <label id="srTag1" class="srTag">1</label>
+                    <label id="srTag2" class="srTag">2</label>
+                </div>
+            </div>
+            <img id="qrcode" src="" alt="">
+        </div>
+        <div id="mainDiv" class="mainDiv">
+            <div id="batteryContainer" class="batteryContainer">
+                <div id="triMode" style="margin-right: 8px; font-size: 10px;">usb</div>
+                <div class="batteryBody"></div>
+                <div class="batteryTop"></div>
+                <span id="batteryText"></span>
+            </div>
+            <div id="leftVid" class="leftVid">
+                <div class="leftTopDiv">
+                    <div id="logoDiv" class="logoDiv">
+                        <img id="logo" class="logo" src="image/logo.png" alt="logo">
+                        <label id="logoTitle" class="logoTitle">iLLumiPC</label>
+                    </div>
+                    <div class="profileTop">
+                        <label class="profileTitle">
+                            <div class="img" alt=""></div>
+                            <span i18n="profile">Profile</span>
+                        </label>
+                        
+                    </div>
+                    <div class="profileDiv">
+                        <div id="profiles" class="profiles">
+                            <div class="profileItem">
+                                <input type="radio" name="profileItem" id="ProfileDef" checked="checked"><label for="ProfileDef" class="profileName">Profile Default</label>
+                            </div>
+                            <div class="profileItem">
+                                <input type="radio" name="profileItem" id="Profile1"><label for="Profile1" class="profileName">Profile 1</label>
+                                <input type="text" id="ProfileText1" class="profileText"><label for="ProfileText1" class="profileNone"></label>
+                                <button id="btnEdit1" value="1"></button>
+                            </div>
+                            <div class="profileItem">
+                                <input type="radio" name="profileItem" id="Profile2"><label for="Profile2" class="profileName">Profile 2</label>
+                                <input type="text" id="ProfileText2" class="profileText"><label for="ProfileText2" class="profileNone"></label>
+                                <button id="btnEdit2" value="2"></button>
+                            </div>
+                            <div class="profileItem">
+                                <input type="radio" name="profileItem" id="Profile3"><label for="Profile3" class="profileName">Profile 3</label>
+                                <input type="text" id="ProfileText3" class="profileText"><label for="ProfileText3" class="profileNone"></label>
+                                <button id="btnEdit3" value="3"></button>
+                            </div>
+                            <div class="profileItem">
+                                <input type="radio" name="profileItem" id="Profile4"><label for="Profile4" class="profileName">Profile 4</label>
+                                <input type="text" id="ProfileText4" class="profileText"><label for="ProfileText4" class="profileNone"></label>
+                                <button id="btnEdit4" value="4"></button>
+
+                            </div>
+                            <div class="menuSlider profileItem"></div>
+
+                            
+                            
+                        </div>
+                    </div>
+                </div>
+                <div class="leftBottomDiv">
+                    <div id="menuDiv" class="menuDiv">
+                        <input type="radio" id="menu1" name="manuRadio" checked="checked">
+                        <label for="menu1">
+                            <img id="mainMenu1" src="image/menu_keymap.png" alt="">
+                            <span i18n="menu1">自定义</span>
+                        </label>
+                        <input type="radio" id="menu2" name="manuRadio">
+                        <label for="menu2">
+                            <img id="mainMenu2" src="image/menu_light.png" alt="">
+                            <span i18n="menu2">灯光设置</span>
+                        </label>
+                        <input type="radio" id="menu4" name="manuRadio">
+                        <label for="menu4">
+                            <img id="mainMenu4" src="image/menu_actuation.png" alt="">
+                            <span i18n="menu4">按键触发</span>
+                        </label>
+                        
+                        
+                        
+                        
+                        
+                        
+                        
+                        
+                        
+                        
+                        <input type="radio" id="menu7" name="manuRadio">
+                        <label for="menu7">
+                            <img id="mainMenu7" src="image/menu_prcs.png" alt="">
+                            <span i18n="menu7">PRCS</span>
+                        </label>
+                        <input type="radio" id="menu3" name="manuRadio">
+                        <label for="menu3">
+                            <img id="mainMenu3" src="image/menu_special.png" alt="">
+                            <span i18n="menu3">性能</span>
+                        </label>
+                        <div class="menuSlider"></div>
+
+                    </div>
+                    <div id="setDiv">
+                        
+                        <div id="languageView">
+                            <label for="language" i18n="language">语言：</label>
+                            <select id="language">
+                                <option value="zh-cn">中文</option>
+                                <option value="en">English</option>
+                                <option value="kr">한국어</option>
+                                <option value="jp">日本語</option>
+                                <option value="tr">Türkçe</option>
+                                <option value="pt-br">Brasil</option>
+                                <option value="ar">العربية</option>
+                                <option value="de">Deutsch</option>
+                                <option value="es">Español</option>
+                                <option value="pl">Polski</option>
+                                <option value="fr">Français</option>
+                            </select>
+                        </div>
+                        <div class="settingIconDiv" id="settingIconDiv"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="rightDiv">
+                
+                <div class="deviceDiv">
+                    <div class="devTitleDiv">
+                        <label id="devName">Device Name</label>
+                    </div>
+                    <div id="devViewDiv" class="devViewDiv">
+                        <div id="deviceBg" class="deviceBg"></div>
+                        <div id="draggableBox"></div>
+                        <div id="keymapTable" class="keymapTable">
+                            <div id="keymapTableView">
+                                <input type="radio" id="keymapDef" name="kmTab" checked="checked">
+                                <label class="btn" for="keymapDef" class="keyMapTab" i18n="layer1">主层</label>
+                                <input type="radio" id="keymapFn" name="kmTab">
+                                <label class="btn" for="keymapFn" class="keyMapTab" i18n="layer2">Fn层</label>
+                            </div>
+                            <div id="selectAllView">
+                                
+                                
+                                <button class="btn" id="btnSelectAll" i18n="selectAll">全选</button>
+                                <button class="btn" id="btnSelectInvert" i18n="selectInvert">反选</button>
+                                <button class="btn" id="btnDeselectAll" i18n="deselectAll">取消全选</button>
+                                <button class="btn" id="btnResetTrigger" i18n="resetTrigger">重置行程</button>
+                            </div>
+                        </div>
+                        <button id="btnReset" class="btn"></button>
+                    </div>
+                </div>
+                <div class="detailDiv">
+
+                    
+                    <div id="customView">
+                        <div id="customTop" class="detailTitle">
+                            
+                            
+                            <div id="keyMenuDiv" class="tabMenuDiv">
+                                <input type="radio" id="keyManu1" name="customRadio" checked="checked">
+                                <label for="keyManu1"><img class="tabImg" src="image/dark/keyManu1.png"> <span i18n="keyManu1">改键</span></label>
+                                <input type="radio" id="keyManu2" name="customRadio">
+                                <label for="keyManu2"><img class="tabImg" src="image/dark/keyManu2.png"><span i18n="keyManu2">组合键</span></label>
+                                <input type="radio" id="keyManu3" name="customRadio">
+                                <label for="keyManu3"><img class="tabImg" src="image/dark/keyManu3.png"><span i18n="keyManu3">宏命令</span></label>
+                                <input type="radio" id="keyManu4" name="customRadio">
+                                <label for="keyManu4"><img class="tabImg" src="image/dark/keyManu4.png"><span i18n="keyManu4">高级按键</span></label>
+                                <input type="radio" id="keyManu10" name="customRadio">
+                                <label for="keyManu10" style="display: none;"><img class="tabImg" src="image/dark/keyManu10.png"><span i18n="gamePad">游戏手柄</span></label>
+                                
+                                
+                            </div>
+                        </div>
+                        <div id="customBottom" class="detailBottom">
+                            <div id="dbLeft">
+                                <label id="labTip" class="dbLeftLabel" i18n="labTip1">请在上面键盘区域选择需要设置的按键，然后在右侧选择要更改的按键，或者选中下面的输入框直接点击键盘上的按键</label>
+                                <div class="checkKeyDiv">
+                                    <div id="checkKey"><label>None</label></div>
+                                    <img id="ckImg" src="image/icon_interchange.png" alt="">
+                                    <label for="recordInput"></label><input id="recordInput" type="text" readonly="readonly" disabled="disabled">
+                                </div>
+                                <div class="checkButtons">
+                                    <button id="btnResetKey" class="btn" i18n="tipDefault" disabled="disabled">默认</button>
+                                    <button id="btnApplyKey" class="btn" i18n="apply" disabled="disabled">应用</button>
+                                </div>
+                            </div>
+                            <div id="dbRight">
+                                <div id="fixedKeySet"></div>
+                                <div id="macroKeySet">
+                                    <div class="macroKeySet">
+                                        <div id="macKeySet" class="macKeySet">
+                                            <button class="addButton"></button>
+                                        </div>
+                                    </div>
+                                    <div id="macInfo">
+                                        
+
+                                        <div class="macInfo">
+                                            <div class="macInfoItem radioBox">
+                                                <input class="cusRadio" type="radio" name="macroType" id="macroType1" checked="checked">
+                                                <label for="macroType1" class="macInfoItem">
+                                                    <span i18n="playOnce">播放一次</span>
+                                                    <svg viewBox="0 0 24 24" class="checkmark">
+                                                        <path d="M6 12L10.2426 16.2426L18.727 7.75732"/>
+                                                    </svg>
+                                                </label>
+                                            </div>
+                                            <div class="macInfoItem radioBox">
+                                                <input class="cusRadio" type="radio" name="macroType" id="macroType2">
+                                                <label for="macroType2">
+                                                    <span i18n="playAny">播放</span>
+                                                    <svg viewBox="0 0 24 24" class="checkmark">
+                                                        <path d="M6 12L10.2426 16.2426L18.727 7.75732"/>
+                                                    </svg>
+                                                </label>
+                                                <input type="text" class="input" id="macroExecCount" value="1">
+                                                <label for="macroType2" i18n="playTimes">次</label>
+                                            </div>
+                                            <div class="macInfoItem radioBox">
+                                                <input class="cusRadio" type="radio" name="macroType" id="macroType3">
+                                                <label for="macroType3" class="macInfoItem">
+                                                    <span i18n="playPress">按下播放，再按停止</span>
+                                                    <svg viewBox="0 0 24 24" class="checkmark">
+                                                        <path d="M6 12L10.2426 16.2426L18.727 7.75732"/>
+                                                    </svg>
+                                                </label>
+                                            </div>
+                                            <div class="macInfoItem radioBox">
+                                                <input class="cusRadio" type="radio" name="macroType" id="macroType4">
+                                                <label for="macroType4" class="macInfoItem">
+                                                    <span i18n="playHold">按住循环播放</span>
+                                                    <svg viewBox="0 0 24 24" class="checkmark">
+                                                        <path d="M6 12L10.2426 16.2426L18.727 7.75732"/>
+                                                    </svg>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                    </div>
+                                </div>
+                                <div id="advancedKeySet">
+                                    <div id="advKeySet"></div>
+                                </div>
+                                <div id="gameSet">
+                                    <div id="gameSetLeft"></div>
+                                    <div id="" class="performanceDiv">
+                                        <label id="performanceTitle2" class="performanceTitle" i18n="keyManu10"><span i18n="gamePad">游戏手柄</span>:</label>
+                                        <div class="performanceRadio">
+                                            <div class="radioBox">
+                                                <input type="radio" id="gamePad1" class="cusRadio" name="gamePad" checked="checked">
+                                                <label for="gamePad1">
+                                                    <svg viewBox="0 0 24 24">
+                                                        <path d="M6 12L10.2426 16.2426L18.727 7.75732"/>
+                                                    </svg>
+                                                    <span i18n="disabled">Disable</span>
+                                                </label>
+                                            </div>
+
+                                            <div class="radioBox">
+                                                <input type="radio" id="gamePad2" class="cusRadio" name="gamePad">
+                                                <label for="gamePad2">
+                                                    <svg viewBox="0 0 24 24">
+                                                        <path d="M6 12L10.2426 16.2426L18.727 7.75732"/>
+                                                    </svg>
+                                                    <span i18n="Xbox">Xbox360</span>
+                                                </label>
+                                            </div>
+
+                                            <div class="radioBox">
+                                                <input type="radio" id="gamePad3" class="cusRadio" name="gamePad">
+                                                <label for="gamePad3">
+                                                    <svg viewBox="0 0 24 24">
+                                                        <path d="M6 12L10.2426 16.2426L18.727 7.75732"/>
+                                                    </svg>
+                                                    <span i18n="Classical">Classical</span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="lightView">
+                        <div id="lightTop" class="detailTitle">
+                            
+                            
+                            <div class="lightTab">
+                                <input type="radio" id="lightManu1" name="lightTab" checked="checked">
+                                <label for="lightManu1"><img class="tabImg" src="image/dark/lightManu1.png"> <span i18n="lightManu1">按键灯</span></label>
+                                <input type="radio" id="lightManu2" name="lightTab">
+                                <label for="lightManu2"><img class="tabImg" src="image/dark/lightManu2.png"> <span i18n="lightManu2">侧边灯</span></label>
+                            </div>
+                            <div class="powerView">
+                                <label i18n="power">开关</label>
+                                <label class="switch">
+                                    <input id="lightPower" type="checkbox" checked="checked">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                        <div id="lightBottom" class="detailBottom">
+                            <div id="lightLeft">
+                                <label id="lightTitle" i18n="lightMode">灯光模式</label>
+                                <div class="lightModelView">
+                                    <div id="lightModels" class="lightModels">
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                    </div>
+                                    <div id="sideLightModels" class="lightModels" style="display: none;"></div>
+                                </div>
+                                
+                                
+                                
+                            </div>
+                            <div id="lightRight">
+                                <div class="lightDetail">
+                                    <div id="lightBrightnessDiv" class="lightDetailDiv">
+                                        <label class="lightRangeLabel" i18n="brightness">亮度：</label>
+                                        <div class="lightDetailValue">
+                                            <input id="lightBrightness" class="rangeSlider" type="range" max="4" min="0" value="3"><label id="pLightBrightness" for="lightBrightness">3</label>
+                                        </div>
+                                    </div>
+                                    <div id="lightSpeedDiv" class="lightDetailDiv">
+                                        <label class="lightRangeLabel" i18n="speed">速度：</label>
+                                        <div class="lightDetailValue">
+                                            <input id="lightSpeed" class="rangeSlider" type="range" max="4" min="0" value="3"><label id="pLightSpeed" for="lightSpeed">3</label>
+                                        </div>
+                                    </div>
+                                    <div id="lightDirectionDiv" class="lightDetailDiv">
+                                        <label class="lightRangeLabel" i18n="direction">方向：</label>
+                                        <div class="lightDirectionValue">
+                                            <input id="dirLeft" type="radio" name="dirRadio" value="1" checked="checked"><label id="btnLeft" class="btnLeft" for="dirLeft"></label>
+                                            <input id="dirRight" type="radio" name="dirRadio" value="0"><label id="btnRight" class="btnRight" for="dirRight"></label>
+                                            <input id="dirUp" type="radio" name="dirRadio" value="2"><label id="btnUp" class="btnUp" for="dirUp"></label>
+                                            <input id="dirDown" type="radio" name="dirRadio" value="3"><label id="btnDown" class="btnDown" for="dirDown"></label>
+                                            <input id="dirGather" type="radio" name="dirRadio" value="5"><label id="btnGather" class="btnGather" for="dirGather"></label>
+                                            <input id="dirSpread" type="radio" name="dirRadio" value="4"><label id="btnSpread" class="btnSpread" for="dirSpread"></label>
+                                        </div>
+                                    </div>
+                                    <div id="lightCustomDiv" class="lightDetailDiv">
+                                        <label class="lightRangeLabel" i18n="custom">自定义：</label>
+                                        <div class="lightCustomValue">
+                                            <input id="lightCustom1" type="radio" name="customLightRadio" checked="checked"><label for="lightCustom1">Custom1</label>
+                                            <input id="lightCustom2" type="radio" name="customLightRadio"><label for="lightCustom2">Custom2</label>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="lightColorPad">
+                                    <div class="colorPickerDiv">
+                                        <div id="colorRibbonDiv" class="colorRibbonDiv">
+                                            <label id="labFullColor" i18n="fullColor">全彩</label>
+                                            <div id="inputFullColor" class="fullColorValue">
+                                                
+                                                <div class="radioBox" style="width: 100%;">
+                                                    <input class="cusRadio" type="checkbox" id="fullColor" checked="checked">
+                                                    <label id="colorRibbon" for="fullColor" class="colorRibbon">
+                                                        <svg viewBox="0 0 24 24" class="checkmark">
+                                                            <path d="M6 12L10.2426 16.2426L18.727 7.75732"/>
+                                                        </svg>
+                                                    </label>
+                                                </div>
+                                                
+                                            </div>
+                                        </div>
+                                        <div class="colorColorDiv">
+                                            <label id="labForegroundColor" i18n="foregroundColor">前景色</label>
+                                            <input type="radio" name="colorLevel" id="colorForeground" class="colorLevel" checked="checked"><label id="colorForegroundLabel" for="colorForeground" class="colorColor"></label>
+                                        </div>
+                                        <div class="colorColorDiv">
+                                            <label id="labBackgroundColor" i18n="backgroundColor">背景色</label>
+                                            <input type="radio" name="colorLevel" id="colorBackground" class="colorLevel"><label id="colorBackgroundLabel" for="colorBackground" class="colorColor"></label>
+                                        </div>
+                                    </div>
+                                    <div class="colorPad">
+                                        <div class="canvasDiv">
+                                            <canvas id="colorDeep" class="color-picker"></canvas>
+                                            <canvas id="colorSlider" class="color-picker"></canvas>
+                                            <canvas id="colorPicker" class="color-picker"></canvas>
+                                        </div>
+                                        <div id="colorSet" class="colorSet">
+                                            <div class="colorSetDiv">
+                                                <button style="background-color: #f00"></button>
+                                                <button style="background-color: #f50"></button>
+                                                <button style="background-color: #fa0"></button>
+                                                <button style="background-color: #ff0"></button>
+                                                <button style="background-color: #afa"></button>
+                                            </div>
+                                            <div class="colorSetDiv">
+                                                <button style="background-color: #5f5"></button>
+                                                <button style="background-color: #0f0"></button>
+                                                <button style="background-color: #0f5"></button>
+                                                <button style="background-color: #0fa"></button>
+                                                <button style="background-color: #0ff"></button>
+                                            </div>
+                                            <div class="colorSetDiv">
+                                                <button style="background-color: #0af"></button>
+                                                <button style="background-color: #05f"></button>
+                                                <button style="background-color: #00f"></button>
+                                                <button style="background-color: #50f"></button>
+                                                <button style="background-color: #a0f"></button>
+                                            </div>
+                                            <div class="colorSetDiv">
+                                                <button style="background-color: #f0f"></button>
+                                                <button style="background-color: #f5f"></button>
+                                                <button style="background-color: #faf"></button>
+                                                <button style="background-color: #000"></button>
+                                                <button style="background-color: #fff"></button>
+                                            </div>
+                                        </div>
+                                        <div class="colorValue">
+                                            <div><label for="colorR">R</label><input type="text" id="colorR" value="0"></div>
+                                            <div><label for="colorG">G</label><input type="text" id="colorG" value="0"></div>
+                                            <div><label for="colorB">B</label><input type="text" id="colorB" value="0"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="lightMusicView">
+                                <label i18n="lightTip">音乐律动由插件控制，请下载插件。如已下载，请先运行插件，再重新切换到音乐律动模式</label>
+                                <button id="btnMusicRhythm" class="btn confirmBtn" value="MusicalRhythm_Installer_V1.00.04.exe" i18n="download">下载</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="performanceView">
+                        <div id="performanceTop" class="detailTitle">
+                            
+                            <div id="btnApplyPerformance" class="tabMenuDiv">
+                                <input type="radio" id="menu3" name="perforRadio" checked="checked"><label for="menu3"> <img class="tabImg" src="image/dark/menu_other.png" alt=""><span i18n="menu3">其他设置</span></label>
+                            </div>
+                            
+                        </div>
+                        <div id="performanceBottom" class="detailBottom">
+                            <div id="performance1" class="performanceDiv">
+                                <label id="performanceTitle1" class="performanceTitle" i18n="winLock">若启动了Win Lock键：</label>
+                                
+                                <div class="performanceItem radioBox">
+                                    <input type="checkbox" id="perCheckbox1" name="winLock" value="disableWinKey" class="cusRadio">
+                                    <label for="perCheckbox1">
+                                        <svg viewBox="0 0 24 24" class="checkmark">
+                                            <path d="M6 12L10.2426 16.2426L18.727 7.75732"/>
+                                        </svg>
+                                        <span i18n="perMenu1">禁用Windows键</span>
+                                    </label>
+                                </div>
+                                <div class="performanceItem radioBox">
+                                    <input type="checkbox" id="perCheckbox2" name="winLock" value="disableShiftTab" class="cusRadio">
+                                    <label for="perCheckbox2">
+                                        <svg viewBox="0 0 24 24" class="checkmark">
+                                            <path d="M6 12L10.2426 16.2426L18.727 7.75732"/>
+                                        </svg>
+                                        <span i18n="perMenu2">禁用Shift+Tab组合键</span>
+                                    </label>
+                                </div>
+                                <div class="performanceItem radioBox">
+                                    <input type="checkbox" id="perCheckbox3" name="winLock" value="disableAltTab" class="cusRadio">
+                                    <label for="perCheckbox3">
+                                        <svg viewBox="0 0 24 24" class="checkmark">
+                                            <path d="M6 12L10.2426 16.2426L18.727 7.75732"/>
+                                        </svg>
+                                        <span i18n="perMenu3">禁用Alt+Tab组合键</span>
+                                    </label>
+                                </div>
+                                <div class="performanceItem radioBox">
+                                    <input type="checkbox" id="perCheckbox4" name="winLock" value="disableAltF4" class="cusRadio">
+                                    <label for="perCheckbox4">
+                                        <svg viewBox="0 0 24 24" class="checkmark">
+                                            <path d="M6 12L10.2426 16.2426L18.727 7.75732"/>
+                                        </svg>
+                                        <span i18n="perMenu4">禁用Alt+F4组合键</span>
+                                    </label>
+                                </div>
+
+                            </div>
+                            <div id="performance3" class="performanceDiv">
+                                <label id="allAnd6keyTitle" class="performanceTitle" i18n="nOr6">全键/6键模式切换：</label>
+                                
+
+                                <div class="performanceItem radioBox">
+                                    <input type="radio" id="perCheckbox5" class="cusRadio" name="allKey" checked="checked">
+                                    <label for="perCheckbox5">
+                                        <svg viewBox="0 0 24 24">
+                                            <path d="M6 12L10.2426 16.2426L18.727 7.75732"/>
+                                        </svg>
+                                        <span i18n="nKey">全键模式</span>
+                                    </label>
+                                </div>
+                                <div class="performanceItem radioBox">
+                                    <input type="radio" id="perCheckbox6" class="cusRadio" name="allKey" checked="checked">
+                                    <label for="perCheckbox6">
+                                        <svg viewBox="0 0 24 24">
+                                            <path d="M6 12L10.2426 16.2426L18.727 7.75732"/>
+                                        </svg>
+                                        <span i18n="6Key">6键模式</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div id="performance4" class="performanceDiv">
+                                <div class="sleepItem">
+                                    
+                                    <label i18n="sleepSetTip5">灯效进入休眠</label>
+                                    <input id="lightSleep" min="0" max="60000" placeholder="0-60000" type="number" class="input"> s
+                                </div>
+                                <div class="sleepItem">
+                                    <label i18n="sleepSetTip6">键盘进入休眠</label>
+                                    <input id="keyboardSleep" min="5" max="1000" placeholder="5-1000" type="number" class="input"> min
+                                </div>
+                                <div class="sleepItem">
+
+                                <button id="sleepApply" i18n="btnOk" class="btn confirmBtn">提交</button>
+                            </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="triggerView">
+                        <div id="triggerTop" class="detailTitle">
+                            
+                            
+                            <div id="triggerMenuDiv" class="tabMenuDiv">
+                                <input type="radio" id="triggerManu1" name="ctrRadio" checked="checked">
+                                <label for="triggerManu1"><img class="tabImg" src="image/dark/triggerManu1.png"><span i18n="actuationMenu1">行程</span></label>
+                                <input type="radio" id="triggerManu5" name="ctrRadio">
+                                <label for="triggerManu5"><img class="tabImg" src="image/dark/triggerManu5.png"><span i18n="actuationMenu5">死区</span></label>
+                                <input type="radio" id="triggerManu2" name="ctrRadio">
+                                <label for="triggerManu2"><img class="tabImg" src="image/dark/triggerManu2.png"><span i18n="actuationMenu2">轴体</span></label>
+                                <input type="radio" id="triggerManu4" name="ctrRadio">
+                                <label for="triggerManu4"><img class="tabImg" src="image/dark/triggerManu4.png"><span i18n="actuationMenu4">回报率</span></label>
+                                <input type="radio" id="triggerManu3" name="ctrRadio">
+                                <label for="triggerManu3"><img class="tabImg" src="image/dark/triggerManu3.png"><span i18n="actuationMenu3">校准</span></label>
+                            </div>
+                        </div>
+                        <div id="triggerBottom" class="detailBottom">
+                            <div class="triggerLeft">
+                                <div class="magneticSwitch">
+                                    <img src="image/key_switch_bkg.png" alt="">
+                                    <img id="switchThumb" src="image/key_switch_thumb.png" alt="">
+                                    <img src="image/key_switch_fore.png" alt="">
+                                </div>
+                            </div>
+                            <div id="triggerTest" class="triggerMiddle">
+                                <div style="display: flex; align-items: center;">
+                                    <label i18n="triggerTest" style="white-space: nowrap;">按键测试</label>
+                                    <label class="switch">
+                                        <input id="testPower" type="checkbox">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                                <div style="display: flex; align-items: center; min-height: 248px; height: 248px; margin-top: 20px;">
+                                    <div class="testKedu">
+                                        <span class="testKeduItem1"><span>0mm</span></span>
+                                        <span class="testKeduItem2"></span>
+                                        <span class="testKeduItem2"></span>
+                                        <span class="testKeduItem2"></span>
+                                        <span class="testKeduItem2"></span>
+                                        <span class="testKeduItem1"><span>1.0mm</span></span>
+                                        <span class="testKeduItem2"></span>
+                                        <span class="testKeduItem2"></span>
+                                        <span class="testKeduItem2"></span>
+                                        <span class="testKeduItem2"></span>
+                                        <span class="testKeduItem1"><span>2.0mm</span></span>
+                                        <span class="testKeduItem2"></span>
+                                        <span class="testKeduItem2"></span>
+                                        <span class="testKeduItem2"></span>
+                                        <span class="testKeduItem2"></span>
+                                        <span class="testKeduItem1"><span>3.0mm</span></span>
+                                        <span class="testKeduItem2"></span>
+                                        <span class="testKeduItem2"></span>
+                                        <span class="testKeduItem2"></span>
+                                        <span class="testKeduItem2"></span>
+                                        <span class="testKeduItem1"><span>4.0mm</span></span>
+                                    </div>
+                                    <div class="testjindu">
+                                        <span id="testjindu"></span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="triggerRight">
+                                <div id="tbView">
+                                    <div class="tbInfo">
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        <div class="triggerInfoDiv">
+                                            <label id="labTip2" i18n="triggerTip">请在上面键盘区域选择一个或多个按键后，再进行按键的触发调节</label>
+                                            <label class="labTriggerInfo2" i18n="triggerTravel">按键行程</label>
+                                            <wm-slider id="triggerAll" step="0.01" max="1.0" min="0.01" value="0.5" disabled="disabled" style="--slider-color: var(--text-color1)"></wm-slider>
+                                            <div class="triggerMenu radioBox">
+                                                
+                                                <input type="checkbox" id="triggerPower" class="cusRadio" disabled="disabled">
+                                                <label for="triggerPower">
+                                                    <svg viewBox="0 0 24 24" class="checkmark">
+                                                        <path d="M6 12L10.2426 16.2426L18.727 7.75732"/>
+                                                    </svg>
+                                                    <span i18n="triggerMenu1">快速触发</span>
+                                                </label>
+                                            </div>
+                                            <label class="labTip" id="labelTip1" i18n="triggerTip1">根据按下或者释放按键的意图，自定义调整按键触发的行程和重置行程</label>
+                                            <div id="triggerDownAndUp" class="triggerMenu radioBox">
+                                                
+                                                <input type="checkbox" id="triggerTravel" class="cusRadio">
+                                                <label id="labelTriggerTravel" for="triggerTravel">
+                                                    <svg viewBox="0 0 24 24" class="checkmark">
+                                                        <path d="M6 12L10.2426 16.2426L18.727 7.75732"/>
+                                                    </svg>
+                                                    <span i18n="triggerMenu2">按下和松开的行程值</span>
+                                                </label>
+                                            </div>
+                                            <label class="labTip" id="labelTip2" i18n="triggerTip2">单独设置快速触发的按下(触发)和松开(重置)的行程值</label>
+                                            <label class="labTriggerInfo2" id="labelTitle1" i18n="triggerMenu3">按下(触发)/松开(重置)</label>
+                                            <wm-slider id="triggerDown" step="0.01" max="1.0" min="0.01" value="0.5" style="--slider-color: var(--text-color2)"></wm-slider>
+                                            <label class="labTriggerInfo2" id="labelTitle2" i18n="triggerMenu4">松开(重置)</label>
+                                            <wm-slider id="triggerUp" step="0.01" max="1.0" min="0.01" value="0.5" style="--slider-color: var(--text-color3)"></wm-slider>
+                                        </div>
+                                    </div>
+
+                                </div>
+                                <div id="tkView">
+                                    <div class="tkInfo">
+                                        <label i18n="triggerTip3"></label>
+                                        <label i18n="triggerTip4"></label>
+                                        <div id="switchListView" class="switchListView">
+                                            <button>
+                                                <span class="switchTop">
+                                                    <label>HM1</label><span></span>
+                                                </span>
+                                                <label class="switchBottom">灰木磁轴</label>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="tjView">
+                                    <div class="tjInfo">
+                                        
+                                        
+                                        
+                                        
+                                        <label id="labCalibration" i18n="calibrationKey">全键校准</label>
+                                        <button id="reviseKeys" i18n="calibrationStart">开始校准</button>
+                                        <div class="reviseTipView">
+                                            <span i18n="calibrationStep">校准步骤：</span>
+                                            <span><label class="reviseNumber">1</label><label i18n="calibrationStep1">点击开始校准按键</label></span>
+                                            <span><label class="reviseNumber">2</label><label i18n="calibrationStep2">按压需要校验的按键（触底）</label></span>
+                                            <span><label class="reviseNumber">3</label><label i18n="calibrationStep3">等待对应的按键变为蓝色，该键校准完成</label></span>
+                                            <span><label class="reviseNumber">4</label><label i18n="calibrationStep4">点击结束校准按键</label></span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="trView">
+                                    <div class="tjInfo">
+                                        <label i18n="rateTip1">切换设备的回报率（切换后设备将会重启并断开连接）</label>
+                                        <div id="rateList" class="rateList">
+                                            <input type="radio" name="pollRate" id="pollRate1" checked="checked"><label for="pollRate1">1KHz</label>
+                                            <input type="radio" name="pollRate" id="pollRate2"><label for="pollRate2">2KHz</label>
+                                            <input type="radio" name="pollRate" id="pollRate3"><label for="pollRate3">4KHz</label>
+                                            <input type="radio" name="pollRate" id="pollRate4"><label for="pollRate4">8KHz</label>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="tdView">
+                                    <div class="tbInfo">
+                                        <div class="triggerInfoDiv">
+                                            <label id="labTip4" i18n="triggerTip6">通过设置死区，可以有效避免因轻微触碰或抖动导致的误操作，建议将死区设置为0.1mm</label>
+                                            <label id="labTip3" i18n="triggerTip5">请在上面键盘区域选择一个或多个按键后，再进行按键的死区调节</label>
+                                            <label class="labTriggerInfo2" id="labelDbTop" i18n="dbTop">顶部</label>
+                                            <wm-slider id="dbTop" step="0.01" max="1.0" min="0.01" value="0.5" style="--slider-color: var(--text-color2)"></wm-slider>
+                                            <label class="labTriggerInfo2" id="labelDbBottom" i18n="dbBottom">底部</label>
+                                            <wm-slider id="dbBottom" step="0.01" max="1.0" min="0.01" value="0.5" style="--slider-color: var(--text-color3)"></wm-slider>
+                                        </div>
+                                    </div>
+                                </div>
+                                <img id="tbSwitch" src="image/switch.png" alt="">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="prcsView">
+                        <div id="prcsTop" class="detailTitle">
+                            
+                            <div class="powerView">
+                                <label i18n="switch">开关</label>
+                                <label class="switch">
+                                    <input id="prcsPower" type="checkbox" checked="checked">
+                                    <span class="slider"></span>
+                                </label>
+                                <label class="prcsHotKey"><span i18n="hotKey">快捷键：</span><span id="prcsHotKey"></span></label>
+                            </div>
+                            <button id="btnApplyPrcs" class="btnApply btn" i18n="apply">应用</button>
+                        </div>
+                        <div id="prcsBottom" class="prcsBottom">
+                            <div class="prcsLeft">
+                                <label id="prcsCount">0/20</label>
+                                <div id="prcsList" class="prcsList">
+                                </div>
+                                <div id="prcsBtnDiv" class="prcsBtnDiv">
+                                    <div id="btnCreatePrcs" class="btn">
+                                        <img src="image/icon_add.png" alt="CreatePrcs">
+                                        <span i18n="btnCreate">新建</span>
+                                    </div>
+                                    <div id="btnDeletePrcs" class="btn">
+                                        <img src="image/icon_del.png" alt="DeletePrcs">
+                                        <span i18n="btnDelete">删除</span>
+                                    </div>
+                                    
+                                    
+                                </div>
+                            </div>
+                            <div class="prcsMiddle">
+                                <div id="prcsTip">
+                                    <h4 i18n="prcsTip1">请新建PRCS键</h4>
+                                </div>
+                                <div class="prcsInfoDiv">
+                                    <span i18n="prcsTip3">请设置互斥的两个按键</span>
+                                    <div class="mtDivTop">
+                                        <div class="mtDivLeft">
+                                            <label for="piEdit1" i18n="key1">Key1</label>
+                                            <input type="text" id="piEdit1" class="tglTmInput" readonly="readonly">
+                                        </div>
+                                        <div class="mtDivRight">
+                                            <label for="piEdit2" i18n="key2">Key2</label>
+                                            <input type="text" id="piEdit2" class="tglTmInput" readonly="readonly">
+                                        </div>
+                                    </div>
+                                    <div id="prcsModel" class="prcsModel">
+                                        <div class="radioBox">
+                                            <input type="radio" id="prcsModel1" class="cusRadio" name="prcsModel" checked="checked">
+                                            <label for="prcsModel1">
+                                                <span i18n="model1">Model1</span>
+                                                <svg viewBox="0 0 24 24">
+                                                    <path d="M6 12L10.2426 16.2426L18.727 7.75732"/>
+                                                </svg>
+                                            </label>
+                                        </div>
+
+                                        <div class="radioBox">
+                                            <input type="radio" id="prcsModel2" class="cusRadio" name="prcsModel">
+                                            <label for="prcsModel2">
+                                                <span i18n="model2">Model2</span>
+                                                <svg viewBox="0 0 24 24">
+                                                    <path d="M6 12L10.2426 16.2426L18.727 7.75732"/>
+                                                </svg>
+                                            </label>
+                                        </div>
+
+                                        <div class="radioBox">
+                                            <input type="radio" id="prcsModel3" class="cusRadio" name="prcsModel">
+                                            <label for="prcsModel3">
+                                                <span i18n="model3">Model3</span>
+                                                <svg viewBox="0 0 24 24">
+                                                    <path d="M6 12L10.2426 16.2426L18.727 7.75732"/>
+                                                </svg>
+                                            </label>
+                                        </div>
+
+                                        <div class="radioBox">
+                                            <input type="radio" id="prcsModel4" class="cusRadio" name="prcsModel">
+                                            <label for="prcsModel4">
+                                                <span i18n="model4">Model4</span>
+                                                <svg viewBox="0 0 24 24">
+                                                    <path d="M6 12L10.2426 16.2426L18.727 7.75732"/>
+                                                </svg>
+                                            </label>
+                                        </div>
+
+                                        
+                                    </div>
+                                    <div class="prcsModelTip">
+                                        <div>
+                                            <label i18n="applyTip1" style="font-size: 16px; text-align: center;"></label>
+                                            <hr style="width: 100%;">
+                                            <label i18n="prcsTip2">当Key1和Key2都触发时</label>
+                                            <label i18n="prcsModel1">Model1：先触发的按键被打断</label>
+                                            <label i18n="prcsModel2">Model2：Key1打断Key2的触发</label>
+                                            <label i18n="prcsModel3">Model3：Key2打断Key1的触发</label>
+                                            <label i18n="prcsModel4">Model4：后键只打断前键，后键不触发</label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="prcsRight">
+                                <div id="fixedKeySet3"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+  </body>
+
+</html>

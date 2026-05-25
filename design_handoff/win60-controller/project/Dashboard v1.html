@@ -1,0 +1,842 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>AETHER HE // Keyboard Hub</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-0: #07090f;
+    --bg-1: #0b0f19;
+    --bg-2: #111827;
+    --bg-3: #1a2235;
+    --line: rgba(148, 163, 184, 0.12);
+    --cyan: #00f5ff;
+    --violet: #9d4edd;
+    --lime: #66ff8a;
+  }
+  html, body { background: #07090f; color: #e2e8f0; font-family: 'Inter', system-ui, sans-serif; }
+  .font-display { font-family: 'Rajdhani', sans-serif; letter-spacing: 0.04em; }
+  .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* Subtle scanline / grid backdrop */
+  body::before {
+    content: "";
+    position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background:
+      radial-gradient(1200px 600px at 20% -10%, rgba(0,245,255,0.08), transparent 60%),
+      radial-gradient(1000px 500px at 100% 110%, rgba(157,78,221,0.10), transparent 60%),
+      linear-gradient(to bottom, rgba(255,255,255,0.015) 1px, transparent 1px) 0 0 / 100% 48px,
+      linear-gradient(to right,  rgba(255,255,255,0.015) 1px, transparent 1px) 0 0 / 48px 100%;
+  }
+
+  /* Range slider */
+  input[type="range"].aether {
+    -webkit-appearance: none; appearance: none;
+    height: 6px; border-radius: 999px; outline: none;
+    background: linear-gradient(to right, #00f5ff var(--pct,50%), rgba(148,163,184,0.18) var(--pct,50%));
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
+  }
+  input[type="range"].aether::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: linear-gradient(135deg, #00f5ff 0%, #9d4edd 100%);
+    border: 2px solid #0b0f19;
+    box-shadow: 0 0 12px rgba(0,245,255,0.55), 0 0 24px rgba(157,78,221,0.35);
+    cursor: pointer;
+  }
+  input[type="range"].aether::-moz-range-thumb {
+    width: 18px; height: 18px; border-radius: 50%;
+    background: linear-gradient(135deg, #00f5ff 0%, #9d4edd 100%);
+    border: 2px solid #0b0f19;
+    box-shadow: 0 0 12px rgba(0,245,255,0.55), 0 0 24px rgba(157,78,221,0.35);
+    cursor: pointer;
+  }
+  input[type="range"].aether.violet {
+    background: linear-gradient(to right, #9d4edd var(--pct,50%), rgba(148,163,184,0.18) var(--pct,50%));
+  }
+  input[type="range"].aether.violet::-webkit-slider-thumb {
+    background: linear-gradient(135deg, #c77dff 0%, #9d4edd 100%);
+    box-shadow: 0 0 12px rgba(157,78,221,0.6);
+  }
+
+  /* Color picker reset */
+  input[type="color"].aether {
+    -webkit-appearance: none; appearance: none; border: none;
+    width: 100%; height: 100%; background: transparent; cursor: pointer;
+    padding: 0;
+  }
+  input[type="color"].aether::-webkit-color-swatch-wrapper { padding: 0; }
+  input[type="color"].aether::-webkit-color-swatch { border: none; border-radius: 9999px; }
+  input[type="color"].aether::-moz-color-swatch { border: none; border-radius: 9999px; }
+
+  /* Pulse */
+  @keyframes pulseRing {
+    0%   { transform: scale(0.9); opacity: 0.9; }
+    70%  { transform: scale(2.2); opacity: 0; }
+    100% { transform: scale(0.9); opacity: 0; }
+  }
+  .pulse-ring::after {
+    content: ""; position: absolute; inset: 0; border-radius: 9999px;
+    background: currentColor; animation: pulseRing 1.8s ease-out infinite;
+  }
+
+  /* Click flash */
+  @keyframes flashWhite {
+    0%   { background-color: rgba(255,255,255,0.0); }
+    20%  { background-color: rgba(255,255,255,0.5); }
+    100% { background-color: rgba(255,255,255,0.0); }
+  }
+  .flash-on-click { animation: flashWhite 0.35s ease-out; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: #0b0f19; }
+  ::-webkit-scrollbar-thumb { background: #1f2937; border-radius: 999px; }
+  ::-webkit-scrollbar-thumb:hover { background: #334155; }
+
+  /* Soft animated gradient sheen for buttons */
+  @keyframes sheen {
+    0% { background-position: 0% 50%; }
+    100% { background-position: 200% 50%; }
+  }
+  .sheen-bg {
+    background-size: 200% 100%;
+    animation: sheen 6s linear infinite;
+  }
+
+  /* Telemetry bar fill smoothing */
+  .bar-fill { transition: height 280ms cubic-bezier(.2,.7,.2,1); }
+</style>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body class="min-h-screen">
+<div id="root" class="relative z-10"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef, useMemo } = React;
+
+/* ============================================================
+   Inline Lucide-style icons (24x24, stroke-based)
+   ============================================================ */
+const Icon = ({ d, size = 18, strokeWidth = 2, className = "", children }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24"
+       fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round"
+       strokeLinejoin="round" className={className}>
+    {children || <path d={d} />}
+  </svg>
+);
+const IPlug = (p) => <Icon {...p}><path d="M9 7V2"/><path d="M15 7V2"/><path d="M6 13V8h12v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4Z"/><path d="M12 17v5"/></Icon>;
+const IZap = (p) => <Icon {...p}><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></Icon>;
+const ICheck = (p) => <Icon {...p}><path d="M20 6 9 17l-5-5"/></Icon>;
+const ISliders = (p) => <Icon {...p}><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="2" y1="14" x2="6" y2="14"/><line x1="10" y1="8" x2="14" y2="8"/><line x1="18" y1="16" x2="22" y2="16"/></Icon>;
+const ICpu = (p) => <Icon {...p}><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2"/><path d="M15 2v2"/><path d="M9 20v2"/><path d="M15 20v2"/><path d="M2 9h2"/><path d="M2 15h2"/><path d="M20 9h2"/><path d="M20 15h2"/></Icon>;
+const ICrosshair = (p) => <Icon {...p}><circle cx="12" cy="12" r="9"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></Icon>;
+const IPalette = (p) => <Icon {...p}><circle cx="13.5" cy="6.5" r="1"/><circle cx="17.5" cy="10.5" r="1"/><circle cx="8.5" cy="7.5" r="1"/><circle cx="6.5" cy="12.5" r="1"/><path d="M12 2a10 10 0 1 0 0 20c1 0 1.5-.5 1.5-1.5a1.5 1.5 0 0 0-.4-1 1.5 1.5 0 0 1 1.1-2.5h1.8A4 4 0 0 0 20 13a8 8 0 0 0-8-11Z"/></Icon>;
+const IActivity = (p) => <Icon {...p}><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></Icon>;
+const IPower = (p) => <Icon {...p}><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></Icon>;
+const IChevron = (p) => <Icon {...p}><path d="m9 18 6-6-6-6"/></Icon>;
+const ISave = (p) => <Icon {...p}><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></Icon>;
+const ILink = (p) => <Icon {...p}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></Icon>;
+const IUnlink = (p) => <Icon {...p}><path d="m18.84 12.25 1.72-1.71a5 5 0 0 0-7.07-7.07L12 4.96"/><path d="m5.17 11.75-1.71 1.71a5 5 0 0 0 7.07 7.07L12 19.04"/><line x1="8" y1="2" x2="8" y2="5"/><line x1="2" y1="8" x2="5" y2="8"/><line x1="16" y1="19" x2="16" y2="22"/><line x1="19" y1="16" x2="22" y2="16"/></Icon>;
+const ISettings = (p) => <Icon {...p}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></Icon>;
+const IGauge = (p) => <Icon {...p}><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></Icon>;
+const ILayers = (p) => <Icon {...p}><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></Icon>;
+const IWaves = (p) => <Icon {...p}><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/></Icon>;
+
+/* ============================================================
+   Small reusable bits
+   ============================================================ */
+const Card = ({ title, icon, badge, children, className = "" }) => (
+  <section className={`relative rounded-2xl border border-white/[0.06] bg-white/[0.025] backdrop-blur-md
+                       shadow-[0_8px_40px_-12px_rgba(0,0,0,0.6)] overflow-hidden ${className}`}>
+    {/* corner accents */}
+    <span className="pointer-events-none absolute -top-px left-6 right-6 h-px bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent" />
+    <header className="flex items-center justify-between px-5 pt-5 pb-4">
+      <div className="flex items-center gap-2.5">
+        <span className="grid place-items-center w-7 h-7 rounded-md bg-white/[0.04] border border-white/[0.06] text-cyan-300">
+          {icon}
+        </span>
+        <h2 className="font-display text-[15px] font-semibold uppercase tracking-[0.18em] text-slate-100">{title}</h2>
+      </div>
+      {badge}
+    </header>
+    <div className="px-5 pb-5">{children}</div>
+  </section>
+);
+
+const StatChip = ({ label, value, accent = "cyan" }) => {
+  const tone = accent === "violet" ? "text-violet-300" : accent === "lime" ? "text-emerald-300" : "text-cyan-300";
+  return (
+    <div className="flex flex-col gap-0.5 px-3 py-1.5 rounded-md border border-white/[0.06] bg-white/[0.02]">
+      <span className="text-[9px] uppercase tracking-[0.22em] text-slate-500 font-mono">{label}</span>
+      <span className={`font-mono text-[13px] font-medium ${tone}`}>{value}</span>
+    </div>
+  );
+};
+
+/* ============================================================
+   Header
+   ============================================================ */
+const Header = ({ connected, onToggle }) => (
+  <header className="flex flex-wrap items-center justify-between gap-4 mb-6">
+    <div className="flex items-center gap-4">
+      {/* logo mark */}
+      <div className="relative w-11 h-11 rounded-xl bg-gradient-to-br from-cyan-400/20 to-violet-500/20 border border-white/[0.08] grid place-items-center">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+          <path d="M12 2 3 20h18L12 2Z" stroke="url(#g1)" strokeWidth="1.6" strokeLinejoin="round"/>
+          <path d="M12 9v7" stroke="url(#g1)" strokeWidth="1.6" strokeLinecap="round"/>
+          <defs>
+            <linearGradient id="g1" x1="0" x2="24" y1="0" y2="24">
+              <stop offset="0" stopColor="#00f5ff"/><stop offset="1" stopColor="#9d4edd"/>
+            </linearGradient>
+          </defs>
+        </svg>
+        <span className="absolute -inset-px rounded-xl ring-1 ring-inset ring-white/5" />
+      </div>
+
+      <div className="flex flex-col leading-tight">
+        <div className="flex items-baseline gap-2">
+          <span className="font-display text-[20px] font-bold tracking-[0.18em] text-white">AETHER HE</span>
+          <span className="font-mono text-[11px] text-slate-500">//</span>
+          <span className="font-display text-[14px] font-medium tracking-[0.24em] text-slate-400 uppercase">Keyboard Hub</span>
+        </div>
+        <div className="flex items-center gap-2 mt-1">
+          <span className={`relative inline-block w-2 h-2 rounded-full ${connected ? "text-emerald-400 bg-emerald-400" : "text-cyan-400 bg-cyan-400"} pulse-ring`} />
+          <span className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-slate-400">
+            {connected ? "Link Established · 1000Hz" : "Awaiting Device Handshake"}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <div className="flex items-center gap-2">
+      <StatChip label="Firmware" value="v2.14.0" />
+      <StatChip label="Polling" value="1000 Hz" />
+      <StatChip label="Profile" value="P1 · Comp" accent="violet" />
+
+      <button
+        onClick={onToggle}
+        className={`group relative ml-2 inline-flex items-center gap-2.5 pl-4 pr-5 h-11 rounded-lg
+                   font-display uppercase tracking-[0.18em] text-[12.5px] font-semibold
+                   border transition-all duration-300 overflow-hidden
+                   ${connected
+                      ? "border-emerald-400/40 text-emerald-50 bg-gradient-to-r from-emerald-500/30 via-emerald-400/20 to-emerald-500/30 shadow-[0_0_20px_rgba(52,211,153,0.45)] hover:shadow-[0_0_28px_rgba(52,211,153,0.6)]"
+                      : "border-white/10 text-slate-100 bg-gradient-to-r from-cyan-500/15 via-cyan-400/10 to-violet-500/20 hover:from-cyan-500/30 hover:to-violet-500/30 shadow-[0_0_20px_rgba(0,245,255,0.25)] hover:shadow-[0_0_28px_rgba(0,245,255,0.45)]"
+                   }`}>
+        <span className="sheen-bg absolute inset-0 opacity-30
+                         bg-[linear-gradient(110deg,transparent_30%,rgba(255,255,255,0.18)_50%,transparent_70%)]" />
+        {connected ? <IPower size={16}/> : <IPlug size={16}/>}
+        <span className="relative">{connected ? "Connected · Win60 HE" : "Pair Device"}</span>
+        <IChevron size={14} className="relative opacity-60 group-hover:translate-x-0.5 transition-transform" />
+      </button>
+    </div>
+  </header>
+);
+
+/* ============================================================
+   Actuation Card
+   ============================================================ */
+const Slider = ({ label, sub, value, min, max, step, onChange, unit = "mm", color = "cyan" }) => {
+  const pct = ((value - min) / (max - min)) * 100;
+  return (
+    <div>
+      <div className="flex items-baseline justify-between mb-2">
+        <div className="flex items-baseline gap-2">
+          <span className="font-display text-[12px] uppercase tracking-[0.18em] text-slate-300">{label}</span>
+          {sub && <span className="font-mono text-[10px] text-slate-500">{sub}</span>}
+        </div>
+        <div className="flex items-baseline gap-1.5">
+          <span className={`font-mono text-[18px] font-medium ${color === "violet" ? "text-violet-300" : "text-cyan-300"}`}>
+            {value.toFixed(step < 1 ? 2 : 0)}
+          </span>
+          <span className="font-mono text-[10px] text-slate-500 uppercase tracking-[0.18em]">{unit}</span>
+        </div>
+      </div>
+      <input
+        type="range" className={`aether w-full ${color === "violet" ? "violet" : ""}`}
+        min={min} max={max} step={step} value={value}
+        style={{ "--pct": pct + "%" }}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+      />
+      <div className="flex justify-between mt-1.5">
+        <span className="font-mono text-[9.5px] text-slate-600">{min.toFixed(step < 1 ? 1 : 0)}{unit}</span>
+        <span className="font-mono text-[9.5px] text-slate-600">{max.toFixed(step < 1 ? 1 : 0)}{unit}</span>
+      </div>
+    </div>
+  );
+};
+
+const ActuationCard = ({ actuation, setActuation, press, setPress, release, setRelease, linked, setLinked, onApply, applying }) => (
+  <Card
+    title="Magnetic Switch Configurator"
+    icon={<IGauge size={15}/>}
+    badge={
+      <div className="flex items-center gap-2">
+        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">Hall Effect · Per-Key</span>
+      </div>
+    }>
+    {/* Big actuation visual */}
+    <div className="relative rounded-xl border border-white/[0.06] bg-gradient-to-b from-white/[0.025] to-transparent p-4 mb-5">
+      <div className="flex items-end justify-between mb-3">
+        <div>
+          <div className="font-mono text-[9.5px] uppercase tracking-[0.22em] text-slate-500">Global Actuation Point</div>
+          <div className="flex items-baseline gap-2 mt-1">
+            <span className="font-display text-[36px] leading-none font-bold bg-gradient-to-br from-cyan-300 to-violet-400 bg-clip-text text-transparent">
+              {actuation.toFixed(2)}
+            </span>
+            <span className="font-mono text-[12px] text-slate-500">mm travel</span>
+          </div>
+        </div>
+        <div className="flex flex-col items-end gap-1">
+          <span className="font-mono text-[9.5px] uppercase tracking-[0.22em] text-slate-500">Switch Range</span>
+          <span className="font-mono text-[11px] text-slate-300">0.10 — 4.00 mm</span>
+        </div>
+      </div>
+
+      {/* Travel visualization: a magnetic switch profile */}
+      <div className="relative h-14 rounded-lg bg-black/40 border border-white/[0.04] overflow-hidden">
+        <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-cyan-500/30 via-cyan-400/15 to-transparent"
+             style={{ width: ((actuation/4)*100) + "%" }} />
+        <div className="absolute inset-y-0 w-px bg-gradient-to-b from-cyan-300 via-cyan-300 to-transparent"
+             style={{ left: ((actuation/4)*100) + "%", boxShadow: "0 0 12px rgba(0,245,255,0.85)" }} />
+        {/* tick marks */}
+        {[0, 1, 2, 3, 4].map(i => (
+          <div key={i} className="absolute top-0 bottom-0 flex flex-col justify-between py-1"
+               style={{ left: (i/4)*100 + "%" }}>
+            <span className="w-px h-2 bg-white/15" />
+            <span className="font-mono text-[8.5px] text-slate-600 -translate-x-1/2">{i}.0</span>
+          </div>
+        ))}
+        {/* keycap silhouette */}
+        <div className="absolute right-3 top-1.5 bottom-1.5 w-10 rounded-md border border-white/10 bg-white/[0.03] grid place-items-center">
+          <span className="font-mono text-[9px] text-slate-400">SW</span>
+        </div>
+      </div>
+
+      <input
+        type="range" className="aether w-full mt-4"
+        min={0.1} max={4.0} step={0.05} value={actuation}
+        style={{ "--pct": (((actuation - 0.1)/(4.0-0.1))*100) + "%" }}
+        onChange={(e) => setActuation(parseFloat(e.target.value))}
+      />
+    </div>
+
+    {/* Rapid Trigger */}
+    <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <IZap size={13} className="text-violet-300"/>
+          <span className="font-display text-[12px] uppercase tracking-[0.18em] text-slate-200">Rapid Trigger</span>
+          <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-violet-500/15 text-violet-300 border border-violet-400/20">RT</span>
+        </div>
+        <button
+          onClick={() => setLinked(!linked)}
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-mono uppercase tracking-[0.18em] border transition-all
+                      ${linked ? "border-violet-400/40 text-violet-200 bg-violet-500/10" : "border-white/10 text-slate-400 hover:text-slate-200 hover:border-white/20"}`}>
+          {linked ? <ILink size={11}/> : <IUnlink size={11}/>}
+          {linked ? "Linked" : "Independent"}
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+        <Slider
+          label="Press Sensitivity" sub="downstroke"
+          value={press} min={0.05} max={2.0} step={0.05}
+          onChange={(v) => { setPress(v); if (linked) setRelease(v); }}
+          color="violet"
+        />
+        <Slider
+          label="Release Sensitivity" sub="upstroke"
+          value={release} min={0.05} max={2.0} step={0.05}
+          onChange={(v) => { setRelease(v); if (linked) setPress(v); }}
+          color="violet"
+        />
+      </div>
+    </div>
+
+    {/* Apply button */}
+    <button
+      onClick={onApply}
+      className={`group relative mt-5 w-full h-12 rounded-xl border font-display uppercase tracking-[0.22em] text-[12px] font-semibold
+                  transition-all duration-300 overflow-hidden
+                  border-violet-400/25 text-slate-100
+                  bg-gradient-to-r from-violet-600/20 via-fuchsia-500/10 to-violet-600/20
+                  hover:from-violet-500/40 hover:via-fuchsia-500/30 hover:to-violet-500/40
+                  hover:border-violet-400/60
+                  shadow-[0_0_0_rgba(157,78,221,0)] hover:shadow-[0_0_28px_rgba(157,78,221,0.55)]
+                  ${applying ? "ring-1 ring-violet-400/60" : ""}`}>
+      <span className="relative flex items-center justify-center gap-2">
+        <ISave size={14} className="opacity-80 group-hover:opacity-100"/>
+        {applying ? "Profile Flashed →" : "Apply Actuation Profiles"}
+      </span>
+      <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(120px_60px_at_var(--mx,50%)_50%,rgba(255,255,255,0.12),transparent_60%)] opacity-0 group-hover:opacity-100 transition-opacity" />
+    </button>
+  </Card>
+);
+
+/* ============================================================
+   SOCD Card
+   ============================================================ */
+const SOCD_MODES = [
+  { id: "neutral", title: "Neutral", subtitle: "True Center", desc: "Both keys cancel out. Standard fighting-game behavior.",
+    glyph: (
+      <svg viewBox="0 0 40 24" className="w-full h-9">
+        <line x1="2" y1="12" x2="38" y2="12" stroke="currentColor" strokeWidth="1.2" opacity="0.3"/>
+        <circle cx="20" cy="12" r="3" fill="currentColor"/>
+      </svg>
+    )
+  },
+  { id: "last", title: "Last Input", subtitle: "Snap Tap", desc: "Most recent press wins. Instant counter-strafing.",
+    glyph: (
+      <svg viewBox="0 0 40 24" className="w-full h-9">
+        <line x1="2" y1="12" x2="38" y2="12" stroke="currentColor" strokeWidth="1.2" opacity="0.3"/>
+        <path d="M2 18 L20 18 L20 6 L38 6" stroke="currentColor" strokeWidth="1.6" fill="none"/>
+        <circle cx="38" cy="6" r="2.4" fill="currentColor"/>
+      </svg>
+    )
+  },
+  { id: "first", title: "First Input", subtitle: "Priority Lock", desc: "Original press holds until released.",
+    glyph: (
+      <svg viewBox="0 0 40 24" className="w-full h-9">
+        <line x1="2" y1="12" x2="38" y2="12" stroke="currentColor" strokeWidth="1.2" opacity="0.3"/>
+        <path d="M2 6 L38 6" stroke="currentColor" strokeWidth="1.6" fill="none"/>
+        <circle cx="2" cy="6" r="2.4" fill="currentColor"/>
+      </svg>
+    )
+  }
+];
+
+const SOCDCard = ({ mode, setMode }) => (
+  <Card
+    title="SOCD Resolution"
+    icon={<ICrosshair size={15}/>}
+    badge={<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">Axis Conflict · A↔D / W↔S</span>}>
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {SOCD_MODES.map(m => {
+        const active = mode === m.id;
+        return (
+          <button key={m.id} onClick={() => setMode(m.id)}
+            className={`group relative text-left rounded-xl border p-4 transition-all duration-300 overflow-hidden
+                        ${active
+                          ? "border-cyan-400/50 bg-gradient-to-br from-cyan-500/10 via-cyan-400/[0.04] to-violet-500/10 shadow-[0_0_22px_rgba(0,245,255,0.25)]"
+                          : "border-white/[0.06] bg-white/[0.015] hover:border-white/15 hover:bg-white/[0.04]"
+                        }`}>
+            {active && (
+              <span className="absolute top-3 right-3 grid place-items-center w-6 h-6 rounded-full bg-cyan-400/15 border border-cyan-300/40 text-cyan-200">
+                <ICheck size={12} strokeWidth={2.5}/>
+              </span>
+            )}
+            <div className={`mb-3 ${active ? "text-cyan-300" : "text-slate-400 group-hover:text-slate-200"} transition-colors`}>
+              {m.glyph}
+            </div>
+            <div className="font-display text-[14px] font-semibold tracking-[0.06em] text-slate-100">{m.title}</div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500 mt-0.5">{m.subtitle}</div>
+            <p className="text-[11.5px] text-slate-400 mt-2 leading-relaxed">{m.desc}</p>
+
+            {/* glow seam */}
+            {active && (
+              <span className="pointer-events-none absolute -inset-px rounded-xl ring-1 ring-cyan-300/30" />
+            )}
+          </button>
+        );
+      })}
+    </div>
+  </Card>
+);
+
+/* ============================================================
+   RGB Canvas
+   ============================================================ */
+const PRESETS = [
+  { id: "neon",  name: "Neon Red",     hex: "#ff1f5a", from: "#ff1f5a", to: "#ff7a59" },
+  { id: "cyber", name: "Cyber Green",  hex: "#39ff8a", from: "#1bff95", to: "#79ffce" },
+  { id: "elec",  name: "Electric Blue",hex: "#00b8ff", from: "#00b8ff", to: "#5b8cff" },
+  { id: "violet",name: "Hyper Violet", hex: "#9d4edd", from: "#9d4edd", to: "#c77dff" },
+  { id: "amber", name: "Solar Amber",  hex: "#ffaa1f", from: "#ffaa1f", to: "#ffd47a" },
+];
+
+const PATTERNS = [
+  { id: "static", label: "Static" },
+  { id: "wave",   label: "Wave" },
+  { id: "react",  label: "Reactive" },
+  { id: "ripple", label: "Ripple" },
+];
+
+const RGBCard = ({ color, setColor, pattern, setPattern, brightness, setBrightness }) => {
+  const [flash, setFlash] = useState(false);
+  const applyRef = useRef(null);
+
+  const onApply = () => {
+    setFlash(true);
+    setTimeout(() => setFlash(false), 360);
+  };
+
+  return (
+    <Card
+      title="RGB Canvas & Lighting"
+      icon={<IPalette size={15}/>}
+      badge={<span className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">16.8M · per-key</span>}>
+      <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-5">
+        {/* Color wheel */}
+        <div className="flex flex-col items-center gap-3">
+          <div className="relative">
+            <div className="absolute inset-0 rounded-full blur-2xl opacity-70"
+                 style={{ background: `radial-gradient(circle, ${color}, transparent 70%)` }} />
+            <div className="relative w-[160px] h-[160px] rounded-full p-[3px]"
+                 style={{ background: `conic-gradient(from 0deg, #ff1f5a, #ffaa1f, #39ff8a, #00f5ff, #5b8cff, #9d4edd, #ff1f5a)` }}>
+              <div className="w-full h-full rounded-full bg-[#0b0f19] p-2 grid place-items-center">
+                <div className="relative w-full h-full rounded-full overflow-hidden ring-1 ring-white/10"
+                     style={{ background: color, boxShadow: `inset 0 0 30px rgba(0,0,0,0.4), 0 0 30px ${color}55` }}>
+                  <input type="color" className="aether absolute inset-0 opacity-0 cursor-pointer"
+                         value={color} onChange={(e) => setColor(e.target.value)} />
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="text-center">
+            <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500">Picked</div>
+            <div className="font-mono text-[13px] text-slate-100">{color.toUpperCase()}</div>
+          </div>
+        </div>
+
+        {/* Right side: presets, pattern, brightness */}
+        <div className="flex flex-col gap-4">
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500 mb-2">Quick Presets</div>
+            <div className="grid grid-cols-5 gap-2">
+              {PRESETS.map(p => {
+                const active = color.toLowerCase() === p.hex.toLowerCase();
+                return (
+                  <button key={p.id} onClick={() => setColor(p.hex)}
+                    className={`group relative aspect-square rounded-lg border transition-all overflow-hidden
+                                ${active ? "border-white/40 scale-[1.02]" : "border-white/[0.06] hover:border-white/20"}`}
+                    style={{
+                      background: `linear-gradient(135deg, ${p.from}, ${p.to})`,
+                      boxShadow: active ? `0 0 18px ${p.hex}80` : "none"
+                    }}
+                    title={p.name}>
+                    <span className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.35),transparent_50%)]" />
+                    {active && (
+                      <span className="absolute bottom-1 right-1 w-4 h-4 rounded-full bg-black/60 grid place-items-center">
+                        <ICheck size={10} strokeWidth={2.5}/>
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-2 grid grid-cols-5 gap-2">
+              {PRESETS.map(p => (
+                <span key={p.id} className="font-mono text-[8.5px] uppercase tracking-[0.12em] text-slate-500 text-center truncate">
+                  {p.name}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500 mb-2">Pattern</div>
+            <div className="grid grid-cols-4 gap-2">
+              {PATTERNS.map(p => {
+                const active = pattern === p.id;
+                return (
+                  <button key={p.id} onClick={() => setPattern(p.id)}
+                    className={`h-9 rounded-md border font-display text-[11px] uppercase tracking-[0.16em] transition-all
+                                ${active
+                                  ? "border-cyan-400/40 text-cyan-200 bg-cyan-500/10 shadow-[0_0_14px_rgba(0,245,255,0.25)]"
+                                  : "border-white/[0.06] text-slate-400 bg-white/[0.02] hover:border-white/20 hover:text-slate-200"}`}>
+                    {p.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <Slider label="Brightness" value={brightness} min={0} max={100} step={1}
+                    unit="%" onChange={setBrightness}/>
+          </div>
+
+          <button
+            ref={applyRef}
+            onClick={onApply}
+            className={`relative h-11 rounded-xl border font-display uppercase tracking-[0.22em] text-[12px] font-semibold
+                        transition-all duration-300 overflow-hidden
+                        border-cyan-400/25 text-slate-100
+                        bg-gradient-to-r from-cyan-500/15 via-cyan-400/10 to-violet-500/20
+                        hover:from-cyan-500/30 hover:to-violet-500/30
+                        hover:border-cyan-300/50
+                        shadow-[0_0_0_rgba(0,245,255,0)] hover:shadow-[0_0_24px_rgba(0,245,255,0.45)]
+                        ${flash ? "flash-on-click" : ""}`}>
+            <span className="relative flex items-center justify-center gap-2">
+              <IWaves size={14}/>
+              Apply Lighting Pattern
+            </span>
+          </button>
+        </div>
+      </div>
+    </Card>
+  );
+};
+
+/* ============================================================
+   Live Telemetry
+   ============================================================ */
+const KEYS = [
+  { id: "W", color: "#00f5ff" },
+  { id: "A", color: "#4ad7ff" },
+  { id: "S", color: "#9d4edd" },
+  { id: "D", color: "#c77dff" },
+];
+
+const TelemetryCard = ({ actuation, mode, polling }) => {
+  // Per-key state with simulated travel
+  const [depths, setDepths] = useState({ W: 0, A: 0, S: 0, D: 0 });
+  const [trace, setTrace] = useState([]);
+  const targetsRef = useRef({ W: 0, A: 0, S: 0, D: 0 });
+  const phaseRef = useRef(0);
+
+  useEffect(() => {
+    const iv = setInterval(() => {
+      // Update targets occasionally so it feels like real key presses
+      phaseRef.current++;
+      KEYS.forEach((k, i) => {
+        if (Math.random() < 0.18) {
+          targetsRef.current[k.id] = Math.random() < 0.55 ? Math.random() * 4 : 0;
+        }
+      });
+      setDepths(prev => {
+        const next = { ...prev };
+        for (const k of Object.keys(prev)) {
+          const t = targetsRef.current[k];
+          const d = t - prev[k];
+          next[k] = Math.max(0, Math.min(4, prev[k] + d * 0.22 + (Math.random() - 0.5) * 0.04));
+        }
+        setTrace(tr => {
+          const t = [...tr, next.W];
+          return t.length > 60 ? t.slice(t.length - 60) : t;
+        });
+        return next;
+      });
+    }, 90);
+    return () => clearInterval(iv);
+  }, []);
+
+  const tracePath = useMemo(() => {
+    if (trace.length < 2) return "";
+    const w = 100, h = 40;
+    return trace.map((v, i) => {
+      const x = (i / (trace.length - 1)) * w;
+      const y = h - (v / 4) * h;
+      return `${i === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
+    }).join(" ");
+  }, [trace]);
+
+  return (
+    <Card
+      title="Live Telemetry"
+      icon={<IActivity size={15}/>}
+      badge={
+        <div className="flex items-center gap-2">
+          <span className="relative inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 text-emerald-400 pulse-ring"/>
+          <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-emerald-300/90">Live · {polling}Hz</span>
+        </div>
+      }>
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_300px] gap-5">
+        {/* Bars */}
+        <div className="rounded-xl border border-white/[0.06] bg-black/30 p-4">
+          <div className="flex items-end justify-between mb-3">
+            <div>
+              <div className="font-mono text-[9.5px] uppercase tracking-[0.22em] text-slate-500">Magnetic Travel Depth</div>
+              <div className="font-display text-[12px] uppercase tracking-[0.18em] text-slate-300 mt-0.5">W · A · S · D</div>
+            </div>
+            <div className="font-mono text-[10px] text-slate-500">
+              Actuation line @ <span className="text-cyan-300">{actuation.toFixed(2)}mm</span>
+            </div>
+          </div>
+
+          <div className="relative h-44 flex items-end gap-4">
+            {/* Actuation guide line */}
+            <div className="absolute left-0 right-0 border-t border-dashed border-cyan-400/40 pointer-events-none"
+                 style={{ bottom: ((actuation/4)*100) + "%" }}>
+              <span className="absolute -top-4 right-0 font-mono text-[9px] text-cyan-300/80">ACTUATE</span>
+            </div>
+
+            {KEYS.map(k => {
+              const d = depths[k.id];
+              const pct = (d / 4) * 100;
+              const active = d >= actuation;
+              return (
+                <div key={k.id} className="flex-1 h-full flex flex-col items-stretch gap-2">
+                  <div className="relative flex-1 rounded-md bg-white/[0.025] border border-white/[0.05] overflow-hidden">
+                    {/* depth ticks */}
+                    {[1,2,3].map(t => (
+                      <span key={t} className="absolute left-0 right-0 h-px bg-white/5"
+                            style={{ bottom: (t/4)*100 + "%" }} />
+                    ))}
+                    <div className="absolute left-0 right-0 bottom-0 bar-fill"
+                         style={{
+                           height: pct + "%",
+                           background: active
+                             ? `linear-gradient(to top, ${k.color}, ${k.color}33)`
+                             : `linear-gradient(to top, ${k.color}66, ${k.color}11)`,
+                           boxShadow: active ? `0 0 18px ${k.color}aa, inset 0 0 12px ${k.color}55` : "none",
+                         }} />
+                    <span className="absolute top-1.5 left-0 right-0 text-center font-mono text-[9px] text-slate-500">
+                      {d.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className={`text-center font-display text-[13px] font-semibold tracking-[0.1em] transition-colors
+                                   ${active ? "text-white" : "text-slate-500"}`}>
+                    {k.id}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Side: scope + readouts */}
+        <div className="flex flex-col gap-3">
+          <div className="rounded-xl border border-white/[0.06] bg-black/30 p-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="font-mono text-[9.5px] uppercase tracking-[0.22em] text-slate-500">W Scope · 6s</span>
+              <span className="font-mono text-[9.5px] text-cyan-300/80">{(depths.W).toFixed(2)}mm</span>
+            </div>
+            <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="w-full h-20">
+              <defs>
+                <linearGradient id="trace-g" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0" stopColor="#00f5ff" stopOpacity="0.6"/>
+                  <stop offset="1" stopColor="#00f5ff" stopOpacity="0"/>
+                </linearGradient>
+              </defs>
+              {/* grid */}
+              {[0,1,2,3].map(g => <line key={g} x1="0" x2="100" y1={g*10} y2={g*10} stroke="rgba(255,255,255,0.05)" strokeWidth="0.4"/>)}
+              <line x1="0" x2="100" y1={40 - (actuation/4)*40} y2={40 - (actuation/4)*40}
+                    stroke="rgba(0,245,255,0.4)" strokeDasharray="2,2" strokeWidth="0.5"/>
+              {trace.length > 1 && (
+                <>
+                  <path d={`${tracePath} L100,40 L0,40 Z`} fill="url(#trace-g)" />
+                  <path d={tracePath} fill="none" stroke="#00f5ff" strokeWidth="0.9" strokeLinecap="round"/>
+                </>
+              )}
+            </svg>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <StatChip label="SOCD" value={mode === "neutral" ? "NEUTRAL" : mode === "last" ? "SNAP-TAP" : "FIRST"} />
+            <StatChip label="Latency" value="0.8 ms" accent="lime"/>
+            <StatChip label="Noise floor" value="0.012 mm" />
+            <StatChip label="Calibration" value="OK · drift 0.4%" accent="lime"/>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+};
+
+/* ============================================================
+   App
+   ============================================================ */
+function App() {
+  const [connected, setConnected] = useState(true);
+  const [actuation, setActuation] = useState(1.50);
+  const [press, setPress] = useState(0.20);
+  const [release, setRelease] = useState(0.20);
+  const [linked, setLinked] = useState(true);
+  const [applying, setApplying] = useState(false);
+
+  const [socd, setSocd] = useState("last");
+
+  const [color, setColor] = useState("#00f5ff");
+  const [pattern, setPattern] = useState("wave");
+  const [brightness, setBrightness] = useState(80);
+
+  const onApply = () => {
+    setApplying(true);
+    setTimeout(() => setApplying(false), 900);
+  };
+
+  return (
+    <div className="max-w-[1400px] mx-auto px-6 lg:px-8 py-6">
+      <Header connected={connected} onToggle={() => setConnected(c => !c)} />
+
+      {/* sub-nav strip */}
+      <nav className="flex items-center gap-1 mb-6 p-1 rounded-xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-md w-fit">
+        {[
+          { id: "config", label: "Configurator", icon: <ISliders size={13}/>, active: true },
+          { id: "macros", label: "Macros", icon: <ICpu size={13}/> },
+          { id: "profiles", label: "Profiles", icon: <ILayers size={13}/> },
+          { id: "settings", label: "Settings", icon: <ISettings size={13}/> },
+        ].map(t => (
+          <button key={t.id}
+            className={`flex items-center gap-2 px-3.5 h-9 rounded-lg font-display text-[12px] uppercase tracking-[0.18em] transition-all
+                        ${t.active
+                          ? "bg-gradient-to-r from-cyan-500/15 to-violet-500/15 text-slate-100 shadow-[0_0_14px_rgba(0,245,255,0.18)]"
+                          : "text-slate-500 hover:text-slate-200"}`}>
+            {t.icon}
+            {t.label}
+          </button>
+        ))}
+      </nav>
+
+      {/* Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        <div className="lg:col-span-7">
+          <ActuationCard
+            actuation={actuation} setActuation={setActuation}
+            press={press} setPress={setPress}
+            release={release} setRelease={setRelease}
+            linked={linked} setLinked={setLinked}
+            onApply={onApply} applying={applying}
+          />
+        </div>
+
+        <div className="lg:col-span-5 flex flex-col gap-5">
+          <SOCDCard mode={socd} setMode={setSocd} />
+          <RGBCard
+            color={color} setColor={setColor}
+            pattern={pattern} setPattern={setPattern}
+            brightness={brightness} setBrightness={setBrightness}
+          />
+        </div>
+
+        <div className="lg:col-span-12">
+          <TelemetryCard actuation={actuation} mode={socd} polling={1000} />
+        </div>
+      </div>
+
+      {/* Footer status bar */}
+      <footer className="mt-6 flex flex-wrap items-center justify-between gap-3 px-4 py-3 rounded-xl border border-white/[0.06] bg-white/[0.02]">
+        <div className="flex items-center gap-4">
+          <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500">
+            Device · <span className="text-slate-300">WIN60 HE</span>
+          </span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500">
+            HID · <span className="text-slate-300">0x4d9:0x0a1c</span>
+          </span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500">
+            Endpoints · <span className="text-slate-300">2 IN / 1 OUT</span>
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="relative inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 text-emerald-400 pulse-ring"/>
+          <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-emerald-300/90">Telemetry stream stable</span>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
