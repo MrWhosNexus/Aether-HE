@@ -388,6 +388,51 @@ class Api:
         """Run the bundled ViGEmBus installer (Windows). Prompts UAC."""
         return gamepad.install_vigembus_driver()
 
+    # ---- launch-on-startup (Windows: HKCU Run) ----
+    _AUTOSTART_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+    _AUTOSTART_NAME = "AetherHE"
+
+    def _autostart_target(self):
+        """The command Windows should invoke at login.
+
+        Frozen exe → run the exe directly; source checkout → fall back to
+        pythonw.exe + app_web.py so dev installs still work.
+        """
+        if getattr(sys, "frozen", False):
+            return f'"{sys.executable}"'
+        py = sys.executable.replace("python.exe", "pythonw.exe")
+        return f'"{py}" "{os.path.join(HERE, "app_web.py")}"'
+
+    def get_autostart(self):
+        if not sys.platform.startswith("win"):
+            return {"ok": True, "enabled": False, "supported": False}
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, self._AUTOSTART_KEY) as k:
+                val, _ = winreg.QueryValueEx(k, self._AUTOSTART_NAME)
+                return {"ok": True, "supported": True, "enabled": True, "command": val}
+        except FileNotFoundError:
+            return {"ok": True, "supported": True, "enabled": False}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def set_autostart(self, on):
+        if not sys.platform.startswith("win"):
+            return {"ok": False, "error": "autostart is Windows-only"}
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, self._AUTOSTART_KEY,
+                                0, winreg.KEY_SET_VALUE) as k:
+                if on:
+                    winreg.SetValueEx(k, self._AUTOSTART_NAME, 0, winreg.REG_SZ,
+                                      self._autostart_target())
+                else:
+                    try: winreg.DeleteValue(k, self._AUTOSTART_NAME)
+                    except FileNotFoundError: pass
+            return {"ok": True, "enabled": bool(on)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     def _gamepad_loop(self):
         import time
         while not self._pad_stop.is_set():

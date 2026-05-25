@@ -333,7 +333,7 @@ function App() {
   const [perKeyColors, setPerKeyColors] = useState({});
   const [zones, setZones] = useState([]);   // effect zones for Custom mode
   const [pattern, setPattern] = useState("twinkle");
-  const [brightness, setBrightness] = useState(80);
+  const [brightness, setBrightness] = useState(100);
   const [speed, setSpeed] = useState(60);
   const [power, setPower] = useState(true);
   const [fullColor, setFullColor] = useState(false);  // rainbow / full-spectrum

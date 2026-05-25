@@ -32,7 +32,9 @@ def _scale(rgb, f):
 # green channel) make mid-tones read too light — e.g. orange (255,165,0) looks
 # like dark yellow. Gamma-correcting the OUTPUT pulls mid values down so mixed
 # colors match the swatch. Pure R/G/B (0 and 255) are unchanged.
-GAMMA = 2.2
+# 2.2 was perceptually correct but crushed animation mid-tones to a dim look;
+# 1.6 keeps the orange-fix but leaves animations visibly brighter.
+GAMMA = 1.6
 _GAMMA_LUT = [round(((i / 255.0) ** GAMMA) * 255) for i in range(256)]
 
 

@@ -67,9 +67,12 @@ const Key = ({
     const g = parseInt(hx.slice(2, 4), 16) || 0;
     const b = parseInt(hx.slice(4, 6), 16) || 0;
     const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-    bg = lum < 18
+    // Lower threshold + brighter top stop so dim animation frames still show
+    // their color (not the unlit surface). cc -> ff at top makes the keycap
+    // read at the LED's intended brightness instead of a darkened gradient.
+    bg = lum < 6
       ? "rgba(255,255,255,0.025)"
-      : `linear-gradient(180deg, ${ledColor}, ${ledColor}cc)`;
+      : `linear-gradient(180deg, ${ledColor}, ${ledColor})`;
   }
 
   // Two-line labels (e.g. "1!" -> shifted/unshifted stack)

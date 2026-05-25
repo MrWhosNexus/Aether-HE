@@ -1368,14 +1368,43 @@ const SOCDSection = ({ socdMode, setSocdMode, hotkey, hotkeyEnabled, setHotkeyEn
 /* ===== OTHER SECTION ===== */
 const OtherSection = () => {
   const [winLock, setWinLock] = useState({ win: true, shiftTab: false, altTab: false, altF4: false });
+  const [autostart, setAutostart] = useState({ supported: false, enabled: false });
+  useEffect(() => {
+    if (!window.pywebview?.api?.get_autostart) return;
+    window.pywebview.api.get_autostart().then(r => {
+      if (r && r.ok) setAutostart({ supported: !!r.supported, enabled: !!r.enabled });
+    });
+  }, []);
+  const toggleAutostart = async () => {
+    const next = !autostart.enabled;
+    setAutostart(s => ({ ...s, enabled: next }));
+    const r = await window.pywebview.api.set_autostart(next);
+    if (!(r && r.ok)) setAutostart(s => ({ ...s, enabled: !next }));
+  };
   return (
     <div>
       <nav className="flex items-center gap-1 border-b border-white/[0.06] mb-5">
         <span className="relative flex items-center gap-2 px-2 h-10 -mb-px font-display text-[12px] uppercase tracking-[0.16em] text-[var(--accent)]">
-          <IGrid size={13}/> Other
+          <IGrid size={13}/> Settings
           <span className="absolute left-0 right-0 -bottom-px h-px bg-[var(--accent)] shadow-[0_0_8px_var(--accent-glow)]" />
         </span>
       </nav>
+
+      {autostart.supported && (
+        <div className="mb-6 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 max-w-md flex items-center justify-between">
+          <div>
+            <div className="font-display text-[12px] uppercase tracking-[0.18em] text-slate-200">Start on launch</div>
+            <div className="text-[11.5px] text-slate-400 mt-1">Open Aether automatically when you sign in to Windows.</div>
+          </div>
+          <button onClick={toggleAutostart}
+            className={`relative w-12 h-6 rounded-full border transition-colors shrink-0 ml-4
+                        ${autostart.enabled ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-white/[0.08]"}`}>
+            <span className={`absolute top-0.5 rounded-full transition-all
+                              ${autostart.enabled ? "left-[26px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-slate-400"}`}
+                  style={{ width: 18, height: 18 }}/>
+          </button>
+        </div>
+      )}
 
       <div>
         <div className="font-display text-[12px] uppercase tracking-[0.18em] text-slate-200 mb-3">If Win Lock is ON:</div>
