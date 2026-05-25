@@ -482,42 +482,44 @@ class PerKeyEffectEngine:
         z.state["bursts"] = alive
 
     def _g_rain(self, z, t, frame):
-        # Matrix-style drops falling down columns: bright head, fading tail.
-        # Columns are bucketed by x; each spawns drops that travel top->bottom
-        # (or the reverse when direction == 2). Speed sets fall rate + density.
+        # Matrix curtain: many columns stream downward at once, each drop a bright
+        # (near-white) head with a long fading tail in a palette color. Dense spawn
+        # so it reads like falling code. Spawn is FPS-independent; direction 2 = up.
         for idx in z.indices:
             frame[idx] = _scale(z.bg, z.bright)
-        # bucket keys into columns by rounded x
         cols = z.state.get("cols")
         if cols is None:
             cols = {}
             for idx in z.indices:
-                key = round(self._nx(idx) * 14)
-                cols.setdefault(key, []).append(idx)
-            # sort each column top->bottom by y
+                cols.setdefault(round(self._nx(idx) * 21), []).append(idx)  # ~per column
             for k in cols:
                 cols[k].sort(key=lambda i: self._ny(i))
             z.state["cols"] = cols
         drops = z.state.setdefault("drops", [])
-        fall = 1.5 + z.speed * 5.0
-        if random.random() < (0.20 + z.speed * 0.45) * _SPAWN_NORM:
+        fall = 2.6 + z.speed * 7.0                          # cells / second
+        TRAIL = 5.0                                         # long fading tail
+        if random.random() < (0.55 + z.speed * 0.9) * _SPAWN_NORM:   # dense curtain
             ck = random.choice(list(cols.keys()))
             drops.append([t, ck, random.choice(z.palette)])
-        alive = []
         up = z.direction == 2
+        alive = []
         for d in drops:
             t0, ck, col = d
             col_keys = cols[ck]
             head = (t - t0) * fall
-            if head - 3.0 > len(col_keys):
+            if head - TRAIL > len(col_keys):
                 continue
             alive.append(d)
             for pos, idx in enumerate(col_keys):
                 p = pos if not up else (len(col_keys) - 1 - pos)
                 dist = head - p
-                if 0.0 <= dist < 3.0:
-                    g = 1.0 - dist / 3.0          # bright head, fading tail
-                    frame[idx] = _scale(_lerp(frame[idx], col, g), z.bright)
+                if 0.0 <= dist < TRAIL:
+                    if dist < 0.7:                          # bright leading head
+                        c = _lerp(col, (255, 255, 255), 0.6)
+                        frame[idx] = _scale(c, z.bright)
+                    else:                                   # fading tail
+                        g = (1.0 - dist / TRAIL) ** 1.6
+                        frame[idx] = _scale(_lerp(frame[idx], col, g), z.bright)
         z.state["drops"] = alive
 
     def _g_comet(self, z, t, frame):
