@@ -459,19 +459,23 @@ class Api:
     def _send_frame(self, colors_by_index):
         """Stream one per-key RGB frame. Only re-sends the 54-byte pages that
         actually changed since the last frame — this cuts HID-OUT traffic a lot
-        for sparse effects (twinkle/reactive/fireworks), reducing input latency."""
-        with self._lock:
-            if not self.dev.is_open():
-                return
-            try:
-                pkts = protocol.build_custom_light(colors_by_index, slot=0)
-                last = self._last_pkts
-                for i, pkt in enumerate(pkts):
-                    if last is None or i >= len(last) or pkt != last[i]:
-                        self.dev.write(pkt)
-                self._last_pkts = pkts
-            except Exception:
-                self._last_pkts = None
+        for sparse effects (twinkle/reactive/fireworks), reducing input latency.
+
+        Runs in the effect engine thread. AulaDevice.write() already takes the
+        per-device lock for thread safety, so the engine doesn't grab the outer
+        Api lock here — that was just adding GIL+lock churn at ~60 fps and
+        starving the actual HID writes."""
+        if not self.dev.is_open():
+            return
+        try:
+            pkts = protocol.build_custom_light(colors_by_index, slot=0)
+            last = self._last_pkts
+            for i, pkt in enumerate(pkts):
+                if last is None or i >= len(last) or pkt != last[i]:
+                    self.dev.write(pkt)
+            self._last_pkts = pkts
+        except Exception:
+            self._last_pkts = None
 
     def _ensure_reactive(self, modes):
         """Press-reactive effects need live travel: attach a depth source (and a

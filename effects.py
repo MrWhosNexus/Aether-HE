@@ -17,8 +17,10 @@ import random
 import threading
 import time
 
-FPS = 120  # maxed for smoothness — board sustains ~1200 fps of writes, so this is
-           # far under the HID limit; motion is time-based so speed is unchanged.
+FPS = 60   # 120 saturated the USB pipe (8 cmd-9 pages/frame × 120 = 960 HID
+           # writes/sec) and the board fell behind, making animations stutter.
+           # 60fps is visually smooth and halves the write traffic — the engine
+           # is time-based so speed is unchanged.
 # Per-frame spawn probabilities (rain/twinkle/frenzy) were tuned at 30 fps; scale
 # them by this so spawn DENSITY stays the same regardless of frame rate.
 _SPAWN_NORM = 30.0 / FPS
