@@ -712,15 +712,38 @@
         applyingRef.current = false;
       }, 80);
     };
+    // Load on profile change / mount. Prefer Python-side persistence (survives
+    // WebView2 cache wipes / app reinstalls); fall back to localStorage.
     useEffect(() => {
-      // load on profile change / mount
-      try {
-        const s = JSON.parse(localStorage.getItem("aether-profile-" + profile));
-        if (s) applySettings(s);
-      } catch {}
+      let alive = true;
+      const localBlob = (() => {
+        try {
+          return JSON.parse(localStorage.getItem("aether-profile-" + profile));
+        } catch {
+          return null;
+        }
+      })();
+      if (localBlob) applySettings(localBlob);
+      (async () => {
+        if (!window.pywebview?.api?.load_settings) return;
+        try {
+          const r = await window.pywebview.api.load_settings();
+          if (!alive || !r || !r.ok || !r.settings) return;
+          const s = r.settings["profile-" + profile] || r.settings[profile];
+          if (s) applySettings(s);
+        } catch {}
+      })();
+      return () => {
+        alive = false;
+      };
     }, [profile]);
+
+    // Save (skipped while a load is applying). Writes to both localStorage and
+    // a JSON file in the user data dir via the Python bridge — debounced so we
+    // don't write on every keystroke. The file is the durable copy.
+    const saveTimer = useRef(null);
+    const allSettings = useRef({});
     useEffect(() => {
-      // save (skipped while a load is applying)
       if (applyingRef.current) return;
       const s = {
         pattern,
@@ -753,6 +776,11 @@
       try {
         localStorage.setItem("aether-profile-" + profile, JSON.stringify(s));
       } catch {}
+      allSettings.current["profile-" + profile] = s;
+      clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(() => {
+        if (window.pywebview?.api?.save_settings) window.pywebview.api.save_settings(allSettings.current);
+      }, 400);
     }, [profile, pattern, colors, bgColor, brightness, speed, power, fullColor, direction, striOrient, bgBright, perKeyColors, zones, actuation, rtPress, rtRelease, rtEnabled, polling, deadTop, deadBottom, switchId, socdProfiles, socdActive, hotkeyEnabled, socdMode, layer, gamepadMap]);
     const keyboardMode = section === "actuation" ? "actuation" : section === "lighting" ? "lighting" : section === "socd" ? "socd" : "keymap";
     const ledMap = useMemo(() => {

@@ -1360,16 +1360,27 @@ const SOCDSection = ({ socdMode, setSocdMode, hotkey, hotkeyEnabled, setHotkeyEn
 /* ===== OTHER SECTION ===== */
 const OtherSection = () => {
   const [winLock, setWinLock] = useState({ win: true, shiftTab: false, altTab: false, altF4: false });
-  const [autostart, setAutostart] = useState({ supported: false, enabled: false });
+  // Always render the toggle on Windows — the bridge probe was racing the
+  // first paint and the option would silently disappear.
+  const isWindows = (typeof navigator !== "undefined") && /Windows/i.test(navigator.userAgent || "");
+  const [autostart, setAutostart] = useState({ supported: isWindows, enabled: false });
   useEffect(() => {
-    if (!window.pywebview?.api?.get_autostart) return;
-    window.pywebview.api.get_autostart().then(r => {
-      if (r && r.ok) setAutostart({ supported: !!r.supported, enabled: !!r.enabled });
-    });
+    let cancelled = false;
+    const probe = () => {
+      if (!window.pywebview?.api?.get_autostart) return;
+      window.pywebview.api.get_autostart().then(r => {
+        if (cancelled || !r || !r.ok) return;
+        setAutostart({ supported: !!r.supported || isWindows, enabled: !!r.enabled });
+      }).catch(() => {});
+    };
+    probe();                                              // try now
+    const id = setInterval(probe, 600);                   // retry until bridge is ready
+    return () => { cancelled = true; clearInterval(id); };
   }, []);
   const toggleAutostart = async () => {
     const next = !autostart.enabled;
     setAutostart(s => ({ ...s, enabled: next }));
+    if (!window.pywebview?.api?.set_autostart) return;
     const r = await window.pywebview.api.set_autostart(next);
     if (!(r && r.ok)) setAutostart(s => ({ ...s, enabled: !next }));
   };

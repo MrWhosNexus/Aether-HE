@@ -416,6 +416,37 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    # ---- settings persistence (JSON in user data dir) ----
+    def _settings_path(self):
+        if sys.platform.startswith("win"):
+            root = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+        elif sys.platform == "darwin":
+            root = os.path.expanduser("~/Library/Application Support")
+        else:
+            root = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+        d = os.path.join(root, "AetherHE")
+        os.makedirs(d, exist_ok=True)
+        return os.path.join(d, "settings.json")
+
+    def load_settings(self):
+        try:
+            import json
+            with open(self._settings_path(), "r", encoding="utf-8") as f:
+                return {"ok": True, "settings": json.load(f)}
+        except FileNotFoundError:
+            return {"ok": True, "settings": None}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def save_settings(self, settings):
+        try:
+            import json
+            with open(self._settings_path(), "w", encoding="utf-8") as f:
+                json.dump(settings, f, indent=2)
+            return {"ok": True, "path": self._settings_path()}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     def set_autostart(self, on):
         if not sys.platform.startswith("win"):
             return {"ok": False, "error": "autostart is Windows-only"}

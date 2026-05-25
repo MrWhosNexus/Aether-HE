@@ -26,6 +26,22 @@ echo === Zipping dist\AetherHE -^> dist\AetherHE-windows.zip ===
 if exist dist\AetherHE-windows.zip del dist\AetherHE-windows.zip
 powershell -NoProfile -Command "Compress-Archive -Path dist\AetherHE\* -DestinationPath dist\AetherHE-windows.zip -Force" || exit /b 1
 
+REM === Inno Setup: produce the real installer (single-file setup .exe with
+REM shortcuts, Add/Remove entry, ViGEmBus driver install on first run).
+set "ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
+if not exist "%ISCC%" set "ISCC=%ProgramFiles%\Inno Setup 6\ISCC.exe"
+if not exist "%ISCC%" set "ISCC=%LocalAppData%\Programs\Inno Setup 6\ISCC.exe"
+if exist "%ISCC%" (
+  echo === Building installer with Inno Setup ===
+  "%ISCC%" installer.iss || exit /b 1
+  echo Installer: dist\AetherHE-Setup.exe
+) else (
+  echo [!] Inno Setup 6 not found. Install it (winget install JRSoftware.InnoSetup) and re-run to get dist\AetherHE-Setup.exe.
+)
+
 echo.
-echo Done.  Launch: dist\AetherHE\AetherHE.exe
+echo Done.
+echo   Folder app:   dist\AetherHE\AetherHE.exe
+echo   Shareable:    dist\AetherHE-windows.zip
+echo   Installer:    dist\AetherHE-Setup.exe
 endlocal

@@ -12,14 +12,23 @@ analog→virtual-gamepad pipeline (Hall-effect travel → Xbox 360 sticks/trigge
 
 ## Install — Windows
 
-**Fastest path (prebuilt):**
+**Fastest path — real installer (recommended):**
 
-1. Download `AetherHE-windows.zip` from the
-   [Releases](https://github.com/MrWhosNexus/aether-linux-app/releases) page
-   (or grab `dist/AetherHE-windows.zip` from a local build).
-2. Extract anywhere — e.g. `C:\Program Files\AetherHE\`.
-3. Run **`AetherHE.exe`**. The first launch will prompt to pair the keyboard.
-4. (Optional) Open **Settings → Start on launch** to auto-open at sign-in.
+1. Download **`AetherHE-Setup.exe`** from
+   [Releases](https://github.com/MrWhosNexus/aether-linux-app/releases)
+   (or grab `dist/AetherHE-Setup.exe` from a local build).
+2. Run it. The wizard installs to `Program Files\AetherHE`, creates
+   Start Menu + Desktop shortcuts, registers an entry in Add/Remove
+   Programs, and (if you check the box) installs the ViGEmBus driver
+   for virtual gamepad support.
+3. Launch from Start Menu / Desktop. Pair the keyboard from the pill
+   in the top-right.
+
+**Or use the portable zip** — `AetherHE-windows.zip`, extract anywhere,
+run `AetherHE.exe`. No shortcuts, no uninstaller; just the app folder.
+
+**Settings persistence** — lighting / actuation / SOCD / gamepad mappings
+auto-save to `%LocalAppData%\AetherHE\settings.json` and reload on launch.
 
 **Virtual gamepad (optional):** The Gamepad tab needs the ViGEmBus kernel
 driver. It's bundled with the build — when you first toggle gamepad capture
@@ -34,9 +43,14 @@ venv-web\Scripts\pip install -r requirements.txt pyinstaller
 build_installer.bat
 ```
 
-Output: `dist\AetherHE\AetherHE.exe` (~45 MB folder, no Python required) and
-`dist\AetherHE-windows.zip` (~23 MB, shareable). The build script also
-downloads the latest ViGEmBus installer into `vendor/` on first run.
+Outputs:
+- `dist\AetherHE-Setup.exe` (~19 MB, single-file Inno Setup installer)
+- `dist\AetherHE\AetherHE.exe` (~45 MB folder, portable)
+- `dist\AetherHE-windows.zip` (~23 MB, shareable portable build)
+
+The script downloads the latest ViGEmBus installer into `vendor/` on
+first run and skips the Inno step if Inno Setup 6 isn't installed.
+`winget install JRSoftware.InnoSetup` covers that one-time prereq.
 
 To launch from source without building: `run.bat`.
 

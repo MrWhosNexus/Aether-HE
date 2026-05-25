@@ -52,7 +52,7 @@ exe = EXE(
     strip=False,
     upx=False,
     console=False,                # no terminal window
-    icon="ui/assets/logo.png" if False else None,
+    icon="ui/assets/logo.ico",
 )
 
 coll = COLLECT(
