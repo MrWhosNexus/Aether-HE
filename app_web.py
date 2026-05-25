@@ -461,18 +461,21 @@ class Api:
         actually changed since the last frame — this cuts HID-OUT traffic a lot
         for sparse effects (twinkle/reactive/fireworks), reducing input latency.
 
-        Runs in the effect engine thread. AulaDevice.write() already takes the
-        per-device lock for thread safety, so the engine doesn't grab the outer
-        Api lock here — that was just adding GIL+lock churn at ~60 fps and
-        starving the actual HID writes."""
+        Holds the outer Api lock for the WHOLE frame (single acquire, all 8
+        pages written under it). The lock has to be respected here because
+        _write() — used by set_light / set_trigger / actuation config — also
+        takes it; if the engine doesn't, a set_light packet can slip between
+        pages and yank the board out of Custom mode mid-frame, collapsing the
+        multi-color stream back to a single firmware effect."""
         if not self.dev.is_open():
             return
         try:
             pkts = protocol.build_custom_light(colors_by_index, slot=0)
             last = self._last_pkts
-            for i, pkt in enumerate(pkts):
-                if last is None or i >= len(last) or pkt != last[i]:
-                    self.dev.write(pkt)
+            with self._lock:
+                for i, pkt in enumerate(pkts):
+                    if last is None or i >= len(last) or pkt != last[i]:
+                        self.dev.write(pkt)
             self._last_pkts = pkts
         except Exception:
             self._last_pkts = None
