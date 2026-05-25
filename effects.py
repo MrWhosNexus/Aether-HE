@@ -572,18 +572,27 @@ class PerKeyEffectEngine:
             frame[idx] = green if idx in lit else dim
 
     def _g_reactive(self, z, t, frame):
-        # Lights each key by how far it is physically pressed (live travel), in a
-        # palette color, over the background. Released keys fall back to the bg.
+        # Press = snap to full color, then fade out over time. Depth no longer
+        # modulates brightness (which read as "dim down" while easing off the key).
+        # Faster `z.speed` shortens the fade.
         n = max(1, len(z.palette))
-        fade = z.state               # idx -> last lit fraction (for a soft decay)
+        st = z.state                  # idx -> {"f": fade fraction, "pressed": bool}
+        press_mm = 0.5                # depth at which a press fires
+        release_mm = 0.25             # hysteresis so light taps still trigger once
+        decay = 0.015 + z.speed * 0.04   # per-frame fade @ 120fps (~0.4..2s)
         for i, idx in enumerate(z.indices):
             mm = self._depths.get(idx, 0.0)
-            f = max(0.0, min(1.0, mm / 2.5))
-            prev = fade.get(idx, 0.0)
-            f = max(f, prev - 0.12)   # decay so a tap glows briefly after release
-            fade[idx] = f
+            s = st.get(idx) or {"f": 0.0, "pressed": False}
+            if not s["pressed"] and mm >= press_mm:
+                s["pressed"] = True
+                s["f"] = 1.0
+            elif s["pressed"] and mm < release_mm:
+                s["pressed"] = False
+            if not s["pressed"]:
+                s["f"] = max(0.0, s["f"] - decay)
+            st[idx] = s
             col = z.palette[i % n] if n > 1 else z.palette[0]
-            frame[idx] = _scale(_lerp(z.bg, col, f), z.bright)
+            frame[idx] = _scale(_lerp(z.bg, col, s["f"]), z.bright)
 
 
 # Back-compat alias for stale imports.

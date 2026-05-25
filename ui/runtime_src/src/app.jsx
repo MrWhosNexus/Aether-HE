@@ -603,7 +603,7 @@ function App() {
       apiCall("read_live").then(d => {
         if (alive && d && typeof d === "object" && !(d.ok === false)) setLiveDepths(d);
       });
-    }, 50);
+    }, 16);
     return () => { alive = false; clearInterval(id); };
   }, [connected, travelTest]);
 
@@ -642,7 +642,7 @@ function App() {
         if (!alive) return;
         setLightFrame(f && typeof f === "object" && !(f.ok === false) && Object.keys(f).length ? f : null);
       });
-    }, 66);
+    }, 16);
     return () => { alive = false; clearInterval(id); };
   }, [connected, section]);
 
