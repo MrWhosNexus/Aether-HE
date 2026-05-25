@@ -317,36 +317,44 @@ class PerKeyEffectEngine:
         z.state["rips"] = alive
 
     def _g_autorip(self, z, t, frame):
-        # Auto Ripple: vertical wavefronts born at the CENTER that travel outward
-        # to both sides (left & right), running across the board, then fade as they
-        # reach the edges. New ripples spawn automatically; multi-color over the bg.
+        # Auto Ripple: wavefronts from the CENTER spreading outward. Each pulse
+        # paints its band as a GRADIENT through the full palette (so all colors
+        # show simultaneously across the wavefront), not a single random color.
         # direction picks the axis/origin: default = horizontal from center;
         #   1 = horizontal toward center (edges -> middle)
         #   2 = vertical from center (out top & bottom)
         #   3 = vertical toward center
         rips = z.state.setdefault("rips", [])
-        gap = max(0.7, 1.8 - z.speed * 1.0)        # fewer drops by default (pond-like)
+        gap = max(0.7, 1.8 - z.speed * 1.0)
         if t - z.state.get("last_spawn", 0.0) >= gap:
             z.state["last_spawn"] = t
-            rips.append((t, random.choice(z.palette)))
+            rips.append(t)                 # only the birth time — palette is the gradient
         for idx in z.indices:
             frame[idx] = _scale(z.bg, z.bright)
-        flow = 0.14 + z.speed * 0.7                # slower spread by default
-        band = 0.21                                # wavefront ~3 keys wider (larger groups)
+        flow = 0.14 + z.speed * 0.7
+        band = 0.21
         vertical = z.direction in (2, 3)
         inward = z.direction in (1, 3)
+        n = max(1, len(z.palette))
         alive = []
-        for (t0, col) in rips:
+        for t0 in rips:
             r = (t - t0) * flow
             if r > 0.62:
                 continue
-            alive.append((t0, col))
-            rr = (0.5 - r) if inward else r          # toward-center vs from-center
+            alive.append(t0)
+            rr = (0.5 - r) if inward else r
             g0 = max(0.0, 1.0 - r / 0.58)
             for idx in z.indices:
                 p = self._ny(idx) if vertical else self._nx(idx)
-                d = min(abs(p - (0.5 + rr)), abs(p - (0.5 - rr)))  # two fronts off center
+                # signed offset from the wavefront so the band traverses the
+                # full palette (leading half = first colors, trailing = last).
+                off_a = p - (0.5 + rr)
+                off_b = p - (0.5 - rr)
+                d = min(abs(off_a), abs(off_b))
                 if d < band:
+                    off = off_a if abs(off_a) <= abs(off_b) else off_b
+                    pos = ((off / band) * 0.5 + 0.5) * n     # 0..n across the band
+                    col = _palette_at(z.palette, pos)
                     frame[idx] = _scale(_lerp(frame[idx], col, g0 * (1.0 - d / band)), z.bright)
         z.state["rips"] = alive
 

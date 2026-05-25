@@ -1002,7 +1002,7 @@
         apiCall("read_live").then(d => {
           if (alive && d && typeof d === "object" && !(d.ok === false)) setLiveDepths(d);
         });
-      }, 16);
+      }, 33); // ~30fps — smooth enough for visual depth, doesn't starve the lighting stream
       return () => {
         alive = false;
         clearInterval(id);
@@ -1048,6 +1048,9 @@
 
     // Mirror the live host effect onto the IN-APP keyboard: poll the current frame
     // while on the Lighting tab and paint each key with its real animated color.
+    // The host engine streams cmd-9 pages to the board at 120fps under the GIL;
+    // a tight polling loop here starves it and makes the board look choppy.
+    // 50ms (~20fps) is plenty for the on-screen mirror and leaves the engine room.
     useEffect(() => {
       if (!connected || section !== "lighting") {
         setLightFrame(null);
@@ -1059,7 +1062,7 @@
           if (!alive) return;
           setLightFrame(f && typeof f === "object" && !(f.ok === false) && Object.keys(f).length ? f : null);
         });
-      }, 16);
+      }, 50);
       return () => {
         alive = false;
         clearInterval(id);
