@@ -19,6 +19,9 @@ import time
 
 FPS = 120  # maxed for smoothness — board sustains ~1200 fps of writes, so this is
            # far under the HID limit; motion is time-based so speed is unchanged.
+# Per-frame spawn probabilities (rain/twinkle/frenzy) were tuned at 30 fps; scale
+# them by this so spawn DENSITY stays the same regardless of frame rate.
+_SPAWN_NORM = 30.0 / FPS
 
 
 def _scale(rgb, f):
@@ -182,7 +185,7 @@ class PerKeyEffectEngine:
     def _g_twinkle(self, z, t, frame):
         life = 1.4 - z.speed
         for idx in z.indices:
-            if idx not in z.state and random.random() < (0.10 + z.speed * 0.35) / max(1, len(z.indices)) * 6:
+            if idx not in z.state and random.random() < (0.10 + z.speed * 0.35) / max(1, len(z.indices)) * 6 * _SPAWN_NORM:
                 z.state[idx] = (t, random.choice(z.palette))
         for idx in z.indices:
             tw = z.state.get(idx)
@@ -430,7 +433,7 @@ class PerKeyEffectEngine:
         if not bursts and not z.state.get("seeded"):
             z.state["seeded"] = True
             bursts.append((t, random.choice(z.palette), random.random(), random.random()))
-        if random.random() < 0.22 + z.speed * 0.35:
+        if random.random() < (0.22 + z.speed * 0.35) * _SPAWN_NORM:
             bursts.append((t, random.choice(z.palette), random.random(), random.random()))
         alive = []
         for (t0, col, bx, by) in bursts:
@@ -497,7 +500,7 @@ class PerKeyEffectEngine:
             z.state["cols"] = cols
         drops = z.state.setdefault("drops", [])
         fall = 1.5 + z.speed * 5.0
-        if random.random() < 0.20 + z.speed * 0.45:
+        if random.random() < (0.20 + z.speed * 0.45) * _SPAWN_NORM:
             ck = random.choice(list(cols.keys()))
             drops.append([t, ck, random.choice(z.palette)])
         alive = []
