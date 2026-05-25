@@ -22,7 +22,14 @@ from dataclasses import dataclass
 
 log = logging.getLogger(__name__)
 
-MAX_TRAVEL_MM = 4.0
+# Raw board reports 0..~4mm, but a comfortable "hard press" only reaches ~3.4mm
+# (the actuation max), and rest noise lives below ~0.15mm. Mapping the whole
+# 0..4mm window onto 0..100% means a normal typing press tops the trigger at
+# ~50% — not enough to overcome a racing game's input deadzone, so the car
+# never accelerates further when you press harder. Compressing the active
+# window to FLOOR..CEILING gives a usable proportional response.
+MAX_TRAVEL_MM = 3.4
+TRAVEL_FLOOR_MM = 0.15
 
 # --- backend probing --------------------------------------------------------
 
@@ -243,8 +250,10 @@ class _EvdevPad:
             return
         axis_val = {}
         for m in self.mappings:
-            depth = max(0.0, min(self.max_travel, depths.get(m.key, 0.0)))
-            frac = depth / self.max_travel
+            raw = depths.get(m.key, 0.0)
+            depth = max(0.0, min(self.max_travel, raw))
+            span = max(0.001, self.max_travel - TRAVEL_FLOOR_MM)
+            frac = max(0.0, min(1.0, (depth - TRAVEL_FLOOR_MM) / span))
             if m.axis in self._axis_code:
                 code, is_trig = self._axis_code[m.axis]
                 if is_trig:
@@ -312,8 +321,10 @@ class _VgamepadPad:
         lx = ly = rx = ry = 0.0
         lt = rt = 0.0
         for m in self.mappings:
-            depth = max(0.0, min(self.max_travel, depths.get(m.key, 0.0)))
-            frac = depth / self.max_travel
+            raw = depths.get(m.key, 0.0)
+            depth = max(0.0, min(self.max_travel, raw))
+            span = max(0.001, self.max_travel - TRAVEL_FLOOR_MM)
+            frac = max(0.0, min(1.0, (depth - TRAVEL_FLOOR_MM) / span))
             if m.axis in _STICK_AXES:
                 v = m.direction * frac
                 if   m.axis == "LX": lx += v
