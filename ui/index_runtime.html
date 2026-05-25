@@ -35859,26 +35859,7 @@
         background: c
       },
       title: c
-    }))), /*#__PURE__*/React.createElement("div", {
-      className: "mt-3"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "flex items-baseline justify-between mb-1.5"
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "font-display text-[10px] uppercase tracking-[0.22em] text-slate-400"
-    }, "Background brightness"), /*#__PURE__*/React.createElement("span", {
-      className: "font-mono text-[11px] text-[var(--accent)]"
-    }, Math.round(bgBright ?? 100), "%")), /*#__PURE__*/React.createElement("input", {
-      type: "range",
-      className: "aether w-full",
-      min: 0,
-      max: 100,
-      step: 1,
-      value: bgBright ?? 100,
-      style: {
-        "--pct": (bgBright ?? 100) + "%"
-      },
-      onChange: e => setBgBright(parseFloat(e.target.value))
-    })))), /*#__PURE__*/React.createElement("div", {
+    }))))), /*#__PURE__*/React.createElement("div", {
       className: "flex flex-col gap-4"
     }, pattern !== "custom" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
       className: "flex items-baseline justify-between mb-2"
@@ -38314,8 +38295,11 @@
       if (pattern === "custom") return; // custom effect (below) owns the engine
       clearTimeout(lightTimer.current);
       lightTimer.current = setTimeout(() => {
-        const bf = Math.max(0, Math.min(1, bgBright / 100));
-        const bgScaled = hexToRgbArr(bgColor).map(c => Math.round(c * bf));
+        // Unified brightness: do NOT pre-scale the bg by bgBright here. The host
+        // engine applies the main `brightness` to both fg and bg equally, so any
+        // pre-scaling here would make the bg dimmer than the effect colors by
+        // exactly the bgBright ratio (the two used to fight).
+        const bgScaled = hexToRgbArr(bgColor);
         // Animated effects run on the HOST per-key engine so they can show the
         // full multi-color palette (firmware effects only hold one fg+bg). Only
         // Static and Full-RGB use the firmware mode directly.
@@ -38337,8 +38321,11 @@
     useEffect(() => {
       if (!connected || pattern !== "custom") return;
       if (zones.length) {
-        const bf = Math.max(0, Math.min(1, bgBright / 100));
-        const bgScaled = hexToRgbArr(bgColor).map(c => Math.round(c * bf));
+        // Unified brightness: do NOT pre-scale the bg by bgBright here. The host
+        // engine applies the main `brightness` to both fg and bg equally, so any
+        // pre-scaling here would make the bg dimmer than the effect colors by
+        // exactly the bgBright ratio (the two used to fight).
+        const bgScaled = hexToRgbArr(bgColor);
         apiCall("start_zones", zones.map(z => ({
           codes: z.codes,
           mode: z.mode,

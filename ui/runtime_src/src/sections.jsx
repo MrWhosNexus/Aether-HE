@@ -953,17 +953,9 @@ const LightingSection = ({
                   title={c}/>
               ))}
             </div>
-            {/* Background brightness — dims the bg independently of the effect */}
-            <div className="mt-3">
-              <div className="flex items-baseline justify-between mb-1.5">
-                <span className="font-display text-[10px] uppercase tracking-[0.22em] text-slate-400">Background brightness</span>
-                <span className="font-mono text-[11px] text-[var(--accent)]">{Math.round(bgBright ?? 100)}%</span>
-              </div>
-              <input type="range" className="aether w-full"
-                min={0} max={100} step={1} value={bgBright ?? 100}
-                style={{ "--pct": (bgBright ?? 100) + "%" }}
-                onChange={(e) => setBgBright(parseFloat(e.target.value))}/>
-            </div>
+            {/* Background brightness slider removed — the single Brightness
+                control above now drives both the effect colors and the bg
+                together, so there's nothing to fight. */}
           </div>
         </div>
 

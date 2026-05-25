@@ -915,8 +915,11 @@
       if (pattern === "custom") return; // custom effect (below) owns the engine
       clearTimeout(lightTimer.current);
       lightTimer.current = setTimeout(() => {
-        const bf = Math.max(0, Math.min(1, bgBright / 100));
-        const bgScaled = hexToRgbArr(bgColor).map(c => Math.round(c * bf));
+        // Unified brightness: do NOT pre-scale the bg by bgBright here. The host
+        // engine applies the main `brightness` to both fg and bg equally, so any
+        // pre-scaling here would make the bg dimmer than the effect colors by
+        // exactly the bgBright ratio (the two used to fight).
+        const bgScaled = hexToRgbArr(bgColor);
         // Animated effects run on the HOST per-key engine so they can show the
         // full multi-color palette (firmware effects only hold one fg+bg). Only
         // Static and Full-RGB use the firmware mode directly.
@@ -938,8 +941,11 @@
     useEffect(() => {
       if (!connected || pattern !== "custom") return;
       if (zones.length) {
-        const bf = Math.max(0, Math.min(1, bgBright / 100));
-        const bgScaled = hexToRgbArr(bgColor).map(c => Math.round(c * bf));
+        // Unified brightness: do NOT pre-scale the bg by bgBright here. The host
+        // engine applies the main `brightness` to both fg and bg equally, so any
+        // pre-scaling here would make the bg dimmer than the effect colors by
+        // exactly the bgBright ratio (the two used to fight).
+        const bgScaled = hexToRgbArr(bgColor);
         apiCall("start_zones", zones.map(z => ({
           codes: z.codes,
           mode: z.mode,
