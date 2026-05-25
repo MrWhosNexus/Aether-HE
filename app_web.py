@@ -8,6 +8,7 @@ per-key colors to the board's global lighting command.
 """
 import logging
 import os
+import sys
 import threading
 
 import webview
@@ -21,7 +22,12 @@ import gamepad
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("aether.web")
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+# When frozen by PyInstaller, ui/ ships next to the exe (or inside _MEIPASS for
+# --onefile). sys._MEIPASS is the extraction dir at runtime in onefile mode.
+if getattr(sys, "frozen", False):
+    HERE = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+else:
+    HERE = os.path.dirname(os.path.abspath(__file__))
 # Prefer the baked-in-bridge build (ui/runtime_src/build_runtime.py); fall back
 # to the raw design bundle so the app still launches if it hasn't been built.
 _RUNTIME = os.path.join(HERE, "ui", "index_runtime.html")

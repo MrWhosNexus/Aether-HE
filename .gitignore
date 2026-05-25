@@ -7,3 +7,7 @@ venv/
 # OS / editor
 .DS_Store
 *.swp
+# PyInstaller build outputs (rebuild via build_installer.bat)
+build/
+dist/
+*.spec.bak
