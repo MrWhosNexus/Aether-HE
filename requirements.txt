@@ -8,10 +8,11 @@ pywebview>=6.0
 # Keyboard HID I/O (cross-platform).
 hidapi>=0.14
 
-# Virtual gamepad via Linux uinput. LINUX ONLY — won't build on Windows, so it is
-# skipped there; the gamepad feature self-disables when evdev is unavailable.
-# (Windows port of the gamepad will use vgamepad + ViGEmBus.)
-evdev>=1.9; sys_platform == "linux"
+# Virtual gamepad. Linux uses uinput via python-evdev; Windows uses vgamepad
+# + ViGEmBus (install ViGEmBus driver once from
+# https://github.com/nefarius/ViGEmBus). gamepad.py picks the backend at runtime.
+evdev>=1.9;   sys_platform == "linux"
+vgamepad>=0.1; sys_platform == "win32"
 
 # Optional helpers:
 #   pyusb        — USB reset for a stuck interface (cycle_modes.py); needs a libusb backend.
