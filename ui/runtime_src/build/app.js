@@ -276,26 +276,40 @@
     });
     return m;
   })();
-  const PROFILES = [{
-    id: "default",
-    name: "Profile Default"
-  }, {
+
+  // Profiles are dynamic (add/rename/duplicate/delete) and live in settings.json.
+  // SEED_PROFILE is the very first profile created on a fresh install; everything
+  // else is created at runtime by the user.
+  const SEED_PROFILE = {
     id: "p1",
-    name: "Profile 1",
-    editable: true
-  }, {
-    id: "p2",
-    name: "Profile 2",
-    editable: true
-  }, {
-    id: "p3",
-    name: "Profile 3",
-    editable: true
-  }, {
-    id: "p4",
-    name: "Profile 4",
-    editable: true
-  }];
+    name: "Default",
+    state: {}
+  };
+
+  // Migrate the old per-key blob shape ({"profile-p1": {...}, "profile-p2": {...}})
+  // to the new {profiles:[...], activeProfile, globals} shape so nobody loses
+  // their existing settings file.
+  const migrateSettings = raw => {
+    if (!raw || typeof raw !== "object") return null;
+    if (Array.isArray(raw.profiles)) return raw; // already new shape
+    const profs = [];
+    for (const k of Object.keys(raw)) {
+      if (!k.startsWith("profile-")) continue;
+      const id = k.slice("profile-".length);
+      const nm = id === "default" ? "Default" : id.toUpperCase();
+      profs.push({
+        id,
+        name: nm,
+        state: raw[k] || {}
+      });
+    }
+    if (!profs.length) return null;
+    return {
+      profiles: profs,
+      activeProfile: profs[0].id,
+      globals: {}
+    };
+  };
   const NAV = [{
     id: "keymap",
     label: "Keymap",
@@ -328,20 +342,23 @@
     })
   }, {
     id: "other",
-    label: "Other",
-    icon: /*#__PURE__*/React.createElement(IGrid, {
+    label: "Settings",
+    icon: /*#__PURE__*/React.createElement(ISettings, {
       size: 14
     })
   }];
 
   /* ============================================================
-     Profile dropdown
+     Profile dropdown — list, switch, rename, duplicate, delete, add new
      ============================================================ */
   const ProfileDropdown = ({
-    value,
+    profiles,
+    activeId,
     onChange,
-    names = {},
-    onRename
+    onRename,
+    onAdd,
+    onDuplicate,
+    onDelete
   }) => {
     const [open, setOpen] = useState(false);
     const [editing, setEditing] = useState(null);
@@ -357,15 +374,30 @@
       document.addEventListener("mousedown", h);
       return () => document.removeEventListener("mousedown", h);
     }, []);
-    const nameOf = p => names[p.id] || p.name;
-    const current = PROFILES.find(p => p.id === value) || PROFILES[0];
+    const current = profiles.find(p => p.id === activeId) || profiles[0];
+    if (!current) return null;
     const startEdit = p => {
       setEditing(p.id);
-      setDraft(nameOf(p));
+      setDraft(p.name);
     };
     const commit = () => {
-      if (editing && onRename) onRename(editing, draft.trim());
+      if (editing && onRename && draft.trim()) onRename(editing, draft.trim());
       setEditing(null);
+    };
+    const handleAdd = () => {
+      const name = (window.prompt("New profile name", `Profile ${profiles.length + 1}`) || "").trim();
+      if (!name) return;
+      const dup = window.confirm("Start from a copy of the current profile? (Cancel = start blank.)");
+      onAdd(name, dup);
+      setOpen(false);
+    };
+    const handleDelete = p => {
+      if (profiles.length <= 1) {
+        window.alert("You need at least one profile.");
+        return;
+      }
+      if (!window.confirm(`Delete "${p.name}"? This can't be undone.`)) return;
+      onDelete(p.id);
     };
     return /*#__PURE__*/React.createElement("div", {
       className: "relative",
@@ -379,13 +411,13 @@
       size: 12
     })), /*#__PURE__*/React.createElement("span", {
       className: "font-display text-[14px] font-medium text-slate-100"
-    }, nameOf(current)), /*#__PURE__*/React.createElement(IChevronD, {
+    }, current.name), /*#__PURE__*/React.createElement(IChevronD, {
       size: 13,
       className: `text-slate-500 transition-transform ${open ? "rotate-180" : ""}`
     })), open && /*#__PURE__*/React.createElement("div", {
-      className: "absolute top-full left-0 mt-1.5 w-[240px] rounded-xl p-1.5 menu-pop z-50 animate-[fadeIn_140ms_ease-out]"
-    }, PROFILES.map(p => {
-      const active = p.id === value;
+      className: "absolute top-full left-0 mt-1.5 w-[280px] rounded-xl p-1.5 menu-pop z-50 animate-[fadeIn_140ms_ease-out]"
+    }, profiles.map(p => {
+      const active = p.id === activeId;
       if (editing === p.id) {
         return /*#__PURE__*/React.createElement("div", {
           key: p.id,
@@ -404,46 +436,79 @@
       }
       return /*#__PURE__*/React.createElement("div", {
         key: p.id,
-        className: `w-full flex items-center justify-between gap-2 pl-2.5 pr-1.5 h-9 rounded-lg transition-colors
+        className: `w-full flex items-center gap-1 pl-2.5 pr-1 h-9 rounded-lg transition-colors
                             ${active ? "bg-[var(--accent)]/15 text-slate-100" : "text-slate-300 hover:bg-white/[0.04] hover:text-slate-100"}`
       }, /*#__PURE__*/React.createElement("button", {
         onClick: () => {
           onChange(p.id);
           setOpen(false);
         },
-        className: "flex-1 flex items-center gap-2 text-left"
+        className: "flex-1 flex items-center gap-2 text-left min-w-0"
       }, /*#__PURE__*/React.createElement("span", {
-        className: "font-display text-[13px]"
-      }, nameOf(p)), active && /*#__PURE__*/React.createElement(ICheck, {
+        className: "font-display text-[13px] truncate"
+      }, p.name), active && /*#__PURE__*/React.createElement(ICheck, {
         size: 12,
-        className: "text-[var(--accent)]"
+        className: "text-[var(--accent)] shrink-0"
       })), /*#__PURE__*/React.createElement("button", {
         onClick: e => {
           e.stopPropagation();
           startEdit(p);
         },
         title: "Rename",
-        className: "text-slate-500 hover:text-slate-200 px-1"
+        className: "text-slate-500 hover:text-slate-200 px-1.5 h-7 grid place-items-center"
       }, /*#__PURE__*/React.createElement(IEdit, {
         size: 11
+      })), /*#__PURE__*/React.createElement("button", {
+        onClick: e => {
+          e.stopPropagation();
+          onDuplicate(p.id);
+        },
+        title: "Duplicate",
+        className: "text-slate-500 hover:text-slate-200 px-1.5 h-7 grid place-items-center"
+      }, /*#__PURE__*/React.createElement(ILink, {
+        size: 11
+      })), /*#__PURE__*/React.createElement("button", {
+        onClick: e => {
+          e.stopPropagation();
+          handleDelete(p);
+        },
+        title: "Delete",
+        disabled: profiles.length <= 1,
+        className: "text-slate-500 hover:text-rose-300 disabled:text-slate-700 disabled:cursor-not-allowed px-1.5 h-7 grid place-items-center"
+      }, /*#__PURE__*/React.createElement(ITrash, {
+        size: 11
       })));
-    })));
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "h-px bg-white/[0.06] my-1.5"
+    }), /*#__PURE__*/React.createElement("button", {
+      onClick: handleAdd,
+      className: "w-full flex items-center gap-2 pl-2.5 pr-1.5 h-9 rounded-lg text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
+    }, /*#__PURE__*/React.createElement(IPlus, {
+      size: 12
+    }), /*#__PURE__*/React.createElement("span", {
+      className: "font-display text-[12.5px] uppercase tracking-[0.14em]"
+    }, "New profile"))));
   };
 
   /* ============================================================
      Top bar — Notion-style page header
      ============================================================ */
   const TopBar = ({
-    profile,
-    setProfile,
-    profileNames,
+    profiles,
+    activeId,
+    onProfileChange,
     onRenameProfile,
+    onAddProfile,
+    onDuplicateProfile,
+    onDeleteProfile,
     connected,
     connecting,
     onTogglePair,
     autoConnect,
     setAutoConnect,
-    onOpenTheme
+    onOpenTheme,
+    onOpenSettings,
+    saveStatus
   }) => /*#__PURE__*/React.createElement("header", {
     className: "sticky top-0 z-40 bg-[var(--bg-0)]/70 backdrop-blur-xl border-b border-white/[0.04]"
   }, /*#__PURE__*/React.createElement("div", {
@@ -461,11 +526,17 @@
   }, "Aether"))), /*#__PURE__*/React.createElement("span", {
     className: "mx-3 h-5 w-px bg-white/[0.06]"
   }), /*#__PURE__*/React.createElement(ProfileDropdown, {
-    value: profile,
-    onChange: setProfile,
-    names: profileNames,
-    onRename: onRenameProfile
-  }), /*#__PURE__*/React.createElement("div", {
+    profiles: profiles,
+    activeId: activeId,
+    onChange: onProfileChange,
+    onRename: onRenameProfile,
+    onAdd: onAddProfile,
+    onDuplicate: onDuplicateProfile,
+    onDelete: onDeleteProfile
+  }), saveStatus && /*#__PURE__*/React.createElement("span", {
+    className: `ml-2 font-mono text-[10px] uppercase tracking-[0.18em] transition-opacity
+                          ${saveStatus === "saving" ? "text-slate-500" : saveStatus === "saved" ? "text-emerald-400/80" : "text-rose-400/80"}`
+  }, saveStatus === "saving" ? "saving…" : saveStatus === "saved" ? "✓ saved" : "save failed"), /*#__PURE__*/React.createElement("div", {
     className: "ml-auto flex items-center gap-2"
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-2 pl-2.5 pr-3 h-9 rounded-xl border border-white/[0.05] bg-white/[0.025]"
@@ -510,6 +581,7 @@
     className: "font-display text-[12px] uppercase tracking-[0.16em]"
   }, connecting ? "…" : connected ? "Connected" : "Pair")), /*#__PURE__*/React.createElement("button", {
     title: "Settings",
+    onClick: onOpenSettings,
     className: "w-9 h-9 rounded-xl border border-white/[0.05] bg-white/[0.025] text-slate-400 hover:text-white hover:border-white/15 grid place-items-center transition-colors"
   }, /*#__PURE__*/React.createElement(ISettings, {
     size: 14
@@ -578,7 +650,17 @@
       }
     });
     const [section, setSection] = useState("actuation");
-    const [profile, setProfile] = useState("p1");
+
+    // Dynamic profile list + the currently active id.
+    const [profiles, setProfiles] = useState([{
+      ...SEED_PROFILE
+    }]);
+    const [activeId, setActiveId] = useState(SEED_PROFILE.id);
+    // The big "is settings ready to start saving" flag. Stays true (= block saves)
+    // until the first hydration attempt finishes, success or fail.
+    const [hydrated, setHydrated] = useState(false);
+    const [saveStatus, setSaveStatus] = useState(null); // null | "saving" | "saved" | "error"
+
     const [layer, setLayer] = useState("default");
 
     // Empty by default → actuation/dead-band/switch apply to ALL keys until you
@@ -659,24 +741,40 @@
     }]);
     const [socdActive, setSocdActive] = useState("SOCD1");
 
-    // Editable per-profile names (persisted globally).
-    const [profileNames, setProfileNames] = useState(() => {
-      try {
-        return JSON.parse(localStorage.getItem("aether-profile-names")) || {};
-      } catch {
-        return {};
-      }
+    // ---- per-profile persistence ----------------------------------------------
+    // applyingRef blocks the save effect while we hydrate (mount OR profile
+    // switch). Starts true so the very first render doesn't clobber the file
+    // before load_settings has a chance to run.
+    const applyingRef = useRef(true);
+    const collectState = () => ({
+      pattern,
+      colors,
+      bgColor,
+      brightness,
+      speed,
+      power,
+      fullColor,
+      direction,
+      striOrient,
+      bgBright,
+      perKeyColors,
+      zones,
+      actuation,
+      rtPress,
+      rtRelease,
+      rtEnabled,
+      polling,
+      deadTop,
+      deadBottom,
+      switchId,
+      socdProfiles,
+      socdActive,
+      hotkeyEnabled,
+      socdMode,
+      layer,
+      gamepadMap
     });
-    useEffect(() => {
-      try {
-        localStorage.setItem("aether-profile-names", JSON.stringify(profileNames));
-      } catch {}
-    }, [profileNames]);
-
-    // ---- per-profile persistence: every setting saved under its profile and
-    // reloaded on switch, so profiles keep their own settings (and survive reload).
-    const applyingRef = useRef(false);
-    const applySettings = s => {
+    const applyState = s => {
       if (!s) return;
       applyingRef.current = true;
       const set = (v, fn) => {
@@ -712,76 +810,160 @@
         applyingRef.current = false;
       }, 80);
     };
-    // Load on profile change / mount. Prefer Python-side persistence (survives
-    // WebView2 cache wipes / app reinstalls); fall back to localStorage.
+
+    // Hydrate from settings.json once the pywebview bridge is ready. We poll
+    // because Edge WebView2 sometimes mounts the bridge after first render, and
+    // a one-shot load misses the window — which is the bug that made nothing
+    // ever persist.
     useEffect(() => {
-      let alive = true;
-      const localBlob = (() => {
-        try {
-          return JSON.parse(localStorage.getItem("aether-profile-" + profile));
-        } catch {
-          return null;
+      let cancelled = false;
+      const tryLoad = async (attempt = 0) => {
+        if (cancelled) return;
+        if (!window.pywebview?.api?.load_settings) {
+          if (attempt < 50) setTimeout(() => tryLoad(attempt + 1), 100);else {
+            applyingRef.current = false;
+            setHydrated(true);
+          }
+          return;
         }
-      })();
-      if (localBlob) applySettings(localBlob);
-      (async () => {
-        if (!window.pywebview?.api?.load_settings) return;
         try {
           const r = await window.pywebview.api.load_settings();
-          if (!alive || !r || !r.ok || !r.settings) return;
-          const s = r.settings["profile-" + profile] || r.settings[profile];
-          if (s) applySettings(s);
+          if (cancelled) return;
+          const migrated = r && r.ok ? migrateSettings(r.settings) : null;
+          if (migrated && migrated.profiles && migrated.profiles.length) {
+            setProfiles(migrated.profiles);
+            const aid = migrated.activeProfile && migrated.profiles.find(p => p.id === migrated.activeProfile) ? migrated.activeProfile : migrated.profiles[0].id;
+            setActiveId(aid);
+            const active = migrated.profiles.find(p => p.id === aid);
+            if (active?.state) applyState(active.state);
+            if (migrated.globals?.autoConnect !== undefined) setAutoConnect(!!migrated.globals.autoConnect);
+            if (migrated.globals?.section) setSection(migrated.globals.section);
+          }
         } catch {}
-      })();
+        setTimeout(() => {
+          applyingRef.current = false;
+          setHydrated(true);
+        }, 100);
+      };
+      tryLoad();
       return () => {
-        alive = false;
+        cancelled = true;
       };
-    }, [profile]);
+    }, []);
 
-    // Save (skipped while a load is applying). Writes to both localStorage and
-    // a JSON file in the user data dir via the Python bridge — debounced so we
-    // don't write on every keystroke. The file is the durable copy.
+    // Mirror the live state into the active profile's `state` slot whenever
+    // anything changes — but only after hydration. Saves immediately (no
+    // debounce) because Python json.dump is microseconds and a close-too-fast
+    // window was a real source of "settings didn't persist". A tiny 120ms debounce
+    // coalesces bursts (sliders) without risking lost writes on quick exits.
     const saveTimer = useRef(null);
-    const allSettings = useRef({});
     useEffect(() => {
-      if (applyingRef.current) return;
-      const s = {
-        pattern,
-        colors,
-        bgColor,
-        brightness,
-        speed,
-        power,
-        fullColor,
-        direction,
-        striOrient,
-        bgBright,
-        perKeyColors,
-        zones,
-        actuation,
-        rtPress,
-        rtRelease,
-        rtEnabled,
-        polling,
-        deadTop,
-        deadBottom,
-        switchId,
-        socdProfiles,
-        socdActive,
-        hotkeyEnabled,
-        socdMode,
-        layer,
-        gamepadMap
+      if (!hydrated || applyingRef.current) return;
+      const state = collectState();
+      setProfiles(ps => {
+        const next = ps.map(p => p.id === activeId ? {
+          ...p,
+          state
+        } : p);
+        // Persist the whole blob (profiles + active id + globals).
+        clearTimeout(saveTimer.current);
+        saveTimer.current = setTimeout(() => {
+          if (!window.pywebview?.api?.save_settings) return;
+          setSaveStatus("saving");
+          const blob = {
+            profiles: next,
+            activeProfile: activeId,
+            globals: {
+              autoConnect,
+              section
+            }
+          };
+          Promise.resolve(window.pywebview.api.save_settings(blob)).then(r => {
+            setSaveStatus(r && r.ok ? "saved" : "error");
+            setTimeout(() => setSaveStatus(null), 1400);
+          }).catch(() => {
+            setSaveStatus("error");
+            setTimeout(() => setSaveStatus(null), 1400);
+          });
+        }, 120);
+        return next;
+      });
+    }, [hydrated, activeId, pattern, colors, bgColor, brightness, speed, power, fullColor, direction, striOrient, bgBright, perKeyColors, zones, actuation, rtPress, rtRelease, rtEnabled, polling, deadTop, deadBottom, switchId, socdProfiles, socdActive, hotkeyEnabled, socdMode, layer, gamepadMap, autoConnect, section]);
+
+    // Force a synchronous flush before the window closes / page unloads, so the
+    // 120ms debounce never costs us the last edit.
+    useEffect(() => {
+      const flush = () => {
+        if (!window.pywebview?.api?.save_settings || !hydrated) return;
+        const state = collectState();
+        const ps = profiles.map(p => p.id === activeId ? {
+          ...p,
+          state
+        } : p);
+        try {
+          window.pywebview.api.save_settings({
+            profiles: ps,
+            activeProfile: activeId,
+            globals: {
+              autoConnect,
+              section
+            }
+          });
+        } catch {}
       };
-      try {
-        localStorage.setItem("aether-profile-" + profile, JSON.stringify(s));
-      } catch {}
-      allSettings.current["profile-" + profile] = s;
-      clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => {
-        if (window.pywebview?.api?.save_settings) window.pywebview.api.save_settings(allSettings.current);
-      }, 400);
-    }, [profile, pattern, colors, bgColor, brightness, speed, power, fullColor, direction, striOrient, bgBright, perKeyColors, zones, actuation, rtPress, rtRelease, rtEnabled, polling, deadTop, deadBottom, switchId, socdProfiles, socdActive, hotkeyEnabled, socdMode, layer, gamepadMap]);
+      window.addEventListener("beforeunload", flush);
+      window.addEventListener("pagehide", flush);
+      return () => {
+        window.removeEventListener("beforeunload", flush);
+        window.removeEventListener("pagehide", flush);
+      };
+    });
+
+    // ---- profile management actions -------------------------------------------
+    const switchProfile = id => {
+      if (id === activeId) return;
+      const p = profiles.find(x => x.id === id);
+      if (!p) return;
+      setActiveId(id);
+      applyState(p.state || {});
+    };
+    const renameProfile = (id, name) => {
+      setProfiles(ps => ps.map(p => p.id === id ? {
+        ...p,
+        name
+      } : p));
+    };
+    const addProfile = (name, duplicateCurrent = false) => {
+      const newId = "p_" + Date.now().toString(36);
+      const seed = duplicateCurrent ? collectState() : {};
+      setProfiles(ps => [...ps, {
+        id: newId,
+        name: name || `Profile ${ps.length + 1}`,
+        state: seed
+      }]);
+      // Switch to it; if duplicating we already have the right state in memory.
+      setActiveId(newId);
+      if (!duplicateCurrent) applyState({});
+    };
+    const duplicateProfile = id => {
+      const src = profiles.find(p => p.id === id);
+      if (!src) return;
+      const newId = "p_" + Date.now().toString(36);
+      setProfiles(ps => [...ps, {
+        id: newId,
+        name: `${src.name} (copy)`,
+        state: JSON.parse(JSON.stringify(src.state || {}))
+      }]);
+    };
+    const deleteProfile = id => {
+      if (profiles.length <= 1) return;
+      const remain = profiles.filter(p => p.id !== id);
+      setProfiles(remain);
+      if (activeId === id) {
+        setActiveId(remain[0].id);
+        applyState(remain[0].state || {});
+      }
+    };
     const keyboardMode = section === "actuation" ? "actuation" : section === "lighting" ? "lighting" : section === "socd" ? "socd" : "keymap";
     const ledMap = useMemo(() => {
       if (section !== "lighting") return {};
@@ -1124,10 +1306,10 @@
 
     // Hero badge & breadcrumb vary by section
     const breadcrumb = useMemo(() => {
-      const profName = PROFILES.find(p => p.id === profile)?.name || "Profile";
+      const profName = (profiles.find(p => p.id === activeId) || {}).name || "Profile";
       const secName = NAV.find(n => n.id === section)?.label || "";
       return `${profName} · ${secName}`;
-    }, [profile, section]);
+    }, [profiles, activeId, section]);
     const heroBadge = section === "actuation" ? /*#__PURE__*/React.createElement("div", {
       className: "flex items-center gap-2"
     }, /*#__PURE__*/React.createElement(Stat, {
@@ -1180,19 +1362,21 @@
       }
     }) : null;
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(TopBar, {
-      profile: profile,
-      setProfile: setProfile,
-      profileNames: profileNames,
-      onRenameProfile: (id, name) => setProfileNames(n => ({
-        ...n,
-        [id]: name
-      })),
+      profiles: profiles,
+      activeId: activeId,
+      onProfileChange: switchProfile,
+      onRenameProfile: renameProfile,
+      onAddProfile: addProfile,
+      onDuplicateProfile: duplicateProfile,
+      onDeleteProfile: deleteProfile,
       connected: connected,
       connecting: connecting,
       onTogglePair: togglePair,
       autoConnect: autoConnect,
       setAutoConnect: setAutoConnect,
-      onOpenTheme: () => setThemeOpen(true)
+      onOpenTheme: () => setThemeOpen(true),
+      onOpenSettings: () => setSection("other"),
+      saveStatus: saveStatus
     }), /*#__PURE__*/React.createElement("main", {
       className: "max-w-[1400px] mx-auto px-6 lg:px-10 py-7 flex flex-col gap-6"
     }, /*#__PURE__*/React.createElement(SectionNav, {
@@ -1305,7 +1489,13 @@
       defaultMap: DEFAULT_PAD_MAP,
       error: gamepadError,
       onInstallDriver: handleInstallVigem
-    }), section === "other" && /*#__PURE__*/React.createElement(OtherSection, null))), /*#__PURE__*/React.createElement(ThemePopup, {
+    }), section === "other" && /*#__PURE__*/React.createElement(OtherSection, {
+      activeProfileName: (profiles.find(p => p.id === activeId) || {}).name || "Profile",
+      onResetProfile: () => {
+        if (!window.confirm("Reset this profile to defaults? This can't be undone.")) return;
+        applyState({});
+      }
+    }))), /*#__PURE__*/React.createElement(ThemePopup, {
       open: themeOpen,
       onClose: () => setThemeOpen(false),
       theme: theme,

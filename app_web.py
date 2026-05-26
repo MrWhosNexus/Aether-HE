@@ -447,6 +447,27 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    def settings_info(self):
+        """Where settings.json lives + whether it exists. UI shows this in the
+        Settings tab so users can find / back up / wipe the file."""
+        p = self._settings_path()
+        return {"ok": True, "path": p, "exists": os.path.exists(p)}
+
+    def reveal_settings(self):
+        """Open the settings folder in the OS file manager."""
+        p = self._settings_path()
+        d = os.path.dirname(p)
+        try:
+            if sys.platform.startswith("win"):
+                os.startfile(d)
+            elif sys.platform == "darwin":
+                import subprocess; subprocess.Popen(["open", d])
+            else:
+                import subprocess; subprocess.Popen(["xdg-open", d])
+            return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     def set_autostart(self, on):
         if not sys.platform.startswith("win"):
             return {"ok": False, "error": "autostart is Windows-only"}

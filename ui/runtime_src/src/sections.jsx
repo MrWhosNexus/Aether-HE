@@ -1358,23 +1358,33 @@ const SOCDSection = ({ socdMode, setSocdMode, hotkey, hotkeyEnabled, setHotkeyEn
 };
 
 /* ===== OTHER SECTION ===== */
-const OtherSection = () => {
+const OtherSection = ({ activeProfileName = "Profile", onResetProfile = () => {} }) => {
   const [winLock, setWinLock] = useState({ win: true, shiftTab: false, altTab: false, altF4: false });
   // Always render the toggle on Windows — the bridge probe was racing the
   // first paint and the option would silently disappear.
   const isWindows = (typeof navigator !== "undefined") && /Windows/i.test(navigator.userAgent || "");
   const [autostart, setAutostart] = useState({ supported: isWindows, enabled: false });
+  const [settingsInfo, setSettingsInfo] = useState({ path: "", exists: false });
   useEffect(() => {
     let cancelled = false;
     const probe = () => {
-      if (!window.pywebview?.api?.get_autostart) return;
-      window.pywebview.api.get_autostart().then(r => {
-        if (cancelled || !r || !r.ok) return;
-        setAutostart({ supported: !!r.supported || isWindows, enabled: !!r.enabled });
-      }).catch(() => {});
+      const api = window.pywebview?.api;
+      if (!api) return;
+      if (api.get_autostart) {
+        api.get_autostart().then(r => {
+          if (cancelled || !r || !r.ok) return;
+          setAutostart({ supported: !!r.supported || isWindows, enabled: !!r.enabled });
+        }).catch(() => {});
+      }
+      if (api.settings_info) {
+        api.settings_info().then(r => {
+          if (cancelled || !r || !r.ok) return;
+          setSettingsInfo({ path: r.path || "", exists: !!r.exists });
+        }).catch(() => {});
+      }
     };
-    probe();                                              // try now
-    const id = setInterval(probe, 600);                   // retry until bridge is ready
+    probe();
+    const id = setInterval(probe, 800);
     return () => { cancelled = true; clearInterval(id); };
   }, []);
   const toggleAutostart = async () => {
@@ -1383,6 +1393,9 @@ const OtherSection = () => {
     if (!window.pywebview?.api?.set_autostart) return;
     const r = await window.pywebview.api.set_autostart(next);
     if (!(r && r.ok)) setAutostart(s => ({ ...s, enabled: !next }));
+  };
+  const revealSettings = async () => {
+    if (window.pywebview?.api?.reveal_settings) await window.pywebview.api.reveal_settings();
   };
   return (
     <div>
@@ -1393,21 +1406,52 @@ const OtherSection = () => {
         </span>
       </nav>
 
-      {autostart.supported && (
-        <div className="mb-6 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 max-w-md flex items-center justify-between">
-          <div>
-            <div className="font-display text-[12px] uppercase tracking-[0.18em] text-slate-200">Start on launch</div>
-            <div className="text-[11.5px] text-slate-400 mt-1">Open Aether automatically when you sign in to Windows.</div>
+      {/* App / system */}
+      <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-4 max-w-3xl">
+        {autostart.supported && (
+          <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 flex items-center justify-between">
+            <div>
+              <div className="font-display text-[12px] uppercase tracking-[0.18em] text-slate-200">Start on launch</div>
+              <div className="text-[11.5px] text-slate-400 mt-1">Open Aether automatically when you sign in to Windows.</div>
+            </div>
+            <button onClick={toggleAutostart}
+              className={`relative w-12 h-6 rounded-full border transition-colors shrink-0 ml-4
+                          ${autostart.enabled ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-white/[0.08]"}`}>
+              <span className={`absolute top-0.5 rounded-full transition-all
+                                ${autostart.enabled ? "left-[26px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-slate-400"}`}
+                    style={{ width: 18, height: 18 }}/>
+            </button>
           </div>
-          <button onClick={toggleAutostart}
-            className={`relative w-12 h-6 rounded-full border transition-colors shrink-0 ml-4
-                        ${autostart.enabled ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-white/[0.08]"}`}>
-            <span className={`absolute top-0.5 rounded-full transition-all
-                              ${autostart.enabled ? "left-[26px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-slate-400"}`}
-                  style={{ width: 18, height: 18 }}/>
+        )}
+
+        {/* Current profile management */}
+        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+          <div className="font-display text-[12px] uppercase tracking-[0.18em] text-slate-200">Current profile</div>
+          <div className="text-[12.5px] text-slate-100 mt-1 truncate">{activeProfileName}</div>
+          <div className="text-[11px] text-slate-500 mt-0.5">Use the profile dropdown (top-left) to add, rename, duplicate or delete profiles.</div>
+          <button onClick={onResetProfile}
+            className="mt-3 px-3 h-8 rounded-md border border-rose-400/30 bg-rose-500/10 text-rose-100 font-display text-[10.5px] uppercase tracking-[0.16em] hover:bg-rose-500/15">
+            Reset this profile
           </button>
         </div>
-      )}
+
+        {/* Settings file */}
+        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 lg:col-span-2">
+          <div className="flex items-baseline justify-between gap-3">
+            <div className="font-display text-[12px] uppercase tracking-[0.18em] text-slate-200">Settings file</div>
+            <span className={`font-mono text-[10px] uppercase tracking-[0.18em] ${settingsInfo.exists ? "text-emerald-400/80" : "text-slate-500"}`}>
+              {settingsInfo.exists ? "✓ saved" : "not yet written"}
+            </span>
+          </div>
+          <div className="font-mono text-[11px] text-slate-400 mt-2 break-all">{settingsInfo.path || "(loading…)"}</div>
+          <div className="mt-3 flex gap-2">
+            <button onClick={revealSettings}
+              className="px-3 h-8 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-200 font-display text-[10.5px] uppercase tracking-[0.16em] hover:border-white/20">
+              Show in folder
+            </button>
+          </div>
+        </div>
+      </div>
 
       <div>
         <div className="font-display text-[12px] uppercase tracking-[0.18em] text-slate-200 mb-3">If Win Lock is ON:</div>

@@ -1856,7 +1856,10 @@
   };
 
   /* ===== OTHER SECTION ===== */
-  const OtherSection = () => {
+  const OtherSection = ({
+    activeProfileName = "Profile",
+    onResetProfile = () => {}
+  }) => {
     const [winLock, setWinLock] = useState({
       win: true,
       shiftTab: false,
@@ -1870,20 +1873,36 @@
       supported: isWindows,
       enabled: false
     });
+    const [settingsInfo, setSettingsInfo] = useState({
+      path: "",
+      exists: false
+    });
     useEffect(() => {
       let cancelled = false;
       const probe = () => {
-        if (!window.pywebview?.api?.get_autostart) return;
-        window.pywebview.api.get_autostart().then(r => {
-          if (cancelled || !r || !r.ok) return;
-          setAutostart({
-            supported: !!r.supported || isWindows,
-            enabled: !!r.enabled
-          });
-        }).catch(() => {});
+        const api = window.pywebview?.api;
+        if (!api) return;
+        if (api.get_autostart) {
+          api.get_autostart().then(r => {
+            if (cancelled || !r || !r.ok) return;
+            setAutostart({
+              supported: !!r.supported || isWindows,
+              enabled: !!r.enabled
+            });
+          }).catch(() => {});
+        }
+        if (api.settings_info) {
+          api.settings_info().then(r => {
+            if (cancelled || !r || !r.ok) return;
+            setSettingsInfo({
+              path: r.path || "",
+              exists: !!r.exists
+            });
+          }).catch(() => {});
+        }
       };
-      probe(); // try now
-      const id = setInterval(probe, 600); // retry until bridge is ready
+      probe();
+      const id = setInterval(probe, 800);
       return () => {
         cancelled = true;
         clearInterval(id);
@@ -1902,6 +1921,9 @@
         enabled: !next
       }));
     };
+    const revealSettings = async () => {
+      if (window.pywebview?.api?.reveal_settings) await window.pywebview.api.reveal_settings();
+    };
     return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("nav", {
       className: "flex items-center gap-1 border-b border-white/[0.06] mb-5"
     }, /*#__PURE__*/React.createElement("span", {
@@ -1910,8 +1932,10 @@
       size: 13
     }), " Settings", /*#__PURE__*/React.createElement("span", {
       className: "absolute left-0 right-0 -bottom-px h-px bg-[var(--accent)] shadow-[0_0_8px_var(--accent-glow)]"
-    }))), autostart.supported && /*#__PURE__*/React.createElement("div", {
-      className: "mb-6 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 max-w-md flex items-center justify-between"
+    }))), /*#__PURE__*/React.createElement("div", {
+      className: "mb-6 grid grid-cols-1 lg:grid-cols-2 gap-4 max-w-3xl"
+    }, autostart.supported && /*#__PURE__*/React.createElement("div", {
+      className: "rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 flex items-center justify-between"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
       className: "font-display text-[12px] uppercase tracking-[0.18em] text-slate-200"
     }, "Start on launch"), /*#__PURE__*/React.createElement("div", {
@@ -1919,15 +1943,41 @@
     }, "Open Aether automatically when you sign in to Windows.")), /*#__PURE__*/React.createElement("button", {
       onClick: toggleAutostart,
       className: `relative w-12 h-6 rounded-full border transition-colors shrink-0 ml-4
-                        ${autostart.enabled ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-white/[0.08]"}`
+                          ${autostart.enabled ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-white/[0.08]"}`
     }, /*#__PURE__*/React.createElement("span", {
       className: `absolute top-0.5 rounded-full transition-all
-                              ${autostart.enabled ? "left-[26px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-slate-400"}`,
+                                ${autostart.enabled ? "left-[26px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-slate-400"}`,
       style: {
         width: 18,
         height: 18
       }
-    }))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    }))), /*#__PURE__*/React.createElement("div", {
+      className: "rounded-xl border border-white/[0.06] bg-white/[0.02] p-4"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "font-display text-[12px] uppercase tracking-[0.18em] text-slate-200"
+    }, "Current profile"), /*#__PURE__*/React.createElement("div", {
+      className: "text-[12.5px] text-slate-100 mt-1 truncate"
+    }, activeProfileName), /*#__PURE__*/React.createElement("div", {
+      className: "text-[11px] text-slate-500 mt-0.5"
+    }, "Use the profile dropdown (top-left) to add, rename, duplicate or delete profiles."), /*#__PURE__*/React.createElement("button", {
+      onClick: onResetProfile,
+      className: "mt-3 px-3 h-8 rounded-md border border-rose-400/30 bg-rose-500/10 text-rose-100 font-display text-[10.5px] uppercase tracking-[0.16em] hover:bg-rose-500/15"
+    }, "Reset this profile")), /*#__PURE__*/React.createElement("div", {
+      className: "rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 lg:col-span-2"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-baseline justify-between gap-3"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "font-display text-[12px] uppercase tracking-[0.18em] text-slate-200"
+    }, "Settings file"), /*#__PURE__*/React.createElement("span", {
+      className: `font-mono text-[10px] uppercase tracking-[0.18em] ${settingsInfo.exists ? "text-emerald-400/80" : "text-slate-500"}`
+    }, settingsInfo.exists ? "✓ saved" : "not yet written")), /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[11px] text-slate-400 mt-2 break-all"
+    }, settingsInfo.path || "(loading…)"), /*#__PURE__*/React.createElement("div", {
+      className: "mt-3 flex gap-2"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: revealSettings,
+      className: "px-3 h-8 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-200 font-display text-[10.5px] uppercase tracking-[0.16em] hover:border-white/20"
+    }, "Show in folder")))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
       className: "font-display text-[12px] uppercase tracking-[0.18em] text-slate-200 mb-3"
     }, "If Win Lock is ON:"), /*#__PURE__*/React.createElement("div", {
       className: "flex flex-col gap-3 max-w-md"
