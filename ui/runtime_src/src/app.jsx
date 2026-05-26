@@ -389,11 +389,12 @@ function App() {
   const [gamepadOn, setGamepadOn] = useState(false);
   const [gamepadMap, setGamepadMap] = useState(DEFAULT_PAD_MAP);
 
-  const [colors, setColors] = useState(["#a6143a"]);   // darker default (user pref)
+  // Out-of-the-box: RGB radar (user pref).
+  const [colors, setColors] = useState(["#ff0040", "#ff8a00", "#ffd400", "#1eff7a", "#00b7ff", "#9d4edd"]);
   const [bgColor, setBgColor] = useState("#000000");
   const [perKeyColors, setPerKeyColors] = useState({});
   const [zones, setZones] = useState([]);   // effect zones for Custom mode
-  const [pattern, setPattern] = useState("twinkle");
+  const [pattern, setPattern] = useState("radar");
   const [brightness, setBrightness] = useState(100);
   const [speed, setSpeed] = useState(60);
   const [power, setPower] = useState(true);
