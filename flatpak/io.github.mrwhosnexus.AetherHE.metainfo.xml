@@ -23,6 +23,7 @@
   <url type="homepage">https://github.com/MrWhosNexus/aether-linux-app</url>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.1.10" date="2026-05-28"/>
     <release version="0.1.9" date="2026-05-28"/>
     <release version="0.1.8" date="2026-05-28"/>
     <release version="0.1.7" date="2026-05-28"/>

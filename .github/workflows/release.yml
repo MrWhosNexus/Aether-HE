@@ -28,28 +28,33 @@ jobs:
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
       - name: Fetch & patch vgamepad sdist (skip its msiexec UAC prompt)
-        # vgamepad 0.1.0 ships only an sdist; its setup.py unconditionally runs
+        # vgamepad 0.1.0 ships only an sdist; its setup.py runs
         # `msiexec /i ViGEmBusSetup_x64.msi` on Windows, which pops a UAC dialog
-        # nobody answers in CI → 6-hour timeout. We ship ViGEmBus separately via
-        # Inno Setup's [Run] block, so the driver-install line here is dead weight.
-        # Pre-fetch the sdist, neutralize that one line, and install the patched
-        # copy before requirements.txt resolves vgamepad from PyPI.
+        # nobody answers in CI → ~6-hour timeout. We ship ViGEmBus separately
+        # via Inno Setup's [Run] block, so that driver-install line is dead
+        # weight. The skip clause in vgamepad's setup.py only excludes
+        # `egg_info` / `sdist`; modern pip metadata discovery runs `dist_info`,
+        # which still triggers the popup. So we sidestep pip entirely: fetch
+        # the tarball over plain HTTPS, neutralize the msiexec line, and only
+        # then let pip install the patched directory.
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force vgsrc | Out-Null
-          python -m pip download --no-deps --no-binary :all: -d vgsrc vgamepad==0.1.0
-          $sdist = (Get-ChildItem vgsrc\vgamepad-*.tar.gz).FullName
-          tar -xzf $sdist -C vgsrc
-          $sp = (Get-ChildItem vgsrc\vgamepad-*\setup.py).FullName
+          $url = "https://files.pythonhosted.org/packages/source/v/vgamepad/vgamepad-0.1.0.tar.gz"
+          Invoke-WebRequest -Uri $url -OutFile vgsrc\vgamepad-0.1.0.tar.gz -UseBasicParsing
+          tar -xzf vgsrc\vgamepad-0.1.0.tar.gz -C vgsrc
+          $sp = "vgsrc\vgamepad-0.1.0\setup.py"
           (Get-Content $sp) `
             -replace "subprocess\.call\(\['msiexec'.*\)", "pass  # ViGEmBus installed by Inno Setup" `
             | Set-Content $sp
+          Write-Output "--- patched setup.py msiexec line ---"
+          Select-String -Path $sp -Pattern "msiexec|ViGEmBus installed" | ForEach-Object { $_.Line }
       - name: Create venv + install deps
         shell: cmd
         run: |
           py -3.12 -m venv venv-web || exit /b 1
           venv-web\Scripts\python -m pip install --upgrade pip || exit /b 1
-          for /d %%d in (vgsrc\vgamepad-*) do venv-web\Scripts\pip install --no-input "%%d" || exit /b 1
+          venv-web\Scripts\pip install --no-input vgsrc\vgamepad-0.1.0 || exit /b 1
           venv-web\Scripts\pip install --no-input -r requirements.txt pyinstaller || exit /b 1
       - name: Build installer
         shell: cmd
