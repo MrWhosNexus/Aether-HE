@@ -432,6 +432,27 @@
     const canApply = selectedCount > 0;
     const applyBtnCls = enabled => `px-4 h-9 rounded-md border font-display text-[12px] uppercase tracking-[0.16em] transition-all ${enabled ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_18px_var(--accent-glow)] hover:brightness-110" : "border-white/[0.06] bg-white/[0.02] text-slate-500 cursor-not-allowed"}`;
     const [tab, setTab] = useState("travel");
+    // Confirmation toast — shows the exact keys + value the user just wrote so
+    // there's no ambiguity about scope. Fades after 2.4s.
+    const [confirm, setConfirm] = useState(null);
+    const flash = msg => {
+      setConfirm(msg);
+      setTimeout(() => setConfirm(null), 2400);
+    };
+    const handleApplyTravel = () => {
+      if (!canApply || !onApplyActuation) return;
+      onApplyActuation();
+      const rt = rtEnabled ? ` · RT press ${rtPress.toFixed(2)}mm / release ${rtRelease.toFixed(2)}mm` : "";
+      flash(`Wrote ${actuation.toFixed(2)}mm to ${selectedCount} key${selectedCount === 1 ? "" : "s"}${rt}`);
+    };
+    const handleApplyDead = () => {
+      if (!canApply || !onApplyDeadband) return;
+      onApplyDeadband();
+      flash(`Wrote dead band ${(deadTop ?? 0.04).toFixed(2)}/${(deadBottom ?? 0.05).toFixed(2)}mm to ${selectedCount} key${selectedCount === 1 ? "" : "s"}`);
+    };
+    const ConfirmToast = () => confirm ? /*#__PURE__*/React.createElement("span", {
+      className: "font-mono text-[11px] uppercase tracking-[0.16em] text-[var(--accent)]"
+    }, "\u2713 ", confirm) : null;
     return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(SubTabs, {
       active: tab,
       onChange: setTab,
@@ -557,10 +578,10 @@
     })), /*#__PURE__*/React.createElement("div", {
       className: "mt-6 flex items-center gap-3"
     }, /*#__PURE__*/React.createElement("button", {
-      onClick: () => canApply && onApplyActuation && onApplyActuation(),
+      onClick: handleApplyTravel,
       disabled: !canApply,
       className: applyBtnCls(canApply)
-    }, "Apply to ", selectedCount || 0, " key", selectedCount === 1 ? "" : "s"), /*#__PURE__*/React.createElement("span", {
+    }, "Apply to ", selectedCount || 0, " key", selectedCount === 1 ? "" : "s"), confirm ? /*#__PURE__*/React.createElement(ConfirmToast, null) : /*#__PURE__*/React.createElement("span", {
       className: "font-mono text-[10.5px] uppercase tracking-[0.18em] text-slate-500"
     }, canApply ? "writes only the selected keys" : "select keys on the board to enable"))), tab === "dead" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
       className: "text-[12px] text-slate-400 mb-5"
@@ -587,10 +608,10 @@
     })), /*#__PURE__*/React.createElement("div", {
       className: "mt-6 flex items-center gap-3"
     }, /*#__PURE__*/React.createElement("button", {
-      onClick: () => canApply && onApplyDeadband && onApplyDeadband(),
+      onClick: handleApplyDead,
       disabled: !canApply,
       className: applyBtnCls(canApply)
-    }, "Apply to ", selectedCount || 0, " key", selectedCount === 1 ? "" : "s"), /*#__PURE__*/React.createElement("span", {
+    }, "Apply to ", selectedCount || 0, " key", selectedCount === 1 ? "" : "s"), confirm ? /*#__PURE__*/React.createElement(ConfirmToast, null) : /*#__PURE__*/React.createElement("span", {
       className: "font-mono text-[10.5px] uppercase tracking-[0.18em] text-slate-500"
     }, canApply ? "writes only the selected keys" : "select keys on the board to enable"))), tab === "switch" && (() => {
       const SWITCHES = [{

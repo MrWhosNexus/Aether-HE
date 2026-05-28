@@ -376,6 +376,28 @@ const ActuationSection = ({
         : "border-white/[0.06] bg-white/[0.02] text-slate-500 cursor-not-allowed"
     }`;
   const [tab, setTab] = useState("travel");
+  // Confirmation toast — shows the exact keys + value the user just wrote so
+  // there's no ambiguity about scope. Fades after 2.4s.
+  const [confirm, setConfirm] = useState(null);
+  const flash = (msg) => { setConfirm(msg); setTimeout(() => setConfirm(null), 2400); };
+  const handleApplyTravel = () => {
+    if (!canApply || !onApplyActuation) return;
+    onApplyActuation();
+    const rt = rtEnabled
+      ? ` · RT press ${rtPress.toFixed(2)}mm / release ${rtRelease.toFixed(2)}mm`
+      : "";
+    flash(`Wrote ${actuation.toFixed(2)}mm to ${selectedCount} key${selectedCount === 1 ? "" : "s"}${rt}`);
+  };
+  const handleApplyDead = () => {
+    if (!canApply || !onApplyDeadband) return;
+    onApplyDeadband();
+    flash(`Wrote dead band ${(deadTop ?? 0.04).toFixed(2)}/${(deadBottom ?? 0.05).toFixed(2)}mm to ${selectedCount} key${selectedCount === 1 ? "" : "s"}`);
+  };
+  const ConfirmToast = () => confirm ? (
+    <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-[var(--accent)]">
+      ✓ {confirm}
+    </span>
+  ) : null;
   return (
     <div>
       <SubTabs active={tab} onChange={setTab}
@@ -450,14 +472,16 @@ const ActuationSection = ({
 
               <div className="mt-6 flex items-center gap-3">
                 <button
-                  onClick={() => canApply && onApplyActuation && onApplyActuation()}
+                  onClick={handleApplyTravel}
                   disabled={!canApply}
                   className={applyBtnCls(canApply)}>
                   Apply to {selectedCount || 0} key{selectedCount === 1 ? "" : "s"}
                 </button>
-                <span className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-slate-500">
-                  {canApply ? "writes only the selected keys" : "select keys on the board to enable"}
-                </span>
+                {confirm
+                  ? <ConfirmToast/>
+                  : <span className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-slate-500">
+                      {canApply ? "writes only the selected keys" : "select keys on the board to enable"}
+                    </span>}
               </div>
             </div>
           )}
@@ -473,14 +497,16 @@ const ActuationSection = ({
               </div>
               <div className="mt-6 flex items-center gap-3">
                 <button
-                  onClick={() => canApply && onApplyDeadband && onApplyDeadband()}
+                  onClick={handleApplyDead}
                   disabled={!canApply}
                   className={applyBtnCls(canApply)}>
                   Apply to {selectedCount || 0} key{selectedCount === 1 ? "" : "s"}
                 </button>
-                <span className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-slate-500">
-                  {canApply ? "writes only the selected keys" : "select keys on the board to enable"}
-                </span>
+                {confirm
+                  ? <ConfirmToast/>
+                  : <span className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-slate-500">
+                      {canApply ? "writes only the selected keys" : "select keys on the board to enable"}
+                    </span>}
               </div>
             </div>
           )}
