@@ -36,7 +36,7 @@ if exist "%ISCC%" (
   "%ISCC%" installer.iss || exit /b 1
   echo Installer: dist\AetherHE-Setup.exe
 ) else (
-  echo [!] Inno Setup 6 not found. Install it (winget install JRSoftware.InnoSetup) and re-run to get dist\AetherHE-Setup.exe.
+  echo [!] Inno Setup 6 not found. Install it ^(winget install JRSoftware.InnoSetup^) and re-run to get dist\AetherHE-Setup.exe.
 )
 
 echo.
