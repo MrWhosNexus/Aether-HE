@@ -10,9 +10,14 @@ finish-args:
   - --socket=fallback-x11
   - --share=ipc
   - --device=dri
+  # Network: in-app update check against the GitHub Releases API.
+  - --share=network
   # HID (hidraw) for the keyboard + /dev/uinput for the virtual gamepad.
   # Host udev rules (99-aula.rules, 99-uinput.rules) still govern node perms.
   - --device=all
+  # In-app updater installs the new .flatpak bundle on the host via
+  # `flatpak-spawn --host flatpak install` (the sandbox can't install itself).
+  - --talk-name=org.freedesktop.Flatpak
   # WebKitGTK runs its web/network processes in its own nested sandbox, which
   # it sets up via the Flatpak portal. Without this the page never loads.
   - --talk-name=org.freedesktop.portal.Flatpak
@@ -38,7 +43,7 @@ modules:
       # App source -> /app/share/aether
       - install -d /app/share/aether
       - cp -r app_web.py aula_device.py protocol.py effects.py device_state.py
-        gamepad.py theme.py ui /app/share/aether/
+        gamepad.py theme.py version.py updater.py ui /app/share/aether/
       # Launcher
       - install -Dm755 flatpak/aether.sh /app/bin/aether
       # Desktop integration

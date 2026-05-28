@@ -58,8 +58,31 @@ To launch from source without building: `run.bat`.
 
 ## Install — Linux
 
-Tested on CachyOS / Arch; should work on any distro with GTK 3, WebKit2GTK,
-and Python 3.10+.
+**Fastest path — Flatpak (recommended):**
+
+```sh
+# One-time: install the runtime + the app bundle
+flatpak install --user flathub org.gnome.Platform//49      # if not present
+flatpak install --user AetherHE.flatpak                    # from Releases
+flatpak run io.github.mrwhosnexus.AetherHE
+```
+
+Still install the udev rules on the host (step 3 below) — the sandbox is
+granted device access but the host rules govern the node permissions.
+
+**Build the Flatpak from source** (needs `org.gnome.Sdk//49` and
+`org.flatpak.Builder`, both from Flathub):
+
+```sh
+flatpak run org.flatpak.Builder --force-clean --user --install \
+  --repo=flatpak/repo flatpak/build-dir \
+  flatpak/io.github.mrwhosnexus.AetherHE.yml
+# Shareable single-file bundle:
+flatpak build-bundle flatpak/repo flatpak/AetherHE.flatpak io.github.mrwhosnexus.AetherHE
+```
+
+**From source (no Flatpak)** — tested on CachyOS / Arch; works on any distro
+with GTK 3, WebKit2GTK, and Python 3.10+.
 
 ```sh
 # 1. System deps (Arch / CachyOS — adjust for your distro)
@@ -82,6 +105,39 @@ sudo usermod -aG input "$USER"       # for /dev/uinput
 
 `requirements.txt` is cross-platform — `evdev` is auto-installed only on
 Linux, `vgamepad` only on Windows. ViGEmBus is not used on Linux.
+
+---
+
+## Updates
+
+The app self-updates from **GitHub Releases** — one publish reaches every OS.
+**Settings → Updates** shows the current version, checks for a newer release on
+open, and installs it in place:
+
+- **Windows** — downloads `AetherHE-Setup.exe` and runs it silently; the
+  installer closes the app, upgrades, and relaunches.
+- **Linux (Flatpak)** — downloads `AetherHE.flatpak` and installs it on the
+  host via `flatpak-spawn --host flatpak install`; restart the app to apply.
+  (GNOME Software / Discover won't auto-update a sideloaded bundle — use the
+  in-app button, or re-run `flatpak install AetherHE.flatpak`.)
+- **Other** (source checkout) — just reports the available version.
+
+### Cutting a release (maintainer)
+
+From **either** Windows or Linux:
+
+```sh
+# 1. bump the version (single source of truth)
+#    edit version.py  ->  __version__ = "0.2.0"
+# 2. tag and push
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+`.github/workflows/release.yml` then builds the Windows installer
+(`windows-latest`) and the Linux Flatpak bundle (`ubuntu-latest`) and publishes
+both as assets on the `v0.2.0` release with auto-generated notes. Users pick it
+up on their next check. Keep `installer.iss` (`MyAppVersion`) and the Flatpak
+metainfo `<release>` in step with `version.py` when you bump.
 
 ---
 

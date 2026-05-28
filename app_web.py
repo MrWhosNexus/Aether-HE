@@ -18,6 +18,7 @@ import protocol
 import effects
 import device_state
 import gamepad
+import updater
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("aether.web")
@@ -453,6 +454,28 @@ class Api:
         Settings tab so users can find / back up / wipe the file."""
         p = self._settings_path()
         return {"ok": True, "path": p, "exists": os.path.exists(p)}
+
+    # ---- updates (GitHub Releases, cross-platform) ----
+    def app_version(self):
+        import version
+        return {"ok": True, "version": version.__version__, "kind": updater.platform_kind()}
+
+    def check_update(self):
+        """Ask GitHub for the latest release and whether it's newer than us."""
+        return updater.check_for_update()
+
+    def apply_update(self, asset_url, asset_name=None):
+        """Download + install the update for this OS. On success the caller
+        should quit (Windows) or prompt a restart (Flatpak)."""
+        res = updater.apply_update(asset_url, asset_name)
+        if res.get("ok") and res.get("quit"):
+            # Let the bridge return first, then exit so the installer can replace
+            # files that are otherwise locked by the running process.
+            def _bye():
+                threading.Event().wait(0.6)
+                os._exit(0)
+            threading.Thread(target=_bye, daemon=True).start()
+        return res
 
     def reveal_settings(self):
         """Open the settings folder in the OS file manager."""

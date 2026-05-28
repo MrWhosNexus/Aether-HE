@@ -1877,6 +1877,101 @@
       path: "",
       exists: false
     });
+    // Updates: current version + latest GitHub release. State machine:
+    // idle -> checking -> {uptodate | available | error}; then installing -> done.
+    const [upd, setUpd] = useState({
+      phase: "idle",
+      version: "",
+      info: null,
+      msg: ""
+    });
+    useEffect(() => {
+      const api = window.pywebview?.api;
+      if (!api?.app_version) return;
+      api.app_version().then(r => {
+        if (r?.ok) setUpd(u => ({
+          ...u,
+          version: r.version
+        }));
+      }).catch(() => {});
+      // Auto-check once on open (silent on failure — it's just informational).
+      checkUpdate(true);
+    }, []);
+    const checkUpdate = async silent => {
+      const api = window.pywebview?.api;
+      if (!api?.check_update) return;
+      setUpd(u => ({
+        ...u,
+        phase: "checking",
+        msg: ""
+      }));
+      try {
+        const r = await api.check_update();
+        if (!r || !r.ok) {
+          setUpd(u => ({
+            ...u,
+            phase: silent ? "idle" : "error",
+            msg: r?.error || "check failed"
+          }));
+          return;
+        }
+        if (r.update) setUpd(u => ({
+          ...u,
+          phase: "available",
+          info: r
+        }));else setUpd(u => ({
+          ...u,
+          phase: "uptodate",
+          info: r,
+          msg: r.newer ? "New version exists, but no installer for this OS." : ""
+        }));
+      } catch (e) {
+        setUpd(u => ({
+          ...u,
+          phase: silent ? "idle" : "error",
+          msg: String(e)
+        }));
+      }
+    };
+    const installUpdate = async () => {
+      const api = window.pywebview?.api;
+      if (!api?.apply_update || !upd.info) return;
+      setUpd(u => ({
+        ...u,
+        phase: "installing",
+        msg: "Downloading…"
+      }));
+      try {
+        const r = await api.apply_update(upd.info.asset_url, upd.info.asset_name);
+        if (!r || !r.ok) {
+          setUpd(u => ({
+            ...u,
+            phase: "error",
+            msg: r?.error || "install failed"
+          }));
+          return;
+        }
+        if (r.quit) setUpd(u => ({
+          ...u,
+          phase: "done",
+          msg: "Installer launched — Aether will close and reopen."
+        }));else if (r.restart) setUpd(u => ({
+          ...u,
+          phase: "done",
+          msg: "Update installed — quit and reopen Aether to apply it."
+        }));else setUpd(u => ({
+          ...u,
+          phase: "done",
+          msg: r.path ? `Downloaded to ${r.path}` : "Downloaded."
+        }));
+      } catch (e) {
+        setUpd(u => ({
+          ...u,
+          phase: "error",
+          msg: String(e)
+        }));
+      }
+    };
     useEffect(() => {
       let cancelled = false;
       const probe = () => {
@@ -1963,6 +2058,41 @@
       onClick: onResetProfile,
       className: "mt-3 px-3 h-8 rounded-md border border-rose-400/30 bg-rose-500/10 text-rose-100 font-display text-[10.5px] uppercase tracking-[0.16em] hover:bg-rose-500/15"
     }, "Reset this profile")), /*#__PURE__*/React.createElement("div", {
+      className: "rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 lg:col-span-2"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-baseline justify-between gap-3"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "font-display text-[12px] uppercase tracking-[0.18em] text-slate-200"
+    }, "Updates"), /*#__PURE__*/React.createElement("span", {
+      className: "font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500"
+    }, "v", upd.version || "—")), /*#__PURE__*/React.createElement("div", {
+      className: "text-[11.5px] mt-1 min-h-[18px]"
+    }, upd.phase === "checking" && /*#__PURE__*/React.createElement("span", {
+      className: "text-slate-400"
+    }, "Checking for updates\u2026"), upd.phase === "uptodate" && /*#__PURE__*/React.createElement("span", {
+      className: "text-emerald-400/80"
+    }, "You're on the latest version", upd.msg ? " — " + upd.msg : "."), upd.phase === "available" && /*#__PURE__*/React.createElement("span", {
+      className: "text-[var(--accent)]"
+    }, "Update available \u2192 v", upd.info?.latest), upd.phase === "installing" && /*#__PURE__*/React.createElement("span", {
+      className: "text-slate-400"
+    }, upd.msg || "Installing…"), upd.phase === "done" && /*#__PURE__*/React.createElement("span", {
+      className: "text-emerald-400/80"
+    }, upd.msg), upd.phase === "error" && /*#__PURE__*/React.createElement("span", {
+      className: "text-rose-300/90"
+    }, "Update error: ", upd.msg), upd.phase === "idle" && /*#__PURE__*/React.createElement("span", {
+      className: "text-slate-500"
+    }, "Check for a newer release on GitHub.")), upd.phase === "available" && upd.info?.notes && /*#__PURE__*/React.createElement("pre", {
+      className: "mt-2 max-h-28 overflow-auto whitespace-pre-wrap text-[11px] text-slate-400 bg-black/20 rounded-md p-2 border border-white/[0.05]"
+    }, upd.info.notes), /*#__PURE__*/React.createElement("div", {
+      className: "mt-3 flex gap-2"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => checkUpdate(false),
+      disabled: upd.phase === "checking" || upd.phase === "installing",
+      className: "px-3 h-8 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-200 font-display text-[10.5px] uppercase tracking-[0.16em] hover:border-white/20 disabled:opacity-40"
+    }, "Check for updates"), upd.phase === "available" && /*#__PURE__*/React.createElement("button", {
+      onClick: installUpdate,
+      className: "px-3 h-8 rounded-md border border-[var(--accent)]/40 bg-[var(--accent)]/15 text-[var(--accent)] font-display text-[10.5px] uppercase tracking-[0.16em] hover:bg-[var(--accent)]/25"
+    }, "Download & install"))), /*#__PURE__*/React.createElement("div", {
       className: "rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 lg:col-span-2"
     }, /*#__PURE__*/React.createElement("div", {
       className: "flex items-baseline justify-between gap-3"
