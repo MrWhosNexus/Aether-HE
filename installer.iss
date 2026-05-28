@@ -5,7 +5,7 @@
 ; first run, and a proper uninstaller).
 
 #define MyAppName        "AETHER HE"
-#define MyAppVersion     "0.1.5"
+#define MyAppVersion     "0.1.6"
 #define MyAppPublisher   "MrWhosNexus"
 #define MyAppURL         "https://github.com/MrWhosNexus/aether-linux-app"
 #define MyAppExeName     "AetherHE.exe"

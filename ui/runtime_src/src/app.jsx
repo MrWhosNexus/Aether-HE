@@ -378,6 +378,10 @@ function App() {
   const [deadTop, setDeadTop] = useState(0.04);
   const [deadBottom, setDeadBottom] = useState(0.05);
   const [switchId, setSwitchId] = useState("hm1");
+  // Per-key actuation as the firmware actually stores it. Populated by reading
+  // the device on connect and after every Apply so the board renders each key
+  // with its own value instead of mirroring the global slider everywhere.
+  const [perKeyActuation, setPerKeyActuation] = useState({});
 
   // Gamepad: virtual-pad capture + key→control mappings.
   const DEFAULT_PAD_MAP = [
@@ -761,13 +765,33 @@ function App() {
   // pick values, click Apply. The slider value is local React state until
   // they hit Apply, at which point we write to EXACTLY the selection shown in
   // the badge ("N selected"). Nothing else can race the write.
-  const applyActuation = () => {
+  // Read every key's stored actuation back from the firmware, normalise it to
+  // {code: mm}, and stash it on JS state so the board can render per-key.
+  const refreshPerKeyActuation = async () => {
+    if (!connected) return;
+    const r = await apiCall("verify_actuation", []);
+    if (!r || r.ok === false || !r.actuation_mm) return;
+    setPerKeyActuation(r.actuation_mm);
+  };
+  // On connect, snapshot per-key actuation once so the board reflects reality
+  // before the user touches anything.
+  useEffect(() => { if (connected) refreshPerKeyActuation(); }, [connected]);
+
+  const applyActuation = async () => {
     if (!connected) return;
     const codes = Array.from(selectedKeys);
     if (codes.length === 0) return;
     const mode = rtEnabled ? 13 : 0;
-    apiCall("set_trigger_codes", codes, actuation,
-            rtEnabled ? rtPress : 0, rtEnabled ? rtRelease : 0, mode);
+    await apiCall("set_trigger_codes", codes, actuation,
+                  rtEnabled ? rtPress : 0, rtEnabled ? rtRelease : 0, mode);
+    // Optimistic update so the board reflects the change instantly. Skip the
+    // 132-key read-back here — it takes ~5 s and we already know what was
+    // written; the next connect/manual refresh re-syncs from the firmware.
+    setPerKeyActuation(prev => {
+      const next = { ...prev };
+      for (const c of codes) next[c] = actuation;
+      return next;
+    });
   };
   const applyDeadband = () => {
     if (!connected) return;
@@ -936,6 +960,11 @@ function App() {
             liveDepths={liveDepths}
             calibrating={calibrating}
             calibratedCodes={calibratedKeys}
+            perKeyOverride={
+              Object.fromEntries(
+                Object.entries(perKeyActuation).map(([c, mm]) => [c, { actuation: mm }])
+              )
+            }
           />
         </HeroCard>
 
