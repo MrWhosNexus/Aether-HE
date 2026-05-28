@@ -34933,9 +34933,13 @@
     switchId,
     onPickSwitch,
     liveDepth = 0,
-    selectedCount = 0
+    selectedCount = 0,
+    onApplyActuation,
+    onApplyDeadband
   }) => {
     const scope = selectedCount > 0 ? `${selectedCount} selected key${selectedCount > 1 ? "s" : ""}` : "no keys (select some)";
+    const canApply = selectedCount > 0;
+    const applyBtnCls = enabled => `px-4 h-9 rounded-md border font-display text-[12px] uppercase tracking-[0.16em] transition-all ${enabled ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_18px_var(--accent-glow)] hover:brightness-110" : "border-white/[0.06] bg-white/[0.02] text-slate-500 cursor-not-allowed"}`;
     const [tab, setTab] = useState("travel");
     return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(SubTabs, {
       active: tab,
@@ -34993,7 +34997,9 @@
       className: "rounded-xl border border-white/[0.06] bg-white/[0.02] p-5"
     }, tab === "travel" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
       className: "text-[12px] text-slate-400 mb-3"
-    }, "Adjust the actuation point below. Select keys on the board to scope it \u2014 use \"Select All\" to apply to every key. With nothing selected, changes aren't sent."), /*#__PURE__*/React.createElement("div", {
+    }, "Select keys on the board, set the actuation point, then press ", /*#__PURE__*/React.createElement("span", {
+      className: "text-[var(--accent)]"
+    }, "Apply"), " \u2014 only the selected keys are written. Nothing is sent while you move the slider."), /*#__PURE__*/React.createElement("div", {
       className: "mb-5 inline-flex items-center gap-2 px-3 h-7 rounded-md border border-[var(--accent)]/30 bg-[var(--accent)]/[0.06]"
     }, /*#__PURE__*/React.createElement("span", {
       className: "font-mono text-[10px] uppercase tracking-[0.18em] text-slate-400"
@@ -35057,9 +35063,19 @@
       step: 0.05,
       unit: "mm",
       onChange: setRtRelease
-    }))), tab === "dead" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
+    })), /*#__PURE__*/React.createElement("div", {
+      className: "mt-6 flex items-center gap-3"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => canApply && onApplyActuation && onApplyActuation(),
+      disabled: !canApply,
+      className: applyBtnCls(canApply)
+    }, "Apply to ", selectedCount || 0, " key", selectedCount === 1 ? "" : "s"), /*#__PURE__*/React.createElement("span", {
+      className: "font-mono text-[10.5px] uppercase tracking-[0.18em] text-slate-500"
+    }, canApply ? "writes only the selected keys" : "select keys on the board to enable"))), tab === "dead" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
       className: "text-[12px] text-slate-400 mb-5"
-    }, "Configure the dead-band region near the keycap's rest and bottom-out positions \u2014 noise inside this band is ignored."), /*#__PURE__*/React.createElement("div", {
+    }, "Configure the dead-band region near the keycap's rest and bottom-out positions \u2014 noise inside this band is ignored. Press ", /*#__PURE__*/React.createElement("span", {
+      className: "text-[var(--accent)]"
+    }, "Apply"), " to write to the selected keys."), /*#__PURE__*/React.createElement("div", {
       className: "grid grid-cols-2 gap-6"
     }, /*#__PURE__*/React.createElement(Slider, {
       label: "Top Dead Band",
@@ -35077,7 +35093,15 @@
       step: 0.01,
       unit: "mm",
       onChange: setDeadBottom
-    }))), tab === "switch" && (() => {
+    })), /*#__PURE__*/React.createElement("div", {
+      className: "mt-6 flex items-center gap-3"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => canApply && onApplyDeadband && onApplyDeadband(),
+      disabled: !canApply,
+      className: applyBtnCls(canApply)
+    }, "Apply to ", selectedCount || 0, " key", selectedCount === 1 ? "" : "s"), /*#__PURE__*/React.createElement("span", {
+      className: "font-mono text-[10.5px] uppercase tracking-[0.18em] text-slate-500"
+    }, canApply ? "writes only the selected keys" : "select keys on the board to enable"))), tab === "switch" && (() => {
       const SWITCHES = [{
         id: "hm1",
         name: "HM1",
@@ -38753,39 +38777,34 @@
       }
     }, [connected, pattern, perKeyColors, brightness, speed, zones, direction, bgColor, bgBright, lightNonce, calibrating]);
 
-    // Actuation / Rapid Trigger for the selected keys. Guarded to the Actuation
-    // tab and `section` is not a dep, so tab switches don't push trigger packets.
-    const trigTimer = useRef(null);
-    useEffect(() => {
-      if (!connected || section !== "actuation") return;
+    // Actuation / Rapid Trigger: EXPLICIT apply only.
+    //
+    // Earlier versions streamed slider changes to the device on every selection
+    // or value change. That stream-on-change model had a fatal UX failure: the
+    // global `selectedKeys` set leaks across tabs (Lighting "Select All" stays
+    // selected when you enter Actuation), so the very first slider movement
+    // would silently push the new travel to every key. Worse, debouncing only
+    // hides the symptom — by the time the user notices the slider has moved
+    // off where they want, the firmware has already committed the write to a
+    // selection they didn't realise was active.
+    //
+    // The driver-style fix is the one the user expected all along: select keys,
+    // pick values, click Apply. The slider value is local React state until
+    // they hit Apply, at which point we write to EXACTLY the selection shown in
+    // the badge ("N selected"). Nothing else can race the write.
+    const applyActuation = () => {
+      if (!connected) return;
       const codes = Array.from(selectedKeys);
-      // No selection => no-op. Auto-applying to every key when the selection is
-      // empty (e.g. right after "Deselect All", or before any key is clicked)
-      // silently overwrote the whole board — use "Select All" to scope to all.
       if (codes.length === 0) return;
-      clearTimeout(trigTimer.current);
-      trigTimer.current = setTimeout(() => {
-        // Firmware trigger mode (from the driver): 0 = fixed actuation point,
-        // 13 = rapid trigger with separate press/release sensitivity. (The old
-        // hardcoded "2" was invalid, so the board ignored the actuation setting.)
-        const mode = rtEnabled ? 13 : 0;
-        apiCall("set_trigger_codes", codes, actuation, rtEnabled ? rtPress : 0, rtEnabled ? rtRelease : 0, mode);
-      }, 90);
-      return () => clearTimeout(trigTimer.current);
-    }, [connected, actuation, rtEnabled, rtPress, rtRelease, selectedKeys]);
-
-    // Dead band for the selected keys (applies when the band sliders move).
-    const deadTimer = useRef(null);
-    useEffect(() => {
-      if (!connected || section !== "actuation") return;
+      const mode = rtEnabled ? 13 : 0;
+      apiCall("set_trigger_codes", codes, actuation, rtEnabled ? rtPress : 0, rtEnabled ? rtRelease : 0, mode);
+    };
+    const applyDeadband = () => {
+      if (!connected) return;
       const codes = Array.from(selectedKeys);
-      if (codes.length === 0) return; // no selection => no-op (see above)
-      clearTimeout(deadTimer.current);
-      deadTimer.current = setTimeout(() => {
-        apiCall("set_deadband_codes", codes, deadTop, deadBottom);
-      }, 110);
-      return () => clearTimeout(deadTimer.current);
-    }, [connected, deadTop, deadBottom, selectedKeys]);
+      if (codes.length === 0) return;
+      apiCall("set_deadband_codes", codes, deadTop, deadBottom);
+    };
 
     // Travel Test: stream live analog depth for ALL keys (so any keypress shows,
     // not just the selected ones) and mirror it onto the on-screen board.
@@ -39018,7 +39037,9 @@
       switchId: switchId,
       onPickSwitch: handlePickSwitch,
       liveDepth: liveMax,
-      selectedCount: selectedKeys.size
+      selectedCount: selectedKeys.size,
+      onApplyActuation: applyActuation,
+      onApplyDeadband: applyDeadband
     }), section === "lighting" && /*#__PURE__*/React.createElement(LightingSection, {
       colors: colors,
       setColors: setColors,

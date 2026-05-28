@@ -424,9 +424,13 @@
     switchId,
     onPickSwitch,
     liveDepth = 0,
-    selectedCount = 0
+    selectedCount = 0,
+    onApplyActuation,
+    onApplyDeadband
   }) => {
     const scope = selectedCount > 0 ? `${selectedCount} selected key${selectedCount > 1 ? "s" : ""}` : "no keys (select some)";
+    const canApply = selectedCount > 0;
+    const applyBtnCls = enabled => `px-4 h-9 rounded-md border font-display text-[12px] uppercase tracking-[0.16em] transition-all ${enabled ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_18px_var(--accent-glow)] hover:brightness-110" : "border-white/[0.06] bg-white/[0.02] text-slate-500 cursor-not-allowed"}`;
     const [tab, setTab] = useState("travel");
     return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(SubTabs, {
       active: tab,
@@ -484,7 +488,9 @@
       className: "rounded-xl border border-white/[0.06] bg-white/[0.02] p-5"
     }, tab === "travel" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
       className: "text-[12px] text-slate-400 mb-3"
-    }, "Adjust the actuation point below. Select keys on the board to scope it \u2014 use \"Select All\" to apply to every key. With nothing selected, changes aren't sent."), /*#__PURE__*/React.createElement("div", {
+    }, "Select keys on the board, set the actuation point, then press ", /*#__PURE__*/React.createElement("span", {
+      className: "text-[var(--accent)]"
+    }, "Apply"), " \u2014 only the selected keys are written. Nothing is sent while you move the slider."), /*#__PURE__*/React.createElement("div", {
       className: "mb-5 inline-flex items-center gap-2 px-3 h-7 rounded-md border border-[var(--accent)]/30 bg-[var(--accent)]/[0.06]"
     }, /*#__PURE__*/React.createElement("span", {
       className: "font-mono text-[10px] uppercase tracking-[0.18em] text-slate-400"
@@ -548,9 +554,19 @@
       step: 0.05,
       unit: "mm",
       onChange: setRtRelease
-    }))), tab === "dead" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
+    })), /*#__PURE__*/React.createElement("div", {
+      className: "mt-6 flex items-center gap-3"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => canApply && onApplyActuation && onApplyActuation(),
+      disabled: !canApply,
+      className: applyBtnCls(canApply)
+    }, "Apply to ", selectedCount || 0, " key", selectedCount === 1 ? "" : "s"), /*#__PURE__*/React.createElement("span", {
+      className: "font-mono text-[10.5px] uppercase tracking-[0.18em] text-slate-500"
+    }, canApply ? "writes only the selected keys" : "select keys on the board to enable"))), tab === "dead" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
       className: "text-[12px] text-slate-400 mb-5"
-    }, "Configure the dead-band region near the keycap's rest and bottom-out positions \u2014 noise inside this band is ignored."), /*#__PURE__*/React.createElement("div", {
+    }, "Configure the dead-band region near the keycap's rest and bottom-out positions \u2014 noise inside this band is ignored. Press ", /*#__PURE__*/React.createElement("span", {
+      className: "text-[var(--accent)]"
+    }, "Apply"), " to write to the selected keys."), /*#__PURE__*/React.createElement("div", {
       className: "grid grid-cols-2 gap-6"
     }, /*#__PURE__*/React.createElement(Slider, {
       label: "Top Dead Band",
@@ -568,7 +584,15 @@
       step: 0.01,
       unit: "mm",
       onChange: setDeadBottom
-    }))), tab === "switch" && (() => {
+    })), /*#__PURE__*/React.createElement("div", {
+      className: "mt-6 flex items-center gap-3"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => canApply && onApplyDeadband && onApplyDeadband(),
+      disabled: !canApply,
+      className: applyBtnCls(canApply)
+    }, "Apply to ", selectedCount || 0, " key", selectedCount === 1 ? "" : "s"), /*#__PURE__*/React.createElement("span", {
+      className: "font-mono text-[10.5px] uppercase tracking-[0.18em] text-slate-500"
+    }, canApply ? "writes only the selected keys" : "select keys on the board to enable"))), tab === "switch" && (() => {
       const SWITCHES = [{
         id: "hm1",
         name: "HM1",

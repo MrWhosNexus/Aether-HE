@@ -746,39 +746,35 @@ function App() {
     }
   }, [connected, pattern, perKeyColors, brightness, speed, zones, direction, bgColor, bgBright, lightNonce, calibrating]);
 
-  // Actuation / Rapid Trigger for the selected keys. Guarded to the Actuation
-  // tab and `section` is not a dep, so tab switches don't push trigger packets.
-  const trigTimer = useRef(null);
-  useEffect(() => {
-    if (!connected || section !== "actuation") return;
+  // Actuation / Rapid Trigger: EXPLICIT apply only.
+  //
+  // Earlier versions streamed slider changes to the device on every selection
+  // or value change. That stream-on-change model had a fatal UX failure: the
+  // global `selectedKeys` set leaks across tabs (Lighting "Select All" stays
+  // selected when you enter Actuation), so the very first slider movement
+  // would silently push the new travel to every key. Worse, debouncing only
+  // hides the symptom — by the time the user notices the slider has moved
+  // off where they want, the firmware has already committed the write to a
+  // selection they didn't realise was active.
+  //
+  // The driver-style fix is the one the user expected all along: select keys,
+  // pick values, click Apply. The slider value is local React state until
+  // they hit Apply, at which point we write to EXACTLY the selection shown in
+  // the badge ("N selected"). Nothing else can race the write.
+  const applyActuation = () => {
+    if (!connected) return;
     const codes = Array.from(selectedKeys);
-    // No selection => no-op. Auto-applying to every key when the selection is
-    // empty (e.g. right after "Deselect All", or before any key is clicked)
-    // silently overwrote the whole board — use "Select All" to scope to all.
     if (codes.length === 0) return;
-    clearTimeout(trigTimer.current);
-    trigTimer.current = setTimeout(() => {
-      // Firmware trigger mode (from the driver): 0 = fixed actuation point,
-      // 13 = rapid trigger with separate press/release sensitivity. (The old
-      // hardcoded "2" was invalid, so the board ignored the actuation setting.)
-      const mode = rtEnabled ? 13 : 0;
-      apiCall("set_trigger_codes", codes, actuation, rtEnabled ? rtPress : 0, rtEnabled ? rtRelease : 0, mode);
-    }, 90);
-    return () => clearTimeout(trigTimer.current);
-  }, [connected, actuation, rtEnabled, rtPress, rtRelease, selectedKeys]);
-
-  // Dead band for the selected keys (applies when the band sliders move).
-  const deadTimer = useRef(null);
-  useEffect(() => {
-    if (!connected || section !== "actuation") return;
+    const mode = rtEnabled ? 13 : 0;
+    apiCall("set_trigger_codes", codes, actuation,
+            rtEnabled ? rtPress : 0, rtEnabled ? rtRelease : 0, mode);
+  };
+  const applyDeadband = () => {
+    if (!connected) return;
     const codes = Array.from(selectedKeys);
-    if (codes.length === 0) return;          // no selection => no-op (see above)
-    clearTimeout(deadTimer.current);
-    deadTimer.current = setTimeout(() => {
-      apiCall("set_deadband_codes", codes, deadTop, deadBottom);
-    }, 110);
-    return () => clearTimeout(deadTimer.current);
-  }, [connected, deadTop, deadBottom, selectedKeys]);
+    if (codes.length === 0) return;
+    apiCall("set_deadband_codes", codes, deadTop, deadBottom);
+  };
 
   // Travel Test: stream live analog depth for ALL keys (so any keypress shows,
   // not just the selected ones) and mirror it onto the on-screen board.
@@ -974,6 +970,8 @@ function App() {
               switchId={switchId} onPickSwitch={handlePickSwitch}
               liveDepth={liveMax}
               selectedCount={selectedKeys.size}
+              onApplyActuation={applyActuation}
+              onApplyDeadband={applyDeadband}
             />
           )}
           {section === "lighting" && (

@@ -94,9 +94,11 @@ class LiveReader:
         # stale readings to 0: on a fast key release the firmware sometimes
         # stops reporting before the depth reaches zero, leaving the cached
         # value stuck high. If we don't hear from a key for STALE_S we treat
-        # it as released.
+        # it as released. 35 ms is short enough to catch a fast release
+        # (humans can release within ~50 ms) and long enough that ordinary
+        # poll-rate gaps at 8 kHz don't trigger false zeros.
         self._last_seen = {}
-        self.STALE_S = 0.08
+        self.STALE_S = 0.035
         self._stop = threading.Event()
         self._thread = None
 
@@ -166,14 +168,22 @@ class LiveReader:
         # Decay stale readings to 0. A fast release can outrun the firmware's
         # report cadence, so a key whose last report was longer than STALE_S
         # ago is treated as released — this keeps the depth indicator from
-        # being stuck high after a quick keypress.
+        # being stuck high after a quick keypress. ALSO snap to 0 (and clear
+        # the cached depth) once we treat it as released, so the very next
+        # report — even if it lands inside STALE_S — can't reintroduce the
+        # stale value (the firmware sometimes emits a single trailing
+        # "still pressed" packet a fraction of a second after a fast release).
         now = time.time()
         out = {}
+        stale_keys = []
         for code, mm in self.depths.items():
             if (now - self._last_seen.get(code, 0.0)) > self.STALE_S:
                 out[code] = 0.0
+                stale_keys.append(code)
             else:
                 out[code] = mm
+        for code in stale_keys:
+            self.depths[code] = 0.0
         return out
 
     def stop(self):

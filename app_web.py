@@ -81,11 +81,14 @@ class Api:
             # Snapshot the device's Fn-layer table so we can replay it after any
             # base-layer write (see _flush_remaps). Failures here are non-fatal;
             # we just won't be able to preserve the user's Fn customization.
+            # _read_keymap_layer returns None on partial reads — we treat that
+            # as "no snapshot" and skip the Fn-layer write entirely rather than
+            # risk wiping the user's customisation with a half-zeroed table.
             try:
                 self._fn_layer_raw = self._read_keymap_layer(fn_layer=True)
             except Exception as ex:
-                log.warning("Fn-layer snapshot failed (will use zeros): %s", ex)
-                self._fn_layer_raw = bytes(528)
+                log.warning("Fn-layer snapshot failed (will skip Fn write): %s", ex)
+                self._fn_layer_raw = None
             return {"ok": True, "iface": info["interface_number"]}
         except Exception as e:
             return {"ok": False, "error": str(e)}
@@ -93,9 +96,14 @@ class Api:
     def _read_keymap_layer(self, fn_layer=False, timeout_s=1.5):
         """Send initKeyValue and collect the device's response packets, reassembling
         a 528-byte [code1, hidCode, code3, code4] table. Matches the driver's
-        cmd-24 [1]=128 (base) / [1]=130 (fn) read flow."""
+        cmd-24 [1]=128 (base) / [1]=130 (fn) read flow.
+
+        Returns the complete table only if ALL pages were received; on a partial
+        read returns None so the caller can fall back to "don't write Fn" (better
+        than writing a half-zeroed table that wipes the user's Fn customization).
+        """
         if not self.dev.is_open():
-            return bytes(528)
+            return None
         # Drain any pending packets first so we only see the response.
         with self.dev._lock:
             try:
@@ -123,12 +131,12 @@ class Api:
                 break
             if not r or len(r) < 6:
                 time.sleep(0.005); continue
-            # hidapi's report-id prefix isn't fully consistent on this codebase
-            # (existing readers use both r[0] and r[1] for the command byte
-            # depending on cmd), so locate the cmd-24 response by scanning a
-            # small range for the [cmd=24, sub=128|130] signature.
+            # hidapi's read on this codebase includes the report ID at r[0], so
+            # the cmd byte sits at r[1] (matching LiveReader/CalibrationReader,
+            # which empirically work). We still scan a small offset range as a
+            # safety net for hidapi variants that don't prepend the id.
             base = None
-            for off in (0, 1, 4, 5):
+            for off in (1, 0, 4, 5):
                 if off + 5 >= len(r):
                     continue
                 if r[off] == 24 and r[off + 1] == want:
@@ -147,9 +155,10 @@ class Api:
                 continue
             table[start:end] = bytes(r[data_off:data_off + ln])
             seen.add(page)
-        log.info("keymap snapshot: layer=%s pages=%d/%d",
-                 "fn" if fn_layer else "base", len(seen), n_pages)
-        return bytes(table)
+        complete = len(seen) >= n_pages
+        log.info("keymap snapshot: layer=%s pages=%d/%d complete=%s",
+                 "fn" if fn_layer else "base", len(seen), n_pages, complete)
+        return bytes(table) if complete else None
 
     def read_live(self):
         """Real per-key travel depth (mm), keyed by key name. {} until keys move."""

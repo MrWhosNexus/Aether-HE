@@ -365,8 +365,16 @@ const ActuationSection = ({
   deadTop, setDeadTop, deadBottom, setDeadBottom,
   switchId, onPickSwitch,
   liveDepth = 0, selectedCount = 0,
+  onApplyActuation, onApplyDeadband,
 }) => {
   const scope = selectedCount > 0 ? `${selectedCount} selected key${selectedCount > 1 ? "s" : ""}` : "no keys (select some)";
+  const canApply = selectedCount > 0;
+  const applyBtnCls = (enabled) =>
+    `px-4 h-9 rounded-md border font-display text-[12px] uppercase tracking-[0.16em] transition-all ${
+      enabled
+        ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_18px_var(--accent-glow)] hover:brightness-110"
+        : "border-white/[0.06] bg-white/[0.02] text-slate-500 cursor-not-allowed"
+    }`;
   const [tab, setTab] = useState("travel");
   return (
     <div>
@@ -399,7 +407,7 @@ const ActuationSection = ({
           {tab === "travel" && (
             <div>
               <p className="text-[12px] text-slate-400 mb-3">
-                Adjust the actuation point below. Select keys on the board to scope it — use "Select All" to apply to every key. With nothing selected, changes aren't sent.
+                Select keys on the board, set the actuation point, then press <span className="text-[var(--accent)]">Apply</span> — only the selected keys are written. Nothing is sent while you move the slider.
               </p>
               <div className="mb-5 inline-flex items-center gap-2 px-3 h-7 rounded-md border border-[var(--accent)]/30 bg-[var(--accent)]/[0.06]">
                 <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-400">Applying to</span>
@@ -439,17 +447,40 @@ const ActuationSection = ({
                   <Slider label="Release Sensitivity" value={rtRelease} min={0.05} max={2.0} step={0.05} unit="mm" onChange={setRtRelease}/>
                 </div>
               )}
+
+              <div className="mt-6 flex items-center gap-3">
+                <button
+                  onClick={() => canApply && onApplyActuation && onApplyActuation()}
+                  disabled={!canApply}
+                  className={applyBtnCls(canApply)}>
+                  Apply to {selectedCount || 0} key{selectedCount === 1 ? "" : "s"}
+                </button>
+                <span className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-slate-500">
+                  {canApply ? "writes only the selected keys" : "select keys on the board to enable"}
+                </span>
+              </div>
             </div>
           )}
 
           {tab === "dead" && (
             <div>
               <p className="text-[12px] text-slate-400 mb-5">
-                Configure the dead-band region near the keycap's rest and bottom-out positions — noise inside this band is ignored.
+                Configure the dead-band region near the keycap's rest and bottom-out positions — noise inside this band is ignored. Press <span className="text-[var(--accent)]">Apply</span> to write to the selected keys.
               </p>
               <div className="grid grid-cols-2 gap-6">
                 <Slider label="Top Dead Band" value={deadTop ?? 0.04} min={0} max={0.5} step={0.01} unit="mm" onChange={setDeadTop}/>
                 <Slider label="Bottom Dead Band" value={deadBottom ?? 0.05} min={0} max={0.5} step={0.01} unit="mm" onChange={setDeadBottom}/>
+              </div>
+              <div className="mt-6 flex items-center gap-3">
+                <button
+                  onClick={() => canApply && onApplyDeadband && onApplyDeadband()}
+                  disabled={!canApply}
+                  className={applyBtnCls(canApply)}>
+                  Apply to {selectedCount || 0} key{selectedCount === 1 ? "" : "s"}
+                </button>
+                <span className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-slate-500">
+                  {canApply ? "writes only the selected keys" : "select keys on the board to enable"}
+                </span>
               </div>
             </div>
           )}
