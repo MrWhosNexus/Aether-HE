@@ -10,6 +10,7 @@ import logging
 import os
 import sys
 import threading
+import time
 
 import webview
 
@@ -55,6 +56,18 @@ class Api:
         self._remaps = {}         # accumulated key remaps: {device_index: target_hid}
         self._pad_map = None      # custom gamepad mappings (list of gamepad.KeyMap)
         self.calib_reader = None  # CalibrationReader active during calibration
+        # Captured Fn-layer table from the device — replayed verbatim after every
+        # base-layer write so the firmware's existing Fn mappings are preserved
+        # (the official driver always writes both layers together; writing base
+        # without fn leaves the keyboard stuck in function mode).
+        self._fn_layer_raw = None
+        # Per-key trigger state, mirroring the driver's setAllTriggerValue model.
+        # Every apply re-sends the FULL board grouped by config so the firmware
+        # sees an unambiguous full state regardless of mask interpretation.
+        self._trigger_state = {}   # idx -> (mode, travel_raw, i1_raw, i2_raw)
+        # Per-key dead-band state — preserved across selection changes so applying
+        # to one group doesn't reset the others to defaults.
+        self._deadband_state = {}  # idx -> (top_raw, bottom_raw)
 
     # ---- connection ----
     def connect(self):
@@ -65,9 +78,72 @@ class Api:
                 self.dev.write(protocol.build_heartbeat())
             except Exception:
                 pass
+            # Snapshot the device's Fn-layer table so we can replay it after any
+            # base-layer write (see _flush_remaps). Failures here are non-fatal;
+            # we just won't be able to preserve the user's Fn customization.
+            try:
+                self._fn_layer_raw = self._read_keymap_layer(fn_layer=True)
+            except Exception as ex:
+                log.warning("Fn-layer snapshot failed (will use zeros): %s", ex)
+                self._fn_layer_raw = bytes(528)
             return {"ok": True, "iface": info["interface_number"]}
         except Exception as e:
             return {"ok": False, "error": str(e)}
+
+    def _read_keymap_layer(self, fn_layer=False, timeout_s=1.5):
+        """Send initKeyValue and collect the device's response packets, reassembling
+        a 528-byte [code1, hidCode, code3, code4] table. Matches the driver's
+        cmd-24 [1]=128 (base) / [1]=130 (fn) read flow."""
+        if not self.dev.is_open():
+            return bytes(528)
+        # Drain any pending packets first so we only see the response.
+        with self.dev._lock:
+            try:
+                self.dev._dev.set_nonblocking(True)
+                while True:
+                    r = self.dev._dev.read(64)
+                    if not r:
+                        break
+            except Exception:
+                pass
+        self._write(protocol.build_read_keymap_init(fn_layer=fn_layer))
+        want = 130 if fn_layer else 128
+        table = bytearray(528)
+        seen = set()
+        deadline = time.time() + timeout_s
+        n_pages = (528 + 55) // 56
+        while time.time() < deadline and len(seen) < n_pages:
+            try:
+                with self.dev._lock:
+                    if not self.dev._dev:
+                        break
+                    self.dev._dev.set_nonblocking(True)
+                    r = self.dev._dev.read(64)
+            except Exception:
+                break
+            if not r or len(r) < 6:
+                time.sleep(0.005); continue
+            # hidapi may or may not prepend a report-id byte; locate the cmd-24
+            # response by trying both offsets and accepting whichever matches.
+            base = None
+            if len(r) > 6 and r[1] == 24 and r[2] == want:
+                base = 1
+            elif r[0] == 24 and r[1] == want:
+                base = 0
+            if base is None:
+                continue
+            page = (r[base + 2] << 8) | r[base + 3]
+            ln = min(r[base + 4], 56)
+            data_off = base + 5
+            start = page * 56
+            end = start + ln
+            if end > len(table):
+                end = len(table); ln = end - start
+            if ln <= 0 or data_off + ln > len(r):
+                continue
+            table[start:end] = bytes(r[data_off:data_off + ln])
+            seen.add(page)
+        return bytes(table)
 
     def read_live(self):
         """Real per-key travel depth (mm), keyed by key name. {} until keys move."""
@@ -152,15 +228,49 @@ class Api:
             return {"ok": False, "error": str(e)}
 
     # ---- per-key actuation (codes from the design's selection) ----
+    _DEFAULT_TRIGGER_RAW = (0, 200, 0, 0)   # mode=fixed, travel=2.00mm, no RT
+
+    def _ensure_trigger_state(self):
+        """Seed every key with the default trigger so apply-time grouping covers
+        the whole board (matches the driver, which always pushes a config for
+        every key). Without this, the firmware sees a packet whose mask covers
+        only the just-edited keys, and at least some firmware revisions appear
+        to interpret that as "apply this trigger to every key on the board"."""
+        if self._trigger_state or not self.km:
+            return
+        for idx in self.km.indices():
+            self._trigger_state[idx] = self._DEFAULT_TRIGGER_RAW
+
+    def _flush_triggers(self):
+        """Send the full per-key trigger state, grouped by identical config."""
+        if not self._trigger_state:
+            return
+        groups = {}                                       # cfg -> [idx, ...]
+        for idx, cfg in self._trigger_state.items():
+            groups.setdefault(cfg, []).append(idx)
+        for cfg, idxs in groups.items():
+            mode, travel, i1, i2 = cfg
+            self._write(protocol.build_trigger(int(mode), list(idxs),
+                                               travel * protocol.TRIGGER_UNIT_MM,
+                                               i1 * protocol.TRIGGER_UNIT_MM,
+                                               i2 * protocol.TRIGGER_UNIT_MM))
+            threading.Event().wait(0.005)
+
     def set_trigger_codes(self, codes, travel_mm, rt_press_mm=0.0, rt_release_mm=0.0, mode=0):
         if not self.km:
             return {"ok": False, "error": "no keymap"}
-        idxs = self.km.indices_for_codes(codes) if codes else self.km.indices()
+        idxs = self.km.indices_for_codes(codes) if codes else []
         if not idxs:
             return {"ok": False, "error": "no keys"}
+        self._ensure_trigger_state()
+        cfg = (int(mode),
+               protocol.mm_to_raw(travel_mm),
+               protocol.mm_to_raw(rt_press_mm),
+               protocol.mm_to_raw(rt_release_mm))
+        for i in idxs:
+            self._trigger_state[i] = cfg
         try:
-            self._write(protocol.build_trigger(int(mode), idxs, float(travel_mm),
-                        float(rt_press_mm), float(rt_release_mm)))
+            self._flush_triggers()
             return {"ok": True, "keys": len(idxs)}
         except Exception as e:
             return {"ok": False, "error": str(e)}
@@ -189,14 +299,18 @@ class Api:
     def set_deadband_codes(self, codes, top_mm=0.04, bottom_mm=0.05):
         if not self.km:
             return {"ok": False, "error": "no keymap"}
-        idxs = self.km.indices_for_codes(codes) if codes else self.km.indices()
+        idxs = self.km.indices_for_codes(codes) if codes else []
         if not idxs:
             return {"ok": False, "error": "no keys"}
         top = round(float(top_mm) / protocol.TRIGGER_UNIT_MM)
         bottom = round(float(bottom_mm) / protocol.TRIGGER_UNIT_MM)
-        table = {idx: (top, bottom) for idx in idxs}
+        # Preserve previously-set per-key values so applying to one selection
+        # doesn't reset everything else to the default. The full-board table is
+        # rebuilt from the accumulated state on every send.
+        for i in idxs:
+            self._deadband_state[i] = (top, bottom)
         try:
-            for pkt in protocol.build_deadband_table(table):
+            for pkt in protocol.build_deadband_table(dict(self._deadband_state)):
                 self._write(pkt)
                 threading.Event().wait(0.005)
             return {"ok": True, "keys": len(idxs)}
@@ -220,9 +334,18 @@ class Api:
 
     # ---- key remap (cmd 24, full keymap table) ----
     def _flush_remaps(self):
+        # Base layer with our remap overrides.
         defaults = {i: self.km.by_index[i]["hid"] for i in self.km.by_index}
-        for pkt in protocol.build_keymap_table(defaults, self._remaps,
-                                               layer_indices=self.km.layer_indices):
+        for pkt in protocol.build_base_keymap_table(defaults, self._remaps,
+                                                     layer_indices=self.km.layer_indices):
+            self._write(pkt)
+            threading.Event().wait(0.005)
+        # Always follow with the Fn layer (verbatim from what we snapshotted at
+        # connect). The official driver writes both setKeyValue + setFnKeyValue
+        # on every Apply; writing only the base layer leaves the firmware in a
+        # state where Fn is treated as held until replug.
+        fn_raw = self._fn_layer_raw if self._fn_layer_raw is not None else bytes(528)
+        for pkt in protocol.build_fn_keymap_table(fn_raw):
             self._write(pkt)
             threading.Event().wait(0.005)
 

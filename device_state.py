@@ -89,7 +89,14 @@ class LiveReader:
         self.dev = device
         self.km = keymap
         self.indices = list(indices or keymap.indices())
-        self.depths = {}          # name -> mm
+        self.depths = {}          # code -> mm
+        # Timestamp of the most recent report for each code. Used to decay
+        # stale readings to 0: on a fast key release the firmware sometimes
+        # stops reporting before the depth reaches zero, leaving the cached
+        # value stuck high. If we don't hear from a key for STALE_S we treat
+        # it as released.
+        self._last_seen = {}
+        self.STALE_S = 0.08
         self._stop = threading.Event()
         self._thread = None
 
@@ -146,6 +153,7 @@ class LiveReader:
                             code = self.km.code_of(idx)   # e.g. "W","LCtrl","1"
                             if code:
                                 self.depths[code] = depth
+                                self._last_seen[code] = time.time()
                                 got = True
             except Exception:
                 time.sleep(0.05); continue
@@ -155,7 +163,18 @@ class LiveReader:
                 time.sleep(0.002)
 
     def snapshot(self):
-        return dict(self.depths)
+        # Decay stale readings to 0. A fast release can outrun the firmware's
+        # report cadence, so a key whose last report was longer than STALE_S
+        # ago is treated as released — this keeps the depth indicator from
+        # being stuck high after a quick keypress.
+        now = time.time()
+        out = {}
+        for code, mm in self.depths.items():
+            if (now - self._last_seen.get(code, 0.0)) > self.STALE_S:
+                out[code] = 0.0
+            else:
+                out[code] = mm
+        return out
 
     def stop(self):
         self._stop.set()

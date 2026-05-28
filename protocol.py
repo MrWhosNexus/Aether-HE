@@ -178,31 +178,20 @@ def build_remap(index):
     return _wrap(d)
 
 
-def build_keymap_table(default_hids, overrides=None, layer_indices=None, fn_layer=False):
-    """Full key-remap table (cmd 24), matching the official driver's setKeyValue.
+def build_base_keymap_table(default_hids, overrides=None, layer_indices=None):
+    """Base-layer key table (cmd 24, header [1]=0), matching the driver's setKeyValue.
 
     The board stores a flat table of 4 bytes per key index — [code1, hidCode,
     code3, code4] — so a remap must send EVERY key, not just the changed one, or
     the rest get zeroed. We start from `default_hids` ({index: default_hid}) and
-    apply `overrides` ({index: target_hid}) on top, then page it out in 56-byte
-    chunks behind a [24, 0|130, page_hi, page_lo, len, ...] header.
+    apply `overrides` ({index: target_hid}) on top.
 
-    `code1` is the key TYPE: the driver writes 1 for the Fn/layer-shift key
-    (`code === "KeyFn"`) and 0 for ordinary keys. `layer_indices` is the set of
-    indices whose default type is the layer key — getting this wrong (writing 0
-    for the Fn key) makes the firmware treat Fn as a normal key, which breaks the
-    function layer (the board gets "stuck" in Fn). A remapped key is always a
-    plain key (code1 = 0).
-
-    `fn_layer=True` writes the Fn layer (header byte1 = 130) instead of the base
-    layer (byte1 = 0)."""
+    `code1` is the key TYPE: 1 for the Fn/layer-shift key (`code === "KeyFn"`),
+    0 for ordinary keys. Writing 0 for the Fn key makes the firmware treat Fn
+    as a normal key, which "sticks" the function layer."""
     overrides = overrides or {}
     layer_indices = set(layer_indices or ())
-    max_idx = max(default_hids) if default_hids else 0
-    size = (max_idx + 1) * 4
-    if size < 528:
-        size = 528
-    table = bytearray(size)
+    table = bytearray(528)
     for idx, hid in default_hids.items():
         if idx in overrides:
             h = overrides[idx]
@@ -210,28 +199,59 @@ def build_keymap_table(default_hids, overrides=None, layer_indices=None, fn_laye
         else:
             h = hid
             code1 = 1 if idx in layer_indices else 0
-        table[idx * 4] = code1 & 0xFF
-        table[idx * 4 + 1] = int(h) & 0xFF  # target HID code
-        # code3/code4 left 0
-    for idx, hid in overrides.items():       # remapped keys not in defaults
-        if idx not in default_hids:
+        if idx * 4 + 1 < len(table):
+            table[idx * 4] = code1 & 0xFF
+            table[idx * 4 + 1] = int(h) & 0xFF
+    for idx, hid in overrides.items():
+        if idx not in default_hids and idx * 4 + 1 < len(table):
             table[idx * 4 + 1] = int(hid) & 0xFF
+    return _paged_keymap_packets(table, layer_byte=0)
 
+
+def build_fn_keymap_table(raw_528):
+    """Fn-layer key table (cmd 24, header [1]=2), matching the driver's setFnKeyValue.
+
+    `raw_528` is a 528-byte bytes/bytearray to send verbatim — typically captured
+    from `read_keymap_layer(fn=True)` on connect so the device's existing Fn
+    mappings are preserved across base-layer writes."""
+    table = bytearray(528)
+    if raw_528:
+        n = min(len(raw_528), 528)
+        table[:n] = bytes(raw_528[:n])
+    return _paged_keymap_packets(table, layer_byte=2)
+
+
+def _paged_keymap_packets(table, layer_byte):
+    """Page a 528-byte keymap table into 56-byte chunks under [24, layer, page_hi, page_lo, len, ...]."""
     page_size = 56
     packets = []
-    total = len(table)
-    n_pages = (total + page_size - 1) // page_size
+    n_pages = (len(table) + page_size - 1) // page_size
     for page in range(n_pages):
         start = page * page_size
         part = table[start:start + page_size]
         d = _pkt(24)
-        d[1] = 130 if fn_layer else 0
+        d[1] = layer_byte & 0xFF
         d[2] = (page >> 8) & 0xFF
         d[3] = page & 0xFF
         d[4] = len(part)
-        d[5:5 + len(part)] = part
+        d[5:5 + len(part)] = list(part)
         packets.append(_wrap(d))
     return packets
+
+
+def build_read_keymap_init(fn_layer=False):
+    """Ask the firmware to stream the keymap table back (driver's initKeyValue).
+    Response: a series of cmd-24 packets with [1]=128 (base) or 130 (fn)."""
+    d = _pkt(24)
+    d[1] = 130 if fn_layer else 128
+    return _wrap(d)
+
+
+# Back-compat shim: old name kept so existing imports/tests don't break.
+def build_keymap_table(default_hids, overrides=None, layer_indices=None, fn_layer=False):
+    if fn_layer:
+        return build_fn_keymap_table(bytes(528))
+    return build_base_keymap_table(default_hids, overrides, layer_indices)
 
 
 def build_revise(a, b):
