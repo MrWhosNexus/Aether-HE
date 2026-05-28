@@ -234,19 +234,25 @@ class Api:
             return {"ok": False, "error": str(e)}
 
     # ---- per-key actuation (codes from the design's selection) ----
-    def _flush_triggers(self):
-        """Send only the groups we've explicitly edited, so unselected keys
-        keep whatever firmware-side value they already had. The previous
-        version seeded every key with a 2.0 mm default and then sent that
-        default to every unedited key, which manifested as "the slider applies
-        to every key" — exactly the symptom users reported."""
+    def _flush_triggers(self, edited_idxs=None):
+        """Send one packet per group of (mode, travel, i1, i2) — covering ONLY
+        the keys we've explicitly edited. When `edited_idxs` is given, we only
+        flush packets for groups that include at least one of those keys; that
+        avoids re-sending unrelated groups every time the user touches one key.
+        """
         if not self._trigger_state:
             return
+        edited = set(edited_idxs) if edited_idxs else None
         groups = {}                                       # cfg -> [idx, ...]
         for idx, cfg in self._trigger_state.items():
             groups.setdefault(cfg, []).append(idx)
         for cfg, idxs in groups.items():
+            if edited is not None and not (set(idxs) & edited):
+                continue
             mode, travel, i1, i2 = cfg
+            log.info("trigger pkt: mode=%d travel=%.2fmm i1=%d i2=%d keys=%d %s",
+                     mode, travel * protocol.TRIGGER_UNIT_MM, i1, i2,
+                     len(idxs), sorted(idxs)[:8])
             self._write(protocol.build_trigger(int(mode), list(idxs),
                                                travel * protocol.TRIGGER_UNIT_MM,
                                                i1 * protocol.TRIGGER_UNIT_MM,
@@ -266,8 +272,28 @@ class Api:
         for i in idxs:
             self._trigger_state[i] = cfg
         try:
-            self._flush_triggers()
-            return {"ok": True, "keys": len(idxs)}
+            self._flush_triggers(edited_idxs=idxs)
+            return {"ok": True, "keys": len(idxs), "idxs": sorted(idxs)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def verify_actuation(self, codes):
+        """Read-back actuation for the given codes (one cmd-33/sub-5 query per
+        key). Used as a sanity check that per-key writes actually stick on the
+        firmware: call before and after set_trigger_codes, compare the values."""
+        if not self.km or not self.dev.is_open():
+            return {"ok": False, "error": "not connected"}
+        try:
+            with self._lock:
+                vals = device_state.read_actuation(self.dev, self.km)
+            # Filter to the requested codes if any.
+            if codes:
+                names_by_code = {c: self.km.by_index[self.km.index_of_code[c]]["name"]
+                                 for c in codes if c in self.km.index_of_code}
+                out = {c: vals.get(name) for c, name in names_by_code.items()}
+            else:
+                out = vals
+            return {"ok": True, "actuation_mm": out}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
