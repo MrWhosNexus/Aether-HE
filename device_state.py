@@ -33,6 +33,9 @@ class KeyMap:
         self.keys = data["keys"]
         self.by_name = {}
         self.by_index = {}
+        # Indices whose key TYPE (code1) is the Fn/layer-shift key. The firmware
+        # keymap table must keep code1=1 for these or the function layer breaks.
+        self.layer_indices = set()
         for k in self.keys:
             idx = int(k["index"])
             hid = k.get("hidCode", "0")
@@ -41,6 +44,8 @@ class KeyMap:
                      "x": float(k.get("x", 0)), "y": float(k.get("y", 0))}
             self.by_name[k["name"]] = entry
             self.by_index[idx] = entry
+            if k.get("code") == "KeyFn":
+                self.layer_indices.add(idx)
 
         # Align device keys to design codes by physical position (row, then col).
         ordered = sorted(self.keys, key=lambda k: (round(float(k["y"]) / 10),
@@ -118,23 +123,36 @@ class LiveReader:
                     self.dev.write(protocol.build_open_trigger_test(self.indices))
                 except Exception:
                     pass
-            r = None
+            # Drain the WHOLE hidraw backlog each cycle, keeping only the latest
+            # depth per key. The board streams travel reports faster than a
+            # one-read-per-loop pace can consume, so reading a single report at a
+            # time lags reality — on a quick release the loop is still chewing
+            # through stale "pressed" reports and shows a high value instead of 0.
+            got = False
             try:
                 with self.dev._lock:
-                    if self.dev._dev:
+                    if not self.dev._dev:
+                        time.sleep(0.02); continue
+                    for _ in range(256):          # bounded drain
                         r = self.dev._dev.read(64)
+                        if not r or len(r) < 11:
+                            break
+                        # hidapi read includes Report ID at [0]; travel sub-report:
+                        # [1]=33, [5]=5, [7]=row, [8]=col -> device index = row*22 +
+                        # col (W=46 -> (2,2), confirmed).
+                        if r[1] == 33 and r[5] == 5:
+                            idx = r[7] * 22 + r[8]
+                            depth = (r[9] | (r[10] << 8)) / 100.0
+                            code = self.km.code_of(idx)   # e.g. "W","LCtrl","1"
+                            if code:
+                                self.depths[code] = depth
+                                got = True
             except Exception:
                 time.sleep(0.05); continue
-            if not r or len(r) < 11:
-                time.sleep(0.003); continue
-            # hidapi read includes Report ID at [0]; travel sub-report: [1]=33, [5]=5,
-            # [7]=row, [8]=col -> device index = row*22 + col (W=46 -> (2,2), confirmed).
-            if r[1] == 33 and r[5] == 5:
-                idx = r[7] * 22 + r[8]
-                depth = (r[9] | (r[10] << 8)) / 100.0
-                code = self.km.code_of(idx)   # design data-code, e.g. "W","LCtrl","1"
-                if code:
-                    self.depths[code] = depth
+            # Nothing pending → sleep briefly so we don't busy-spin the lock;
+            # when reports are flowing, loop straight back to stay real-time.
+            if not got:
+                time.sleep(0.002)
 
     def snapshot(self):
         return dict(self.depths)

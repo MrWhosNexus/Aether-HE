@@ -178,7 +178,7 @@ def build_remap(index):
     return _wrap(d)
 
 
-def build_keymap_table(default_hids, overrides=None, fn_layer=False):
+def build_keymap_table(default_hids, overrides=None, layer_indices=None, fn_layer=False):
     """Full key-remap table (cmd 24), matching the official driver's setKeyValue.
 
     The board stores a flat table of 4 bytes per key index — [code1, hidCode,
@@ -187,17 +187,30 @@ def build_keymap_table(default_hids, overrides=None, fn_layer=False):
     apply `overrides` ({index: target_hid}) on top, then page it out in 56-byte
     chunks behind a [24, 0|130, page_hi, page_lo, len, ...] header.
 
+    `code1` is the key TYPE: the driver writes 1 for the Fn/layer-shift key
+    (`code === "KeyFn"`) and 0 for ordinary keys. `layer_indices` is the set of
+    indices whose default type is the layer key — getting this wrong (writing 0
+    for the Fn key) makes the firmware treat Fn as a normal key, which breaks the
+    function layer (the board gets "stuck" in Fn). A remapped key is always a
+    plain key (code1 = 0).
+
     `fn_layer=True` writes the Fn layer (header byte1 = 130) instead of the base
     layer (byte1 = 0)."""
     overrides = overrides or {}
+    layer_indices = set(layer_indices or ())
     max_idx = max(default_hids) if default_hids else 0
     size = (max_idx + 1) * 4
     if size < 528:
         size = 528
     table = bytearray(size)
     for idx, hid in default_hids.items():
-        h = overrides.get(idx, hid)
-        table[idx * 4] = 0                  # code1 = 0 → plain key
+        if idx in overrides:
+            h = overrides[idx]
+            code1 = 0                       # a remapped key is a plain key
+        else:
+            h = hid
+            code1 = 1 if idx in layer_indices else 0
+        table[idx * 4] = code1 & 0xFF
         table[idx * 4 + 1] = int(h) & 0xFF  # target HID code
         # code3/code4 left 0
     for idx, hid in overrides.items():       # remapped keys not in defaults

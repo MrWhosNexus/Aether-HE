@@ -220,7 +220,8 @@ class Api:
     # ---- key remap (cmd 24, full keymap table) ----
     def _flush_remaps(self):
         defaults = {i: self.km.by_index[i]["hid"] for i in self.km.by_index}
-        for pkt in protocol.build_keymap_table(defaults, self._remaps):
+        for pkt in protocol.build_keymap_table(defaults, self._remaps,
+                                               layer_indices=self.km.layer_indices):
             self._write(pkt)
             threading.Event().wait(0.005)
 
@@ -685,7 +686,12 @@ def main():
     if not os.path.exists(INDEX):
         raise SystemExit(f"UI not found: {INDEX}")
     api = Api()
-    url = INDEX + f"?v={int(os.path.getmtime(INDEX))}"
+    # Pass an explicit file:// URI: pywebview only treats a string as a local
+    # file when it exists on disk verbatim, and the "?v=" cache-buster query
+    # breaks that check (the page then loads as a remote URL — which inside a
+    # Flatpak/WebKit sandbox fails with a portal "NotAllowed" error).
+    from pathlib import Path
+    url = Path(INDEX).as_uri() + f"?v={int(os.path.getmtime(INDEX))}"
     window = webview.create_window(
         "Aether", url, js_api=api,
         width=1340, height=900, min_size=(1160, 800),

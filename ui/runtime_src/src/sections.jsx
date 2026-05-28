@@ -366,7 +366,7 @@ const ActuationSection = ({
   switchId, onPickSwitch,
   liveDepth = 0, selectedCount = 0,
 }) => {
-  const scope = selectedCount > 0 ? `${selectedCount} selected key${selectedCount > 1 ? "s" : ""}` : "ALL keys";
+  const scope = selectedCount > 0 ? `${selectedCount} selected key${selectedCount > 1 ? "s" : ""}` : "no keys (select some)";
   const [tab, setTab] = useState("travel");
   return (
     <div>
@@ -399,7 +399,7 @@ const ActuationSection = ({
           {tab === "travel" && (
             <div>
               <p className="text-[12px] text-slate-400 mb-3">
-                Adjust the actuation point below. Select keys on the board to scope it; with none selected it applies to every key.
+                Adjust the actuation point below. Select keys on the board to scope it — use "Select All" to apply to every key. With nothing selected, changes aren't sent.
               </p>
               <div className="mb-5 inline-flex items-center gap-2 px-3 h-7 rounded-md border border-[var(--accent)]/30 bg-[var(--accent)]/[0.06]">
                 <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-400">Applying to</span>

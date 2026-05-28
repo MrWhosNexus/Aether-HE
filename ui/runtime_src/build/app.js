@@ -663,8 +663,9 @@
 
     const [layer, setLayer] = useState("default");
 
-    // Empty by default → actuation/dead-band/switch apply to ALL keys until you
-    // pick a subset (set_trigger_codes treats an empty selection as every key).
+    // Empty by default. Actuation/dead-band changes are only sent for the
+    // selected keys; with nothing selected they're a no-op (use "Select All" to
+    // hit every key) so the whole board is never overwritten by accident.
     const [selectedKeys, setSelectedKeys] = useState(() => new Set());
     const [actuation, setActuation] = useState(1.70);
     const [rtPress, setRtPress] = useState(0.05);
@@ -1184,6 +1185,10 @@
     useEffect(() => {
       if (!connected || section !== "actuation") return;
       const codes = Array.from(selectedKeys);
+      // No selection => no-op. Auto-applying to every key when the selection is
+      // empty (e.g. right after "Deselect All", or before any key is clicked)
+      // silently overwrote the whole board — use "Select All" to scope to all.
+      if (codes.length === 0) return;
       clearTimeout(trigTimer.current);
       trigTimer.current = setTimeout(() => {
         // Firmware trigger mode (from the driver): 0 = fixed actuation point,
@@ -1199,9 +1204,11 @@
     const deadTimer = useRef(null);
     useEffect(() => {
       if (!connected || section !== "actuation") return;
+      const codes = Array.from(selectedKeys);
+      if (codes.length === 0) return; // no selection => no-op (see above)
       clearTimeout(deadTimer.current);
       deadTimer.current = setTimeout(() => {
-        apiCall("set_deadband_codes", Array.from(selectedKeys), deadTop, deadBottom);
+        apiCall("set_deadband_codes", codes, deadTop, deadBottom);
       }, 110);
       return () => clearTimeout(deadTimer.current);
     }, [connected, deadTop, deadBottom, selectedKeys]);

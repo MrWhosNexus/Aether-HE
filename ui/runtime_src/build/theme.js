@@ -298,7 +298,7 @@
     }, /*#__PURE__*/React.createElement("div", {
       className: "absolute inset-0 bg-black/65 backdrop-blur-md animate-[fadeIn_180ms_ease-out]"
     }), /*#__PURE__*/React.createElement("div", {
-      className: "relative w-[680px] max-w-[92vw] max-h-[90vh] overflow-hidden rounded-3xl\r bg-[#0e1220]/95 border border-white/[0.06]\r shadow-[0_40px_120px_-20px_rgba(0,0,0,0.85),0_0_0_1px_rgba(255,255,255,0.04)_inset]\r animate-[popIn_220ms_cubic-bezier(.2,.9,.3,1.1)]"
+      className: "relative w-[680px] max-w-[92vw] max-h-[90vh] overflow-hidden rounded-3xl bg-[#0e1220]/95 border border-white/[0.06] shadow-[0_40px_120px_-20px_rgba(0,0,0,0.85),0_0_0_1px_rgba(255,255,255,0.04)_inset] animate-[popIn_220ms_cubic-bezier(.2,.9,.3,1.1)]"
     }, /*#__PURE__*/React.createElement("div", {
       className: "px-7 pt-6 pb-3 flex items-start justify-between"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
