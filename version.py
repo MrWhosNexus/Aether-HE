@@ -8,7 +8,7 @@ updater (updater.py) compares this against the latest GitHub release.
 Keep installer.iss (#define MyAppVersion) and the Flatpak metainfo
 <release> in step with this when you bump — they're cosmetic, but tidy.
 """
-__version__ = "0.1.7"
+__version__ = "0.1.8"
 
 # owner/repo that releases are published under.
 GITHUB_REPO = "MrWhosNexus/aether-linux-app"

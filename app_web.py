@@ -876,11 +876,15 @@ def main():
         raise SystemExit(f"UI not found: {INDEX}")
     api = Api()
     # Pass an explicit file:// URI: pywebview only treats a string as a local
-    # file when it exists on disk verbatim, and the "?v=" cache-buster query
+    # file when it exists on disk verbatim, and a "?v=" cache-buster query
     # breaks that check (the page then loads as a remote URL — which inside a
     # Flatpak/WebKit sandbox fails with a portal "NotAllowed" error).
+    # The mtime goes in the URL fragment, not the query: Edge WebView2 on
+    # Windows does not strip query strings from file:// URIs and resolves
+    # `index_runtime.html?v=…` as a literal filename → ERR_FILE_NOT_FOUND.
+    # Fragments are client-side only and safe on every backend.
     from pathlib import Path
-    url = Path(INDEX).as_uri() + f"?v={int(os.path.getmtime(INDEX))}"
+    url = Path(INDEX).as_uri() + f"#v={int(os.path.getmtime(INDEX))}"
     window = webview.create_window(
         "Aether", url, js_api=api,
         width=1340, height=900, min_size=(1160, 800),
