@@ -90,15 +90,13 @@ class LiveReader:
         self.km = keymap
         self.indices = list(indices or keymap.indices())
         self.depths = {}          # code -> mm
-        # Timestamp of the most recent report for each code. Used to decay
-        # stale readings to 0: on a fast key release the firmware sometimes
-        # stops reporting before the depth reaches zero, leaving the cached
-        # value stuck high. If we don't hear from a key for STALE_S we treat
-        # it as released. 35 ms is short enough to catch a fast release
-        # (humans can release within ~50 ms) and long enough that ordinary
-        # poll-rate gaps at 8 kHz don't trigger false zeros.
-        self._last_seen = {}
-        self.STALE_S = 0.035
+        # The firmware's travel-test stream is event-driven on depth change.
+        # A key held at constant depth produces no further reports, so any
+        # time-based "haven't heard from this key in N ms → released" rule
+        # makes held keys vanish from the UI. Instead we trust the firmware's
+        # next report: cache the last reported depth and only clear an entry
+        # when a fresh report arrives at or below the firmware's noise floor.
+        self.NOISE_MM = 0.05
         self._stop = threading.Event()
         self._thread = None
 
@@ -154,8 +152,10 @@ class LiveReader:
                             depth = (r[9] | (r[10] << 8)) / 100.0
                             code = self.km.code_of(idx)   # e.g. "W","LCtrl","1"
                             if code:
-                                self.depths[code] = depth
-                                self._last_seen[code] = time.time()
+                                if depth < self.NOISE_MM:
+                                    self.depths.pop(code, None)
+                                else:
+                                    self.depths[code] = depth
                                 got = True
             except Exception:
                 time.sleep(0.05); continue
@@ -165,26 +165,11 @@ class LiveReader:
                 time.sleep(0.002)
 
     def snapshot(self):
-        # Decay stale readings to 0. A fast release can outrun the firmware's
-        # report cadence, so a key whose last report was longer than STALE_S
-        # ago is treated as released — this keeps the depth indicator from
-        # being stuck high after a quick keypress. ALSO snap to 0 (and clear
-        # the cached depth) once we treat it as released, so the very next
-        # report — even if it lands inside STALE_S — can't reintroduce the
-        # stale value (the firmware sometimes emits a single trailing
-        # "still pressed" packet a fraction of a second after a fast release).
-        now = time.time()
-        out = {}
-        stale_keys = []
-        for code, mm in self.depths.items():
-            if (now - self._last_seen.get(code, 0.0)) > self.STALE_S:
-                out[code] = 0.0
-                stale_keys.append(code)
-            else:
-                out[code] = mm
-        for code in stale_keys:
-            self.depths[code] = 0.0
-        return out
+        # Last-reported depth per key. No time-based decay — the firmware
+        # stops reporting while a key is held flat, so any decay rule would
+        # erase held-key visibility. Release is handled in _run by clearing
+        # the cache when a fresh report drops below NOISE_MM.
+        return dict(self.depths)
 
     def stop(self):
         self._stop.set()
