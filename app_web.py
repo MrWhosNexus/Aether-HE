@@ -123,13 +123,17 @@ class Api:
                 break
             if not r or len(r) < 6:
                 time.sleep(0.005); continue
-            # hidapi may or may not prepend a report-id byte; locate the cmd-24
-            # response by trying both offsets and accepting whichever matches.
+            # hidapi's report-id prefix isn't fully consistent on this codebase
+            # (existing readers use both r[0] and r[1] for the command byte
+            # depending on cmd), so locate the cmd-24 response by scanning a
+            # small range for the [cmd=24, sub=128|130] signature.
             base = None
-            if len(r) > 6 and r[1] == 24 and r[2] == want:
-                base = 1
-            elif r[0] == 24 and r[1] == want:
-                base = 0
+            for off in (0, 1, 4, 5):
+                if off + 5 >= len(r):
+                    continue
+                if r[off] == 24 and r[off + 1] == want:
+                    base = off
+                    break
             if base is None:
                 continue
             page = (r[base + 2] << 8) | r[base + 3]
@@ -143,6 +147,8 @@ class Api:
                 continue
             table[start:end] = bytes(r[data_off:data_off + ln])
             seen.add(page)
+        log.info("keymap snapshot: layer=%s pages=%d/%d",
+                 "fn" if fn_layer else "base", len(seen), n_pages)
         return bytes(table)
 
     def read_live(self):
@@ -228,21 +234,12 @@ class Api:
             return {"ok": False, "error": str(e)}
 
     # ---- per-key actuation (codes from the design's selection) ----
-    _DEFAULT_TRIGGER_RAW = (0, 200, 0, 0)   # mode=fixed, travel=2.00mm, no RT
-
-    def _ensure_trigger_state(self):
-        """Seed every key with the default trigger so apply-time grouping covers
-        the whole board (matches the driver, which always pushes a config for
-        every key). Without this, the firmware sees a packet whose mask covers
-        only the just-edited keys, and at least some firmware revisions appear
-        to interpret that as "apply this trigger to every key on the board"."""
-        if self._trigger_state or not self.km:
-            return
-        for idx in self.km.indices():
-            self._trigger_state[idx] = self._DEFAULT_TRIGGER_RAW
-
     def _flush_triggers(self):
-        """Send the full per-key trigger state, grouped by identical config."""
+        """Send only the groups we've explicitly edited, so unselected keys
+        keep whatever firmware-side value they already had. The previous
+        version seeded every key with a 2.0 mm default and then sent that
+        default to every unedited key, which manifested as "the slider applies
+        to every key" — exactly the symptom users reported."""
         if not self._trigger_state:
             return
         groups = {}                                       # cfg -> [idx, ...]
@@ -262,7 +259,6 @@ class Api:
         idxs = self.km.indices_for_codes(codes) if codes else []
         if not idxs:
             return {"ok": False, "error": "no keys"}
-        self._ensure_trigger_state()
         cfg = (int(mode),
                protocol.mm_to_raw(travel_mm),
                protocol.mm_to_raw(rt_press_mm),
@@ -340,14 +336,18 @@ class Api:
                                                      layer_indices=self.km.layer_indices):
             self._write(pkt)
             threading.Event().wait(0.005)
-        # Always follow with the Fn layer (verbatim from what we snapshotted at
-        # connect). The official driver writes both setKeyValue + setFnKeyValue
-        # on every Apply; writing only the base layer leaves the firmware in a
-        # state where Fn is treated as held until replug.
-        fn_raw = self._fn_layer_raw if self._fn_layer_raw is not None else bytes(528)
-        for pkt in protocol.build_fn_keymap_table(fn_raw):
-            self._write(pkt)
-            threading.Event().wait(0.005)
+        # Always follow with the Fn layer — the official driver writes both
+        # setKeyValue + setFnKeyValue on every Apply, and writing only the base
+        # leaves the firmware treating Fn as held until replug. Replay the
+        # snapshot we captured at connect; if the snapshot failed we skip the
+        # Fn write rather than risk wiping the user's existing Fn mappings with
+        # zeros (the "stuck Fn" symptom is preferable to losing customization).
+        if self._fn_layer_raw is not None and any(self._fn_layer_raw):
+            for pkt in protocol.build_fn_keymap_table(self._fn_layer_raw):
+                self._write(pkt)
+                threading.Event().wait(0.005)
+        else:
+            log.warning("skipping Fn-layer write: no snapshot captured at connect")
 
     def set_remap(self, codes, target_hid):
         """Remap the selected keys to emit `target_hid` (USB HID usage code)."""
