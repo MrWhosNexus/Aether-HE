@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.mrwhosnexus.AetherHE</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Aether HE</name>
+  <summary>Controller for the Aula Win60 HE Hall-effect keyboard</summary>
+  <description>
+    <p>
+      Desktop controller for the Aula Win60 HE Hall-effect keyboard
+      (VID 0x2E3C, PID 0xC365). Provides per-key and multi-color animated
+      lighting (host streaming at 60 fps), analog actuation with Rapid Trigger,
+      SOCD handling, key remapping, calibration, and an analog-to-virtual-gamepad
+      pipeline that maps Hall-effect key travel onto Xbox 360 sticks and triggers.
+    </p>
+    <p>
+      The keyboard is accessed over HID (hidraw); the virtual gamepad uses
+      /dev/uinput. Install the bundled udev rules on the host so these nodes are
+      accessible without root.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.mrwhosnexus.AetherHE.desktop</launchable>
+  <url type="homepage">https://github.com/MrWhosNexus/aether-linux-app</url>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-05-27"/>
+  </releases>
+</component>

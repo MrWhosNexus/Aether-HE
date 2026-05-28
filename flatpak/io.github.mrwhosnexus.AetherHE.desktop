@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Aether HE
+Comment=Controller for the Aula Win60 HE Hall-effect keyboard
+Exec=aether
+Icon=io.github.mrwhosnexus.AetherHE
+Terminal=false
+Categories=Utility;Settings;HardwareSettings;
+Keywords=keyboard;aula;win60;hall-effect;rgb;lighting;gamepad;
+StartupNotify=true

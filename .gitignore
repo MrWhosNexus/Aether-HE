@@ -14,3 +14,9 @@ venv/
 # Vendored binary installers (re-downloaded by build_installer.bat)
 vendor/*.exe
 vendor/*.msi
+# Flatpak build outputs (rebuild via flatpak/io.github.mrwhosnexus.AetherHE.yml)
+flatpak/build-dir/
+flatpak/repo/
+flatpak/.flatpak-builder/
+.flatpak-builder/
+flatpak/*.flatpak

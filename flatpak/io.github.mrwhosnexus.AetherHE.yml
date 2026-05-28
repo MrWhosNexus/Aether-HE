@@ -1,0 +1,53 @@
+app-id: io.github.mrwhosnexus.AetherHE
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+command: aether
+
+finish-args:
+  # Native GTK/WebKit window.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # HID (hidraw) for the keyboard + /dev/uinput for the virtual gamepad.
+  # Host udev rules (99-aula.rules, 99-uinput.rules) still govern node perms.
+  - --device=all
+  # WebKitGTK runs its web/network processes in its own nested sandbox, which
+  # it sets up via the Flatpak portal. Without this the page never loads.
+  - --talk-name=org.freedesktop.portal.Flatpak
+  # "Reveal settings folder" uses the file-manager portal; settings live in
+  # the app's own XDG_CONFIG_HOME, no extra host filesystem access needed.
+  - --talk-name=org.freedesktop.FileManager1
+
+modules:
+  # All Python deps pulled from PyPI. Build sandbox is granted network here
+  # (local, non-reproducible build — not a Flathub-style pinned manifest).
+  - name: python-deps
+    buildsystem: simple
+    build-options:
+      build-args:
+        - --share=network
+    build-commands:
+      - pip3 install --prefix=/app --no-build-isolation
+        pywebview hidapi evdev pyusb
+
+  - name: aether
+    buildsystem: simple
+    build-commands:
+      # App source -> /app/share/aether
+      - install -d /app/share/aether
+      - cp -r app_web.py aula_device.py protocol.py effects.py device_state.py
+        gamepad.py theme.py ui /app/share/aether/
+      # Launcher
+      - install -Dm755 flatpak/aether.sh /app/bin/aether
+      # Desktop integration
+      - install -Dm644 flatpak/io.github.mrwhosnexus.AetherHE.desktop
+        /app/share/applications/io.github.mrwhosnexus.AetherHE.desktop
+      - install -Dm644 flatpak/io.github.mrwhosnexus.AetherHE.metainfo.xml
+        /app/share/metainfo/io.github.mrwhosnexus.AetherHE.metainfo.xml
+      - install -Dm644 ui/assets/logo.png
+        /app/share/icons/hicolor/256x256/apps/io.github.mrwhosnexus.AetherHE.png
+    sources:
+      - type: dir
+        path: ..
