@@ -34333,17 +34333,27 @@
     }, displayLines[0])) : /*#__PURE__*/React.createElement("span", {
       className: `text-[11px] font-medium tracking-wide
                             ${layer === "fn" && fnLabel ? "text-[var(--accent)]" : actuated ? "text-white" : "text-slate-200"}`
-    }, displayLabel)), mode === "actuation" && /*#__PURE__*/React.createElement("div", {
-      className: "absolute bottom-0.5 inset-x-1 z-10 flex items-end justify-between"
+    }, displayLabel)), mode === "actuation" && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", {
+      "aria-hidden": true,
+      className: "absolute left-1 right-1 bottom-[3px] h-[3px] rounded-sm pointer-events-none z-0",
+      style: {
+        background: `linear-gradient(90deg,
+                    hsl(${Math.max(0, 180 - actuationPoint * 45)} 80% 55%) 0%,
+                    hsl(${Math.max(0, 180 - actuationPoint * 45)} 80% 55%) ${Math.min(100, actuationPoint / 4 * 100)}%,
+                    rgba(255,255,255,0.06) ${Math.min(100, actuationPoint / 4 * 100)}%,
+                    rgba(255,255,255,0.06) 100%)`
+      }
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "absolute bottom-[7px] inset-x-1 z-10 flex items-end justify-between"
     }, /*#__PURE__*/React.createElement("span", {
-      className: "font-mono text-[8.5px] text-slate-300/90"
+      className: "font-mono text-[10px] font-semibold text-slate-100 leading-none"
     }, actuationPoint.toFixed(2)), (rtPress > 0 || rtRelease > 0) && /*#__PURE__*/React.createElement("div", {
-      className: "flex gap-1"
+      className: "flex gap-1 leading-none"
     }, /*#__PURE__*/React.createElement("span", {
       className: "font-mono text-[8.5px] text-rose-300/90"
     }, rtPress.toFixed(2)), /*#__PURE__*/React.createElement("span", {
       className: "font-mono text-[8.5px] text-emerald-300/90"
-    }, rtRelease.toFixed(2)))), mode === "actuation" && /*#__PURE__*/React.createElement("span", {
+    }, rtRelease.toFixed(2))))), mode === "actuation" && /*#__PURE__*/React.createElement("span", {
       className: "absolute top-1 right-1 z-10 font-mono text-[8px] text-[var(--accent)]/90"
     }, (depth < 0.05 ? 0 : depth).toFixed(2)));
   };

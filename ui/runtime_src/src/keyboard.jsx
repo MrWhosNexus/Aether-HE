@@ -142,17 +142,32 @@ const Key = ({
         )}
       </div>
 
-      {/* Bottom values — only in actuation mode */}
+      {/* Per-key actuation indicator — large enough to actually read at a
+          glance, plus a colored bar whose width = actuationPoint / 4mm so
+          you can spot the outliers without squinting. Lower = teal (more
+          sensitive), higher = amber (more resistant). */}
       {mode === "actuation" && (
-        <div className="absolute bottom-0.5 inset-x-1 z-10 flex items-end justify-between">
-          <span className="font-mono text-[8.5px] text-slate-300/90">{actuationPoint.toFixed(2)}</span>
-          {(rtPress > 0 || rtRelease > 0) && (
-            <div className="flex gap-1">
-              <span className="font-mono text-[8.5px] text-rose-300/90">{rtPress.toFixed(2)}</span>
-              <span className="font-mono text-[8.5px] text-emerald-300/90">{rtRelease.toFixed(2)}</span>
-            </div>
-          )}
-        </div>
+        <>
+          <span aria-hidden className="absolute left-1 right-1 bottom-[3px] h-[3px] rounded-sm pointer-events-none z-0"
+                style={{
+                  background: `linear-gradient(90deg,
+                    hsl(${Math.max(0, 180 - actuationPoint * 45)} 80% 55%) 0%,
+                    hsl(${Math.max(0, 180 - actuationPoint * 45)} 80% 55%) ${Math.min(100, (actuationPoint / 4) * 100)}%,
+                    rgba(255,255,255,0.06) ${Math.min(100, (actuationPoint / 4) * 100)}%,
+                    rgba(255,255,255,0.06) 100%)`,
+                }}/>
+          <div className="absolute bottom-[7px] inset-x-1 z-10 flex items-end justify-between">
+            <span className="font-mono text-[10px] font-semibold text-slate-100 leading-none">
+              {actuationPoint.toFixed(2)}
+            </span>
+            {(rtPress > 0 || rtRelease > 0) && (
+              <div className="flex gap-1 leading-none">
+                <span className="font-mono text-[8.5px] text-rose-300/90">{rtPress.toFixed(2)}</span>
+                <span className="font-mono text-[8.5px] text-emerald-300/90">{rtRelease.toFixed(2)}</span>
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       {/* Live travel readout — always shown in actuation mode so a released key

@@ -287,21 +287,29 @@ class Api:
             return {"ok": False, "error": str(e)}
 
     def verify_actuation(self, codes):
-        """Read-back actuation for the given codes (one cmd-33/sub-5 query per
-        key). Used as a sanity check that per-key writes actually stick on the
-        firmware: call before and after set_trigger_codes, compare the values."""
+        """Read-back actuation for the given design codes (one cmd-33/sub-5
+        query per key). Returns {design_code: travel_mm}, so callers that key
+        by design code (the JS UI, every selection set) get a direct lookup.
+        read_actuation() keys by `km.name` (the JSON's display label like
+        "Esc", "1!") — those don't match the design codes ("Escape", "1") for
+        about half the board, which is why the on-screen values silently
+        vanished for a chunk of keys."""
         if not self.km or not self.dev.is_open():
             return {"ok": False, "error": "not connected"}
         try:
             with self._lock:
-                vals = device_state.read_actuation(self.dev, self.km)
-            # Filter to the requested codes if any.
+                vals_by_name = device_state.read_actuation(self.dev, self.km)
+            # Build {design_code: mm} for every key we have a mapping for.
+            all_by_code = {}
+            for design_code, idx in self.km.index_of_code.items():
+                name = self.km.by_index[idx]["name"]
+                mm = vals_by_name.get(name)
+                if mm is not None:
+                    all_by_code[design_code] = mm
             if codes:
-                names_by_code = {c: self.km.by_index[self.km.index_of_code[c]]["name"]
-                                 for c in codes if c in self.km.index_of_code}
-                out = {c: vals.get(name) for c, name in names_by_code.items()}
+                out = {c: all_by_code.get(c) for c in codes if c in all_by_code}
             else:
-                out = vals
+                out = all_by_code
             return {"ok": True, "actuation_mm": out}
         except Exception as e:
             return {"ok": False, "error": str(e)}
