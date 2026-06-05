@@ -1,0 +1,5 @@
+{
+  "//": "Pin this build-tooling dir to CommonJS so vendor/babel.js and compile.cjs load correctly regardless of any ancestor package.json that declares \"type\":\"module\".",
+  "type": "commonjs",
+  "private": true
+}
