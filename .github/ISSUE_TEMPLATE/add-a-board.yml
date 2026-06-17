@@ -1,0 +1,146 @@
+name: "⌨️ Add my keyboard to Aether"
+description: "Submit the info needed to add support for a new keyboard. Required fields are quick; the Advanced section is optional — leave it blank and the maintainer will help reverse-engineer the protocol."
+title: "[Board] <Brand> <Model> — add support"
+labels: ["new-board", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping grow Aether! 🎉
+
+        You **don't need to be technical** to submit. Fill in the **Required** part —
+        that's enough to get your board on the roadmap and its layout drawn. The
+        **Advanced (optional)** part speeds things up a lot if you can manage it, but
+        the maintainer can do that part with you later.
+
+        📖 **Full walkthrough with copy-paste templates:** [docs/SUBMIT_A_BOARD.md](../blob/main/docs/SUBMIT_A_BOARD.md)
+
+  # ---------------------------------------------------------------- Required
+  - type: input
+    id: brand-model
+    attributes:
+      label: Brand & exact model
+      description: As printed on the box / underside of the board.
+      placeholder: "e.g. Aula F75, Womier SK71, Epomaker TH80"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: switch-type
+    attributes:
+      label: Switch type
+      options:
+        - "Hall-effect / magnetic (analog, adjustable actuation)"
+        - "Mechanical (standard digital switches)"
+        - "Optical"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: form-factor
+    attributes:
+      label: Form factor / size
+      options:
+        - "60%"
+        - "65%"
+        - "75%"
+        - "TKL (80%)"
+        - "96% / 1800"
+        - "Full size (100%)"
+        - "Other / custom (describe below)"
+    validations:
+      required: true
+
+  - type: input
+    id: vid-pid
+    attributes:
+      label: USB VID & PID
+      description: "Run the helper (tools/list_hid.py) or see the guide. Format: VID:PID in hex."
+      placeholder: "e.g. 2E3C:C365"
+    validations:
+      required: true
+
+  - type: input
+    id: official-software
+    attributes:
+      label: Official software / driver
+      description: Name + download link of the vendor app you currently use to control lighting/actuation. This is where the protocol is reverse-engineered from.
+      placeholder: "e.g. 'Aula Gaming' WebHID driver — https://..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: photos
+    attributes:
+      label: Photos of the board
+      description: "Drag-and-drop a clear top-down photo (for the layout) and a photo of the underside label (for model/IDs). At least the top-down is required."
+      placeholder: "Drop images here…"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Your operating system
+      multiple: true
+      options:
+        - "Windows"
+        - "Linux"
+        - "macOS"
+    validations:
+      required: true
+
+  # ---------------------------------------------------------------- Advanced
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        ## Advanced (optional) — leave blank if unsure
+
+        Anything you can fill here moves your board from "roadmap" to "buildable".
+        The guide explains exactly how to capture each item. **None of this is required.**
+
+  - type: textarea
+    id: hid-enumerate
+    attributes:
+      label: HID interface dump
+      description: "Paste the full output of `python tools/list_hid.py` (lists every interface, usage page, report size). This tells Aether which collection to talk to."
+      render: text
+
+  - type: textarea
+    id: keymap-json
+    attributes:
+      label: Layout (keymap.json)
+      description: "If you filled in the keymap.json template from the guide, paste it here. Otherwise the top-down photo is enough for the maintainer to build it."
+      render: json
+
+  - type: input
+    id: matrix-stride
+    attributes:
+      label: Key-index stride
+      description: "The per-key matrix stride, if known (Aula uses idx = row*22 + col, so stride = 22). See the guide's 'Finding the stride' section."
+      placeholder: "e.g. 22"
+
+  - type: textarea
+    id: protocol-captures
+    attributes:
+      label: Protocol captures
+      description: "WebHID/USB capture logs of lighting + actuation commands (chrome://device-log dumps, Wireshark/usbmon, or the vendor app's sendReport calls). Paste logs or attach files."
+      render: text
+
+  - type: textarea
+    id: anything-else
+    attributes:
+      label: Anything else
+      description: Quirks, what works in the official app, features you most want, links to existing reverse-engineering, etc.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: "I searched existing issues and my board isn't already requested."
+          required: true
+        - label: "I'm willing to test a development build on my hardware once support is drafted."
+          required: false

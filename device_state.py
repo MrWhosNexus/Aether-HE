@@ -5,8 +5,8 @@ ui/keymap.json): each key has index, name, code, hidCode, and x/y position. The
 device protocol (protocol.py) is used to read per-key trigger values and to
 stream live travel after enabling Travel Test.
 """
-import json
 import os
+import sys
 import threading
 import time
 
@@ -14,6 +14,13 @@ import protocol
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 KEYMAP_PATH = os.path.join(HERE, "ui", "keymap.json")
+
+# Keymaps may originate from untrusted submitters, so they are parsed through a
+# strict, fail-closed validator (tools/validate_keymap.py) rather than a bare
+# json.load. A malformed/malicious file raises KeymapValidationError, which the
+# caller treats as "no board" instead of crashing or trusting bad data.
+sys.path.insert(0, os.path.join(HERE, "tools"))
+from validate_keymap import load_keymap, KeymapValidationError  # noqa: E402
 
 # The design's data-code values (keyboard.jsx KB_ROWS), in physical row order.
 # The keymap's own `code` field is the browser event-code (KeyW/ControlLeft/…),
@@ -29,7 +36,9 @@ DESIGN_CODES = [
 
 class KeyMap:
     def __init__(self, path=KEYMAP_PATH):
-        data = json.load(open(path))
+        # Validated, size-capped, fail-closed load. Raises KeymapValidationError
+        # on any malformed/oversized/malicious input — never trusts the file.
+        data = load_keymap(path)
         self.keys = data["keys"]
         self.by_name = {}
         self.by_index = {}

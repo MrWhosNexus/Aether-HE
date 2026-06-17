@@ -1,0 +1,61 @@
+name: Validate submissions
+
+# Security guard for community board data. Runs on PRs (including from forks) and
+# on pushes that touch keymaps or the UI. Uses the default `pull_request` trigger
+# — NOT `pull_request_target` — so untrusted PR code runs with a read-only token
+# and no access to repository secrets. Never add secrets or write permissions here.
+
+on:
+  pull_request:
+    paths:
+      - "**/keymap.json"
+      - "tools/validate_keymap.py"
+      - "ui/runtime_src/src/**"
+      - ".github/workflows/validate-submissions.yml"
+  push:
+    branches: [main]
+    paths:
+      - "**/keymap.json"
+      - "tools/validate_keymap.py"
+      - "ui/runtime_src/src/**"
+
+permissions:
+  contents: read
+
+jobs:
+  validate-keymaps:
+    name: Validate keymap.json files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate every keymap.json against the strict schema
+        shell: bash
+        run: |
+          shopt -s globstar nullglob
+          maps=(**/keymap.json)
+          if [ ${#maps[@]} -eq 0 ]; then
+            echo "No keymap.json files found — nothing to validate."
+            exit 0
+          fi
+          echo "Validating: ${maps[*]}"
+          python tools/validate_keymap.py "${maps[@]}"
+
+  ui-xss-guard:
+    name: Forbid raw-HTML sinks in the UI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail if dangerouslySetInnerHTML / innerHTML appear in UI source
+        shell: bash
+        run: |
+          # The WebView exposes window.pywebview.api (the HID bridge), so any XSS
+          # in the UI is arbitrary device control. Keymap-derived strings must
+          # only ever be rendered as escaped text. Block raw-HTML sinks entirely.
+          if grep -rnE "dangerouslySetInnerHTML|\.innerHTML|insertAdjacentHTML|outerHTML" ui/runtime_src/src; then
+            echo "::error::Raw-HTML sink found in UI source. Render untrusted strings as text only (no innerHTML / dangerouslySetInnerHTML)."
+            exit 1
+          fi
+          echo "OK: no raw-HTML sinks in ui/runtime_src/src."
