@@ -1,5 +1,13 @@
 # AETHER HE — Aula WIN60 HE Controller
 
+> ## 📣 We're looking for keyboards to support — submit yours!
+> Aether only speaks to the **Aula Win60 HE** today, and we want to change that.
+> **Own a different Hall-effect or RGB keyboard? Send us its data and we'll add it.**
+> It takes a few minutes, needs **no coding**, and gets your board onto the roadmap
+> with its layout drawn in the app.
+>
+> ### → [**Submit your keyboard**](https://github.com/MrWhosNexus/Aether-HE/issues/new?template=add-a-board.yml) · [How it works](docs/SUBMIT_A_BOARD.md)
+
 Cross-platform desktop controller for the Aula Win60 HE Hall-effect keyboard
 (VID `0x2E3C`, PID `0xC365`). React/Tailwind UI rendered natively
 (Edge WebView2 on Windows, GTK/WebKit on Linux); HID is bridged to Python.
@@ -7,19 +15,6 @@ Cross-platform desktop controller for the Aula Win60 HE Hall-effect keyboard
 Features: per-key & multi-color animated lighting (host streaming, 60 fps),
 analog actuation + Rapid Trigger, SOCD, key remap, calibration, and an
 analog→virtual-gamepad pipeline (Hall-effect travel → Xbox 360 sticks/triggers).
-
----
-
-## ⌨️ Want your keyboard supported?
-
-Aether currently targets the **Aula Win60 HE**, but the goal is to support many
-boards — and the fastest way there is you.
-
-> ### 👉 [**Add your keyboard →**](https://github.com/MrWhosNexus/Aether-HE/issues/new?template=add-a-board.yml)
->
-> Fill in a short form (model, photos, a couple of IDs — no coding required) and
-> your board lands on the roadmap with its layout drawn. Full walkthrough:
-> [**docs/SUBMIT_A_BOARD.md**](docs/SUBMIT_A_BOARD.md).
 
 ---
 
