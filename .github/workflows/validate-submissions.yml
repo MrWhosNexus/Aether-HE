@@ -10,6 +10,9 @@ on:
     paths:
       - "**/keymap.json"
       - "tools/validate_keymap.py"
+      - "tools/gen_boards_table.py"
+      - "data/boards.json"
+      - "README.md"
       - "ui/runtime_src/src/**"
       - ".github/workflows/validate-submissions.yml"
   push:
@@ -17,6 +20,9 @@ on:
     paths:
       - "**/keymap.json"
       - "tools/validate_keymap.py"
+      - "tools/gen_boards_table.py"
+      - "data/boards.json"
+      - "README.md"
       - "ui/runtime_src/src/**"
 
 permissions:
@@ -42,6 +48,8 @@ jobs:
           fi
           echo "Validating: ${maps[*]}"
           python tools/validate_keymap.py "${maps[@]}"
+      - name: Check README boards table is in sync with data/boards.json
+        run: python tools/gen_boards_table.py --check
 
   ui-xss-guard:
     name: Forbid raw-HTML sinks in the UI

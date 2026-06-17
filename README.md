@@ -16,6 +16,11 @@ Features: per-key & multi-color animated lighting (host streaming, 60 fps),
 analog actuation + Rapid Trigger, SOCD, key remap, calibration, and an
 analog→virtual-gamepad pipeline (Hall-effect travel → Xbox 360 sticks/triggers).
 
+![Aether HE — keyboard hub UI: profiles, per-key diagram, actuation and travel test](docs/media/aether-ui.png)
+
+> _Aether HE controlling the Aula Win60 HE. Your board could be next →
+> [submit it](https://github.com/MrWhosNexus/Aether-HE/issues/new?template=add-a-board.yml)._
+
 ---
 
 ## Contributing a keyboard
@@ -25,10 +30,15 @@ Aether is built to grow beyond one board. If your keyboard isn't supported yet,
 
 ### Supported boards
 
+<!-- BOARDS:START -->
 | Keyboard | Switches | Lighting | Actuation | Status |
 |----------|----------|----------|-----------|--------|
 | Aula Win60 HE | Hall-effect | ✅ | ✅ | Fully supported |
 | **Your board?** | — | — | — | **[Submit it →](https://github.com/MrWhosNexus/Aether-HE/issues/new?template=add-a-board.yml)** |
+<!-- BOARDS:END -->
+
+> This table is generated from [`data/boards.json`](data/boards.json) — it grows
+> automatically as new boards are merged (`python tools/gen_boards_table.py --write`).
 
 ### What we need from you
 

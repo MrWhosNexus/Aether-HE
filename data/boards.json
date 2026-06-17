@@ -1,0 +1,12 @@
+{
+  "_comment": "Source of truth for the README supported-boards table. Add a board here when its support is merged, then run `python tools/gen_boards_table.py --write` (CI checks the README stays in sync). Fields: name, switches, lighting/actuation = true|false|\"wip\", status.",
+  "boards": [
+    {
+      "name": "Aula Win60 HE",
+      "switches": "Hall-effect",
+      "lighting": true,
+      "actuation": true,
+      "status": "Fully supported"
+    }
+  ]
+}
