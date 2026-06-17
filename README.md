@@ -18,6 +18,44 @@ analog→virtual-gamepad pipeline (Hall-effect travel → Xbox 360 sticks/trigge
 
 ---
 
+## Contributing a keyboard
+
+Aether is built to grow beyond one board. If your keyboard isn't supported yet,
+**you can help add it** — most of what we need takes a few minutes and no coding.
+
+### Supported boards
+
+| Keyboard | Switches | Lighting | Actuation | Status |
+|----------|----------|----------|-----------|--------|
+| Aula Win60 HE | Hall-effect | ✅ | ✅ | Fully supported |
+| **Your board?** | — | — | — | **[Submit it →](https://github.com/MrWhosNexus/Aether-HE/issues/new?template=add-a-board.yml)** |
+
+### What we need from you
+
+Open the **[Add-a-keyboard form](https://github.com/MrWhosNexus/Aether-HE/issues/new?template=add-a-board.yml)**
+and fill in what you can. There are two tiers:
+
+**🟢 Required (anyone can do this)** — gets your board on the roadmap with its layout drawn:
+- Brand & exact model
+- Switch type (Hall-effect / mechanical / optical) and size (60%, 65%, 75%, TKL…)
+- USB **VID:PID** — run `python tools/list_hid.py`, or read it from Device Manager / `lsusb`
+- The official software/driver you use today (name + link)
+- A clear top-down photo (for the layout) and the underside label
+
+**🔵 Advanced (optional, speeds things up a lot)** — for those comfortable in a terminal:
+- HID interface dump (`python tools/list_hid.py <VID>`)
+- A filled-in `keymap.json` (per-key layout)
+- Key-index stride and protocol captures (lighting / actuation)
+
+Every submission is reviewed and validated before it ships — see
+[**docs/SUBMIT_A_BOARD.md**](docs/SUBMIT_A_BOARD.md) for the full walkthrough,
+copy-paste templates, and how-to-capture instructions.
+
+> Don't want to fiddle with JSON or captures? **Just send the photo and the required
+> fields** — the maintainer builds the layout and reverse-engineers the protocol from there.
+
+---
+
 ## Install — Windows
 
 **Fastest path — real installer (recommended):**
