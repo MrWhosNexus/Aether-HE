@@ -16,7 +16,7 @@ Features: per-key & multi-color animated lighting (host streaming, 60 fps),
 analog actuation + Rapid Trigger, SOCD, key remap, calibration, and an
 analog→virtual-gamepad pipeline (Hall-effect travel → Xbox 360 sticks/triggers).
 
-![Aether HE — keyboard hub UI: profiles, per-key diagram, actuation and travel test](docs/media/aether-ui.png)
+![Aether HE — keyboard hub UI: profiles, per-key diagram, actuation and travel test](docs/media/aether-he-ui.png)
 
 > _Aether HE controlling the Aula Win60 HE. Your board could be next →
 > [submit it](https://github.com/MrWhosNexus/Aether-HE/issues/new?template=add-a-board.yml)._
