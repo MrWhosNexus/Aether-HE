@@ -10,6 +10,19 @@ analog→virtual-gamepad pipeline (Hall-effect travel → Xbox 360 sticks/trigge
 
 ---
 
+## ⌨️ Want your keyboard supported?
+
+Aether currently targets the **Aula Win60 HE**, but the goal is to support many
+boards — and the fastest way there is you.
+
+> ### 👉 [**Add your keyboard →**](https://github.com/MrWhosNexus/Aether-HE/issues/new?template=add-a-board.yml)
+>
+> Fill in a short form (model, photos, a couple of IDs — no coding required) and
+> your board lands on the roadmap with its layout drawn. Full walkthrough:
+> [**docs/SUBMIT_A_BOARD.md**](docs/SUBMIT_A_BOARD.md).
+
+---
+
 ## Install — Windows
 
 **Fastest path — real installer (recommended):**
