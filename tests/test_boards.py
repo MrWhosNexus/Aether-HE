@@ -71,9 +71,28 @@ def test_detect_returns_none_when_unknown():
 
 def test_drivable_flag():
     reg = boards.load_registry()
-    assert reg.by_slug("aula-win60-he").drivable          # protocol wired
-    assert reg.by_slug("aula-mini60he-max").drivable      # protocol_sonix
-    assert not reg.by_slug("aula-win60he-max").drivable   # protocol pending
+    assert reg.by_slug("aula-win60-he").drivable          # protocol wired (on-HW)
+    assert reg.by_slug("aula-mini60he-max").drivable      # protocol_sonix (capture #4)
+
+
+def test_only_captured_boards_are_drivable():
+    """A board may be 'drivable' ONLY if we have its own decoded protocol.
+
+    Guards against the shared-VID fallacy: 0C45:FEFE (#6) shares a vendor ID with
+    the decoded 0C45:80A1 (#4) but has no capture of its own, so it must NOT be
+    drivable. Same for the 1CA2 pair (#5/#7) and the SayoDevice 8089 (#3).
+    """
+    reg = boards.load_registry()
+    captured = {"aula-win60-he", "aula-mini60he-max"}  # the only boards with verified protocol
+    for p in reg.profiles:
+        if p.slug in captured:
+            assert p.drivable, f"{p.slug} should be drivable"
+        else:
+            assert not p.drivable, (
+                f"{p.slug} ({p.vid_pid}) is marked drivable but has no captured "
+                f"protocol of its own")
+            assert p.protocol is None
+            assert p.cap("lighting") is False and p.cap("actuation") is False
 
 
 if __name__ == "__main__":

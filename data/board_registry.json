@@ -34,11 +34,12 @@
       "vid": "0x0C45",
       "pid": "0xFEFE",
       "formFactor": "60%",
-      "usage_page": "0xFF68",
+      "_note": "Shares VID 0x0C45 with the MINI60HE Max (decoded), but a different PID and NO HID dump / capture of its own. A shared VID is shared OEM silicon, NOT a proven shared protocol. usage_page + protocol stay null until 0C45:FEFE is captured.",
+      "usage_page": null,
       "keymap": "ui/layouts/aula-mini60he-pro.json",
-      "protocol": "protocol_sonix",
-      "capabilities": { "lighting": "wip", "actuation": "wip", "perKeyRgb": false },
-      "status": "bringup",
+      "protocol": null,
+      "capabilities": { "lighting": false, "actuation": false, "perKeyRgb": false },
+      "status": "planned",
       "issues": [6]
     },
     {

@@ -18,9 +18,9 @@
     {
       "name": "Aula Mini 60 HE Pro",
       "switches": "Hall-effect",
-      "lighting": "wip",
-      "actuation": "wip",
-      "status": "Bring-up — shares 0C45 protocol (#6)"
+      "lighting": false,
+      "actuation": false,
+      "status": "Layout added — needs captures (#6)"
     },
     {
       "name": "Aula Win60 HE Max",
