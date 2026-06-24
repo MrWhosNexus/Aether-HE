@@ -7,6 +7,41 @@
       "lighting": true,
       "actuation": true,
       "status": "Fully supported"
+    },
+    {
+      "name": "Aula MINI60HE Max",
+      "switches": "Hall-effect",
+      "lighting": "wip",
+      "actuation": "wip",
+      "status": "Bring-up — protocol decoded (#4)"
+    },
+    {
+      "name": "Aula Mini 60 HE Pro",
+      "switches": "Hall-effect",
+      "lighting": "wip",
+      "actuation": "wip",
+      "status": "Bring-up — shares 0C45 protocol (#6)"
+    },
+    {
+      "name": "Aula Win60 HE Max",
+      "switches": "Hall-effect",
+      "lighting": false,
+      "actuation": false,
+      "status": "Layout added — needs captures (#5)"
+    },
+    {
+      "name": "Aula win68 HE Max",
+      "switches": "Hall-effect",
+      "lighting": false,
+      "actuation": false,
+      "status": "Layout added (65%) — needs captures (#7)"
+    },
+    {
+      "name": "Aula WIN 60 HE Pro",
+      "switches": "Hall-effect",
+      "lighting": false,
+      "actuation": false,
+      "status": "Layout added — SayoDevice, needs captures (#3)"
     }
   ]
 }

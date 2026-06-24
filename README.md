@@ -34,6 +34,11 @@ Aether is built to grow beyond one board. If your keyboard isn't supported yet,
 | Keyboard | Switches | Lighting | Actuation | Status |
 |----------|----------|----------|-----------|--------|
 | Aula Win60 HE | Hall-effect | ✅ | ✅ | Fully supported |
+| Aula MINI60HE Max | Hall-effect | 🚧 | 🚧 | Bring-up — protocol decoded (#4) |
+| Aula Mini 60 HE Pro | Hall-effect | 🚧 | 🚧 | Bring-up — shares 0C45 protocol (#6) |
+| Aula Win60 HE Max | Hall-effect | — | — | Layout added — needs captures (#5) |
+| Aula win68 HE Max | Hall-effect | — | — | Layout added (65%) — needs captures (#7) |
+| Aula WIN 60 HE Pro | Hall-effect | — | — | Layout added — SayoDevice, needs captures (#3) |
 | **Your board?** | — | — | — | **[Submit it →](https://github.com/MrWhosNexus/Aether-HE/issues/new?template=add-a-board.yml)** |
 <!-- BOARDS:END -->
 

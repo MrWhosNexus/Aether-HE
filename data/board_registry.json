@@ -1,0 +1,84 @@
+{
+  "_comment": "Single source of truth for which keyboards the app can identify and load. boards.py reads this to detect the connected board (by VID/PID), open the right vendor interface (usage_page), load the right layout (keymap), and pick the protocol profile. Add a board here when its layout + identity land; set protocol once its packet format is decoded. VID/PID are hex strings. usage_page null -> device opener falls back to the highest interface. protocol null -> layout/identity only (lighting & actuation disabled until decoded). Keep in sync with data/boards.json (the README roadmap table).",
+  "default": "aula-win60-he",
+  "boards": [
+    {
+      "slug": "aula-win60-he",
+      "name": "Aula Win60 HE",
+      "vid": "0x2E3C",
+      "pid": "0xC365",
+      "formFactor": "60%",
+      "usage_page": "0xFF1B",
+      "keymap": "ui/keymap.json",
+      "protocol": "protocol",
+      "capabilities": { "lighting": true, "actuation": true, "perKeyRgb": true },
+      "status": "supported",
+      "issues": []
+    },
+    {
+      "slug": "aula-mini60he-max",
+      "name": "Aula MINI60HE Max",
+      "vid": "0x0C45",
+      "pid": "0x80A1",
+      "formFactor": "60%",
+      "usage_page": "0xFF68",
+      "keymap": "ui/layouts/aula-mini60he-max.json",
+      "protocol": "protocol_sonix",
+      "capabilities": { "lighting": "wip", "actuation": "wip", "perKeyRgb": false },
+      "status": "bringup",
+      "issues": [1, 4]
+    },
+    {
+      "slug": "aula-mini60he-pro",
+      "name": "Aula Mini 60 HE Pro",
+      "vid": "0x0C45",
+      "pid": "0xFEFE",
+      "formFactor": "60%",
+      "usage_page": "0xFF68",
+      "keymap": "ui/layouts/aula-mini60he-pro.json",
+      "protocol": "protocol_sonix",
+      "capabilities": { "lighting": "wip", "actuation": "wip", "perKeyRgb": false },
+      "status": "bringup",
+      "issues": [6]
+    },
+    {
+      "slug": "aula-win60he-max",
+      "name": "Aula Win60 HE Max",
+      "vid": "0x1CA2",
+      "pid": "0x1902",
+      "formFactor": "60%",
+      "usage_page": null,
+      "keymap": "ui/layouts/aula-win60he-max.json",
+      "protocol": null,
+      "capabilities": { "lighting": false, "actuation": false, "perKeyRgb": false },
+      "status": "planned",
+      "issues": [5]
+    },
+    {
+      "slug": "aula-win68he-max",
+      "name": "Aula win68 HE Max",
+      "vid": "0x1CA2",
+      "pid": "0x1901",
+      "formFactor": "65%",
+      "usage_page": null,
+      "keymap": "ui/layouts/aula-win68he-max.json",
+      "protocol": null,
+      "capabilities": { "lighting": false, "actuation": false, "perKeyRgb": false },
+      "status": "planned",
+      "issues": [7]
+    },
+    {
+      "slug": "aula-win60he-pro",
+      "name": "Aula WIN 60 HE Pro",
+      "vid": "0x8089",
+      "pid": "0x0009",
+      "formFactor": "60%",
+      "usage_page": null,
+      "keymap": "ui/layouts/aula-win60he-pro.json",
+      "protocol": null,
+      "capabilities": { "lighting": false, "actuation": false, "perKeyRgb": false },
+      "status": "planned",
+      "issues": [3]
+    }
+  ]
+}
