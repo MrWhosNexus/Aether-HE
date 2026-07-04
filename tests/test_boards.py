@@ -74,6 +74,7 @@ def test_drivable_flag():
     reg = boards.load_registry()
     assert reg.by_slug("aula-win60-he").drivable          # protocol wired (on-HW)
     assert reg.by_slug("aula-mini60he-max").drivable      # protocol_sonix (capture #4)
+    assert reg.by_slug("aula-win60he-pro").drivable       # protocol_sayo (capture #3)
 
 
 def test_only_captured_boards_are_drivable():
@@ -81,10 +82,12 @@ def test_only_captured_boards_are_drivable():
 
     Guards against the shared-VID fallacy: 0C45:FEFE (#6) shares a vendor ID with
     the decoded 0C45:80A1 (#4) but has no capture of its own, so it must NOT be
-    drivable. Same for the 1CA2 pair (#5/#7) and the SayoDevice 8089 (#3).
+    drivable. Same for the 1CA2 pair (#5/#7). The SayoDevice 8089:0009 (#3)
+    earned its slot via its own captures (protocol_sayo).
     """
     reg = boards.load_registry()
-    captured = {"aula-win60-he", "aula-mini60he-max"}  # the only boards with verified protocol
+    captured = {"aula-win60-he", "aula-mini60he-max",
+                "aula-win60he-pro"}  # the only boards with verified protocol
     for p in reg.profiles:
         if p.slug in captured:
             assert p.drivable, f"{p.slug} should be drivable"
