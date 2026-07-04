@@ -42,6 +42,13 @@
       "lighting": false,
       "actuation": false,
       "status": "Layout added — SayoDevice, needs captures (#3)"
+    },
+    {
+      "name": "Aula F75 Tri-Mode",
+      "switches": "Mechanical",
+      "lighting": false,
+      "actuation": false,
+      "status": "Added to registry — needs captures (#8)"
     }
   ]
 }

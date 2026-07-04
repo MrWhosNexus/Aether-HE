@@ -74,12 +74,25 @@
       "vid": "0x8089",
       "pid": "0x0009",
       "formFactor": "60%",
-      "usage_page": null,
+      "usage_page": "0xFF00",
       "keymap": "ui/layouts/aula-win60he-pro.json",
       "protocol": null,
       "capabilities": { "lighting": false, "actuation": false, "perKeyRgb": false },
       "status": "planned",
       "issues": [3]
+    },
+    {
+      "slug": "aula-f75-tri-mode",
+      "name": "Aula F75 Tri-Mode",
+      "vid": "0x258A",
+      "pid": "0x010C",
+      "formFactor": "75%",
+      "usage_page": null,
+      "keymap": "ui/layouts/aula-f75.json",
+      "protocol": null,
+      "capabilities": { "lighting": false, "actuation": false, "perKeyRgb": false },
+      "status": "planned",
+      "issues": [8]
     }
   ]
 }

@@ -16,6 +16,7 @@ right keys.
 | `aula-win60he-max.json`  | Aula Win60 HE Max | 1CA2:1902 | 60% | #5 |
 | `aula-mini60he-pro.json` | Aula Mini 60 HE Pro | 0C45:FEFE | 60% | #6 |
 | `aula-win68he-max.json`  | Aula win68 HE Max | 1CA2:1901 | 65% | #7 |
+| `aula-f75.json`          | Aula F75 Tri-Mode | 258A:010C | 75% | #8 |
 
 All files pass `python tools/validate_keymap.py ui/layouts/*.json`.
 

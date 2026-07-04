@@ -35,6 +35,7 @@ def test_all_submitted_boards_present():
         (0x1CA2, 0x1902),  # Win60 HE Max (#5)
         (0x1CA2, 0x1901),  # win68 HE Max (#7)
         (0x8089, 0x0009),  # WIN 60 HE Pro / SayoDevice (#3)
+        (0x258A, 0x010C),  # Aula F75 Tri-Mode (#8)
     }
     have = {(p.vid, p.pid) for p in reg.profiles}
     missing = expected - have
