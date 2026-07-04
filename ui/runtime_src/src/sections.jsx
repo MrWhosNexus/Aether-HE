@@ -1829,6 +1829,57 @@ const GamepadSection = ({ connected, enabled, onToggle, map, onApplyMap, default
 };
 
 window.AetherSections = {
-  KeymapSection, ActuationSection, LightingSection, SOCDSection, GamepadSection, OtherSection, ActuationToolbar
+  KeymapSection: React.memo(KeymapSection, (prev, next) => (
+    prev.selectedKey === next.selectedKey &&
+    prev.selectedCount === next.selectedCount &&
+    prev.selectedKeys === next.selectedKeys &&
+    prev.connected === next.connected
+  )),
+  ActuationSection: React.memo(ActuationSection, (prev, next) => (
+    prev.actuation === next.actuation &&
+    prev.rtPress === next.rtPress &&
+    prev.rtRelease === next.rtRelease &&
+    prev.rtEnabled === next.rtEnabled &&
+    prev.polling === next.polling &&
+    prev.travelTest === next.travelTest &&
+    prev.calibrating === next.calibrating &&
+    prev.deadTop === next.deadTop &&
+    prev.deadBottom === next.deadBottom &&
+    prev.switchId === next.switchId &&
+    prev.liveDepth === next.liveDepth &&
+    prev.selectedCount === next.selectedCount &&
+    prev.selectedKeys === next.selectedKeys &&
+    prev.connected === next.connected
+  )),
+  LightingSection: React.memo(LightingSection, (prev, next) => (
+    prev.colors === next.colors &&
+    prev.bgColor === next.bgColor &&
+    prev.perKeyColors === next.perKeyColors &&
+    prev.pattern === next.pattern &&
+    prev.brightness === next.brightness &&
+    prev.speed === next.speed &&
+    prev.power === next.power &&
+    prev.fullColor === next.fullColor &&
+    prev.direction === next.direction &&
+    prev.striOrient === next.striOrient &&
+    prev.bgBright === next.bgBright &&
+    prev.zones === next.zones &&
+    prev.selectedKeys === next.selectedKeys
+  )),
+  SOCDSection: React.memo(SOCDSection, (prev, next) => (
+    prev.socdMode === next.socdMode &&
+    prev.hotkey === next.hotkey &&
+    prev.hotkeyEnabled === next.hotkeyEnabled &&
+    prev.profiles === next.profiles &&
+    prev.active === next.active
+  )),
+  GamepadSection: React.memo(GamepadSection, (prev, next) => (
+    prev.connected === next.connected &&
+    prev.enabled === next.enabled &&
+    prev.map === next.map &&
+    prev.error === next.error
+  )),
+  OtherSection: React.memo(OtherSection),
+  ActuationToolbar: React.memo(ActuationToolbar)
 };
 })();

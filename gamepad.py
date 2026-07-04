@@ -8,7 +8,7 @@ Backends:
 - Linux: python-evdev / uinput. Needs write access to /dev/uinput
   (see 99-uinput.rules); join the 'input' group.
 - Windows: vgamepad + ViGEmBus (virtual Xbox 360 pad). Install ViGEmBus from
-  https://github.com/nefarius/ViGEmBus once per machine.
+  https://github.com/nefarius/ViGEmBus once per machine. (Graceful degradation supported if module missing)
 
 Public API (kept stable so app_web.py doesn't need to know the backend):
   EVDEV_AVAILABLE  -> True if ANY backend is usable (legacy name)

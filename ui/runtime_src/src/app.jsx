@@ -812,7 +812,9 @@ function App() {
     let alive = true;
     const id = setInterval(() => {
       apiCall("read_live").then(d => {
-        if (alive && d && typeof d === "object" && !(d.ok === false)) setLiveDepths(d);
+        if (alive && d && typeof d === "object" && !(d.ok === false)) {
+          setLiveDepths(prev => JSON.stringify(prev) === JSON.stringify(d) ? prev : d);
+        }
       });
     }, 33);   // ~30fps — smooth enough for visual depth, doesn't starve the lighting stream
     return () => { alive = false; clearInterval(id); };
@@ -854,7 +856,8 @@ function App() {
     const id = setInterval(() => {
       apiCall("get_light_frame").then(f => {
         if (!alive) return;
-        setLightFrame(f && typeof f === "object" && !(f.ok === false) && Object.keys(f).length ? f : null);
+        const valid = f && typeof f === "object" && !(f.ok === false) && Object.keys(f).length ? f : null;
+        setLightFrame(prev => JSON.stringify(prev) === JSON.stringify(valid) ? prev : valid);
       });
     }, 50);
     return () => { alive = false; clearInterval(id); };
@@ -974,6 +977,8 @@ function App() {
             <KeymapSection
               selectedKey={selectedKey}
               selectedCount={selectedKeys.size}
+              selectedKeys={selectedKeys}
+              connected={connected}
               onRemap={(label) => {
                 const hid = HID_BY_LABEL[label];
                 if (connected && hid != null && selectedKeys.size)
@@ -999,6 +1004,8 @@ function App() {
               switchId={switchId} onPickSwitch={handlePickSwitch}
               liveDepth={liveMax}
               selectedCount={selectedKeys.size}
+              selectedKeys={selectedKeys}
+              connected={connected}
               onApplyActuation={applyActuation}
               onApplyDeadband={applyDeadband}
             />

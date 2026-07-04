@@ -783,11 +783,17 @@ class Api:
         polls this to mirror the live animation. {} when no host effect is running."""
         if not self.fx or not self.fx.is_running():
             return {}
+            
+        idx2code = getattr(self, '_idx2code', None)
+        if idx2code is None:
+            self._idx2code = idx2code = {v: k for k, v in self.km.index_of_code.items()}
+            
         out = {}
-        for idx, rgb in dict(self.fx.last_frame).items():
-            code = self.km.code_of(idx)
+        # Iterate over the dict directly (thread-safe since fx engine swaps it atomically)
+        for idx, rgb in self.fx.last_frame.items():
+            code = idx2code.get(idx)
             if code:
-                out[code] = [int(rgb[0]), int(rgb[1]), int(rgb[2])]
+                out[code] = rgb
         return out
 
     def start_multicolor(self, pattern, colors, bg=(0, 0, 0), brightness=80,

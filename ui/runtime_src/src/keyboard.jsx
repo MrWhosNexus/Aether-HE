@@ -36,7 +36,7 @@ const KB_ROWS = [
 /* Compute a fractional width string given units in 0.25u increments out of 60 cols. */
 const ufrac = (u) => `${(u / 60) * 100}%`;
 
-const Key = ({
+const Key = React.memo(({
   label, units, code, fnLabel,
   layer = "default",     // default | fn
   depth = 0,
@@ -181,7 +181,20 @@ const Key = ({
       )}
     </button>
   );
-};
+}, (prev, next) => (
+  prev.code === next.code &&
+  prev.layer === next.layer &&
+  prev.depth === next.depth &&
+  prev.actuationPoint === next.actuationPoint &&
+  prev.rtPress === next.rtPress &&
+  prev.rtRelease === next.rtRelease &&
+  prev.selected === next.selected &&
+  prev.highlighted === next.highlighted &&
+  prev.mode === next.mode &&
+  prev.calibrating === next.calibrating &&
+  prev.calibrated === next.calibrated &&
+  prev.ledColor === next.ledColor
+));
 
 /* Top "WIN 60 HE" pill */
 const DevicePill = ({ connected }) => (

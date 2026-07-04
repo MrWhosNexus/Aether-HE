@@ -27,7 +27,9 @@ _SPAWN_NORM = 30.0 / FPS
 
 
 def _scale(rgb, f):
-    return tuple(max(0, min(255, int(c * f))) for c in rgb)
+    if f >= 1.0: return rgb
+    if f <= 0.0: return (0, 0, 0)
+    return (max(0, min(255, int(rgb[0] * f))), max(0, min(255, int(rgb[1] * f))), max(0, min(255, int(rgb[2] * f))))
 
 
 # Per-channel gamma. The LEDs drive ~linearly, but perception (and the bright
@@ -45,7 +47,9 @@ def _gamma(rgb):
 
 
 def _lerp(a, b, t):
-    return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
+    if t <= 0.0: return a
+    if t >= 1.0: return b
+    return (int(a[0] + (b[0] - a[0]) * t), int(a[1] + (b[1] - a[1]) * t), int(a[2] + (b[2] - a[2]) * t))
 
 
 def _palette_at(pal, pos):
@@ -99,24 +103,27 @@ class PerKeyEffectEngine:
         ys = [km.by_index[i]["y"] for i in self.indices]
         self._minx, self._maxx = min(xs), max(xs)
         self._miny, self._maxy = min(ys), max(ys)
+        w = self._maxx - self._minx or 1
+        h = self._maxy - self._miny or 1
+        self._nx_map = {i: (km.by_index[i]["x"] - self._minx) / w for i in self.indices}
+        self._ny_map = {i: (km.by_index[i]["y"] - self._miny) / h for i in self.indices}
         self._cx = (self._minx + self._maxx) / 2
         self._cy = (self._miny + self._maxy) / 2
+        self._base_frame = {}
 
     # normalized 0..1 position helpers (board-wide)
     def _nx(self, idx):
-        w = self._maxx - self._minx or 1
-        return (self.km.by_index[idx]["x"] - self._minx) / w
+        return self._nx_map[idx]
 
     def _ny(self, idx):
-        h = self._maxy - self._miny or 1
-        return (self.km.by_index[idx]["y"] - self._miny) / h
+        return self._ny_map[idx]
 
     def _flow(self, z, idx):
         d = z.direction
         if d in (2, 3):
-            p = self._ny(idx)
+            p = self._ny_map[idx]
             return (1 - p) if d == 2 else p
-        p = self._nx(idx)
+        p = self._nx_map[idx]
         return (1 - p) if d == 1 else p
 
     # ---- lifecycle ----
@@ -139,6 +146,8 @@ class PerKeyEffectEngine:
             z.get("speed", 0.5), z.get("bright", 1.0), z.get("direction", 0),
             z.get("orient", "v"),
         ) for z in zones if z.get("indices")]
+        self._base_frame = {i: self.global_bg for i in self.indices}
+        self._base_frame.update(self.base)
         self._stop.clear()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
@@ -170,8 +179,7 @@ class PerKeyEffectEngine:
             # Live key-travel (mm) for press-reactive effects (reactive). Cheap no-op
             # callable returning {device_index: mm}; empty when no reader is attached.
             self._depths = self.get_depths() if self.get_depths else {}
-            frame = {i: self.global_bg for i in self.indices}
-            frame.update(self.base)
+            frame = self._base_frame.copy()
             for z in self.zones:
                 gens.get(z.mode, self._g_wave)(z, t, frame)
             self.last_frame = frame   # for the in-app keyboard mirror
@@ -244,7 +252,7 @@ class PerKeyEffectEngine:
                 continue
             alive.append(star)
             for idx in rows[r]:
-                x = self._nx(idx)
+                x = self._nx_map[idx]
                 d = (head - (1.0 - x)) if rtl else (head - x)   # distance behind head
                 if 0.0 <= d < trail:
                     g = 1.0 - d / trail
@@ -264,12 +272,12 @@ class PerKeyEffectEngine:
         if d in (2, 3):                       # up/down → bands flow vertically
             sign = -1 if d == 2 else 1
             for idx in z.indices:
-                pos = (self._ny(idx) + slope * self._nx(idx)) * span
+                pos = (self._ny_map[idx] + slope * self._nx_map[idx]) * span
                 frame[idx] = _scale(_palette_at(z.palette, pos + sign * t * flow), z.bright)
         else:                                 # left/right → bands flow horizontally
             sign = -1 if d == 1 else 1
             for idx in z.indices:
-                pos = (self._nx(idx) + slope * self._ny(idx)) * span
+                pos = (self._nx_map[idx] + slope * self._ny_map[idx]) * span
                 frame[idx] = _scale(_palette_at(z.palette, pos + sign * t * flow), z.bright)
 
     def _g_aurora(self, z, t, frame):
@@ -277,8 +285,8 @@ class PerKeyEffectEngine:
         flow = 0.05 + z.speed * 0.4
         span = max(1, len(z.palette))
         for idx in z.indices:
-            pos = (self._nx(idx) * 0.6 + self._ny(idx) * 0.4) * span + t * flow
-            wob = 0.45 + 0.55 * (math.sin(t * 0.7 + self._ny(idx) * 3) * 0.5 + 0.5)
+            pos = (self._nx_map[idx] * 0.6 + self._ny_map[idx] * 0.4) * span + t * flow
+            wob = 0.45 + 0.55 * (math.sin(t * 0.7 + self._ny_map[idx] * 3) * 0.5 + 0.5)
             col = _palette_at(z.palette, pos)
             frame[idx] = _scale(_lerp(z.bg, col, wob), z.bright)
 
@@ -299,7 +307,7 @@ class PerKeyEffectEngine:
             mm = self._depths.get(idx, 0.0)
             if mm > 0.6 and idx not in pressed:
                 pressed.add(idx)
-                rips.append((t, self._nx(idx), self._ny(idx), random.choice(z.palette)))
+                rips.append((t, self._nx_map[idx], self._ny_map[idx], random.choice(z.palette)))
             elif mm < 0.3 and idx in pressed:
                 pressed.discard(idx)
         for idx in z.indices:
@@ -312,7 +320,7 @@ class PerKeyEffectEngine:
                 continue
             alive.append((t0, bx, by, col))
             for idx in z.indices:
-                d = math.hypot(self._nx(idx) - bx, self._ny(idx) - by)
+                d = math.hypot(self._nx_map[idx] - bx, self._ny_map[idx] - by)
                 if abs(d - radius) < 0.12:
                     g = max(0.0, 1.0 - radius / 1.4)
                     frame[idx] = _scale(_lerp(frame[idx], col, g), z.bright)
@@ -347,7 +355,7 @@ class PerKeyEffectEngine:
             rr = (0.5 - r) if inward else r
             g0 = max(0.0, 1.0 - r / 0.58)
             for idx in z.indices:
-                p = self._ny(idx) if vertical else self._nx(idx)
+                p = self._ny_map[idx] if vertical else self._nx_map[idx]
                 # signed offset from the wavefront so the band traverses the
                 # full palette (leading half = first colors, trailing = last).
                 off_a = p - (0.5 + rr)
@@ -404,7 +412,7 @@ class PerKeyEffectEngine:
         spin = (0.3 + z.speed * 2.2) * (-1 if z.direction == 1 else 1)
         n = max(1, len(z.palette))
         for idx in z.indices:
-            ang = math.atan2(self._ny(idx) - 0.5, self._nx(idx) - 0.5) / (2 * math.pi) + 0.5
+            ang = math.atan2(self._ny_map[idx] - 0.5, self._nx_map[idx] - 0.5) / (2 * math.pi) + 0.5
             col = _palette_at(z.palette, ang * n)
             sweep = (ang - (t * spin) % 1.0) % 1.0
             frame[idx] = _scale(_lerp(z.bg, col, min(1.0, max(0.12, 1.0 - sweep * 3.0))), z.bright)
@@ -455,7 +463,7 @@ class PerKeyEffectEngine:
             alive.append((t0, col, bx, by))
             radius = age * 0.5
             for idx in z.indices:
-                d = math.hypot(self._nx(idx) - bx, self._ny(idx) - by)
+                d = math.hypot(self._nx_map[idx] - bx, self._ny_map[idx] - by)
                 if abs(d - radius) < 0.09:
                     frame[idx] = _scale(_lerp(frame[idx], col, 1.0 - age), 1.0)
         z.state["bursts"] = alive
@@ -470,7 +478,7 @@ class PerKeyEffectEngine:
             mm = self._depths.get(idx, 0.0)
             if mm > 0.5 and idx not in pressed:
                 pressed.add(idx)
-                bursts.append((t, random.choice(z.palette), self._nx(idx), self._ny(idx)))
+                bursts.append((t, random.choice(z.palette), self._nx_map[idx], self._ny_map[idx]))
             elif mm < 0.25 and idx in pressed:
                 pressed.discard(idx)
         for idx in z.indices:
@@ -485,7 +493,7 @@ class PerKeyEffectEngine:
             radius = age * 0.6                  # explosion front expands outward
             fade = 1.0 - age
             for idx in z.indices:
-                d = math.hypot(self._nx(idx) - bx, self._ny(idx) - by)
+                d = math.hypot(self._nx_map[idx] - bx, self._ny_map[idx] - by)
                 if d <= radius + 0.06:
                     # bright at the wavefront, softer toward the (already-passed) core
                     edge = 1.0 - abs(d - radius) * 4.0
@@ -503,7 +511,7 @@ class PerKeyEffectEngine:
         if cols is None:
             cols = {}
             for idx in z.indices:
-                cols.setdefault(round(self._nx(idx) * 21), []).append(idx)  # ~per column
+                cols.setdefault(round(self._nx_map[idx] * 21), []).append(idx)  # ~per column
             for k in cols:
                 cols[k].sort(key=lambda i: self._ny(i))
             z.state["cols"] = cols
@@ -557,7 +565,7 @@ class PerKeyEffectEngine:
         col = _palette_at(z.palette, t * (0.15 + z.speed * 0.5))
         up = z.direction != 2            # default: fills from bottom up
         for idx in z.indices:
-            p = self._ny(idx)
+            p = self._ny_map[idx]
             height = (1.0 - p) if up else p
             if height <= level:
                 frame[idx] = _scale(col, z.bright)
