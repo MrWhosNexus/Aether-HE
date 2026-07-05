@@ -29,11 +29,18 @@ so the (separate) owner-side MiniMax automation can draft board support for huma
 
 ## Key-security constraint (non-negotiable)
 
-- The **MiniMax API key is never in the client.** A carries no key and makes no MiniMax
-  calls. The key exists only in B (owner-side), read from a local env var / gitignored
-  config, never committed, never in the app bundle.
-- Submissions travel via **public GitHub issues**, so the submission file MUST contain no
-  secrets — only device/board data the user consents to share.
+- **Never inject the MiniMax key into the frontend or the app bundle.** The React UI
+  (`ui/runtime_src/**`, compiled into `index_runtime.html`), the Python client, and the
+  PyInstaller bundle carry **no key**. A tech-savvy user inspecting network traffic or
+  reverse-engineering the app must find nothing to extract — because there is nothing:
+  **A makes zero MiniMax calls.**
+- The key exists **only in B** (owner-side automation), read from a local env var /
+  gitignored config on the maintainer's machine, never committed, never shipped.
+- The A→B handoff is **public GitHub issues** — a one-way, key-free channel. A never
+  calls MiniMax directly, so there is no client-side request that could carry, cache, or
+  leak the key.
+- The submission file MUST contain no secrets — only device/board data the user consents
+  to share (it lands on a public issue).
 
 ## Technical reality that shapes capture (why §3 above)
 
