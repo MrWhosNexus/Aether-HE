@@ -6,6 +6,7 @@ keyboard over HID. WebKit has no WebHID, so a small injected JS bridge calls int
 this Python `Api` (exposed as window.pywebview.api), and mirrors the rendered
 per-key colors to the board's global lighting command.
 """
+import json
 import logging
 import os
 import sys
@@ -22,6 +23,7 @@ import effects
 import device_state
 import gamepad
 import updater
+from tools import board_submission
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("aether.web")
@@ -751,6 +753,38 @@ class Api:
         Settings tab so users can find / back up / wipe the file."""
         p = self._settings_path()
         return {"ok": True, "path": p, "exists": os.path.exists(p)}
+
+    # ---- board submission (schema-validated file write) ----
+    def _submissions_dir(self):
+        base = os.path.dirname(self._settings_path())   # <root>/AetherHE
+        d = os.path.join(base, "submissions")
+        os.makedirs(d, exist_ok=True)
+        return d
+
+    def save_submission(self, obj):
+        """Validate against aether-board-submission/1 and write to the submissions dir."""
+        errors = board_submission.validate_submission(obj)
+        if errors:
+            return {"ok": False, "errors": errors}
+        try:
+            slug = "".join(c for c in (obj.get("meta", {}).get("model", "board")).lower()
+                           if c.isalnum() or c == "-") or "board"
+            fn = f"board-{slug}-{time.strftime('%Y%m%d-%H%M%S')}.json"
+            path = os.path.join(self._submissions_dir(), fn)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(obj, f, indent=2)
+            return {"ok": True, "path": path}
+        except Exception as e:
+            return {"ok": False, "errors": [str(e)]}
+
+    def open_submission_url(self, url):
+        """Open the pre-filled GitHub issue in the default browser."""
+        try:
+            import webbrowser
+            webbrowser.open(str(url))
+            return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
 
     # ---- updates (GitHub Releases, cross-platform) ----
     def app_version(self):

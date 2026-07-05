@@ -1,4 +1,5 @@
 import types, app_web
+import json, os
 
 def _api():
     # Construct Api without opening hardware: bypass __init__ side effects.
@@ -35,3 +36,20 @@ def test_capture_is_read_only(monkeypatch):
     assert out["ok"] is True
     assert any(r["hex"] for r in out["reports"])   # got the 01ab report
     assert a.stop_capture()["ok"] is True
+
+def test_save_submission_validates_and_writes(monkeypatch, tmp_path):
+    a = _api()
+    monkeypatch.setattr(a, "_submissions_dir", lambda: str(tmp_path))
+    good = {"schema": "aether-board-submission/1",
+            "device": {"vid": "0x1", "pid": "0x2"},
+            "meta": {"brand": "X", "model": "Y", "size": "60"},
+            "input_capture": {"reports": []}}
+    r = a.save_submission(good)
+    assert r["ok"] is True and os.path.exists(r["path"])
+    assert json.load(open(r["path"]))["meta"]["brand"] == "X"
+
+def test_save_submission_rejects_invalid(monkeypatch, tmp_path):
+    a = _api()
+    monkeypatch.setattr(a, "_submissions_dir", lambda: str(tmp_path))
+    r = a.save_submission({"schema": "wrong"})
+    assert r["ok"] is False and r["errors"]
