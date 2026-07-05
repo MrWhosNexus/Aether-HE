@@ -18,3 +18,48 @@ def test_extract_attachment_url_none():
 def test_build_prompt_includes_submission():
     p = bot.build_prompt({"meta": {"brand": "Aula"}}, "TEMPLATE:\n{submission}")
     assert "TEMPLATE:" in p and "Aula" in p
+
+
+_MODEL_OUT = '''
+=== FILE: registry_entry.json ===
+{"slug": "acme-60", "name": "Acme 60", "vid": "0x1", "pid": "0x2",
+ "usage_page": "0xFF1B", "formFactor": "60%", "protocol": "protocol_acme_60",
+ "keymap": "ui/layouts/acme-60.json",
+ "capabilities": {"actuation": true, "lighting": false, "perKeyRgb": false},
+ "status": "experimental"}
+=== FILE: layout.json ===
+{"_meta": {"board": "acme-60"}, "type": "60", "keys": [{"index": 0, "name": "A", "code": "KeyA", "hidCode": "0x04", "x": 0, "y": 0}]}
+=== FILE: protocol_adapter.py ===
+# AI-DRAFTED - UNVERIFIED
+def build(): return b""
+=== FILE: DECODE_NOTES.md ===
+Inferred input reports only. Lighting unknown (no pcap).
+'''
+
+def test_parse_model_output():
+    a = bot.parse_model_output(_MODEL_OUT)
+    assert a["registry"]["slug"] == "acme-60"
+    assert a["registry"]["status"] == "experimental"
+    assert a["layout"]["type"] == "60"
+    assert "def build" in a["adapter"]
+    assert "Lighting unknown" in a["notes"]
+
+def test_sanity_check_ok():
+    a = bot.parse_model_output(_MODEL_OUT)
+    assert bot.sanity_check(a, existing_slugs=set()) == []
+
+def test_sanity_check_dup_slug():
+    a = bot.parse_model_output(_MODEL_OUT)
+    errs = bot.sanity_check(a, existing_slugs={"acme-60"})
+    assert any("slug" in e for e in errs)
+
+def test_sanity_check_bad_status():
+    a = bot.parse_model_output(_MODEL_OUT)
+    a["registry"]["status"] = "supported"
+    assert any("experimental" in e for e in bot.sanity_check(a, set()))
+
+def test_sanity_check_unparseable_adapter_not_fatal():
+    a = bot.parse_model_output(_MODEL_OUT)
+    a["adapter"] = "def (:::"   # invalid python
+    errs = bot.sanity_check(a, set())
+    assert any("adapter" in e.lower() for e in errs)  # reported, but caller treats as non-fatal
