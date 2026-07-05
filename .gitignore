@@ -20,3 +20,9 @@ flatpak/repo/
 flatpak/.flatpak-builder/
 .flatpak-builder/
 flatpak/*.flatpak
+
+# Generated / scratch / logs (not shipped)
+graphify-out/
+.superpowers/
+*.log
+service/service.log
