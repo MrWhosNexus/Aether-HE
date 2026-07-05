@@ -60,6 +60,70 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    def open_capture(self, path):
+        """Open an arbitrary HID device READ-ONLY and stream input reports.
+        Never writes to the device — this is the safety guarantee for unknown boards."""
+        try:
+            self._cap_stop = getattr(self, "_cap_stop", None)
+            self.stop_capture()  # idempotent: close any prior capture
+            dev = hid.device()
+            dev.open_path(path.encode() if isinstance(path, str) else path)
+            dev.set_nonblocking(True)
+            self._cap_dev = dev
+            self._cap_buf = []
+            self._cap_t0 = time.time()
+            self._cap_lock = threading.Lock()
+            self._cap_stop = threading.Event()
+
+            def loop():
+                while not self._cap_stop.is_set():
+                    try:
+                        r = dev.read(64, timeout_ms=50)
+                    except Exception:
+                        break
+                    if r:
+                        rec = {"t": int((time.time() - self._cap_t0) * 1000),
+                               "hex": bytes(r).hex()}
+                        with self._cap_lock:
+                            self._cap_buf.append(rec)
+                    else:
+                        time.sleep(0.005)
+
+            self._cap_thread = threading.Thread(target=loop, daemon=True)
+            self._cap_thread.start()
+            return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def read_capture(self):
+        """Drain and return input reports buffered since the last call."""
+        try:
+            buf = getattr(self, "_cap_buf", None)
+            if buf is None:
+                return {"ok": True, "reports": [], "count": 0}
+            with self._cap_lock:
+                out = self._cap_buf
+                self._cap_buf = []
+            return {"ok": True, "reports": out, "count": len(out)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def stop_capture(self):
+        try:
+            ev = getattr(self, "_cap_stop", None)
+            if ev:
+                ev.set()
+            th = getattr(self, "_cap_thread", None)
+            if th:
+                th.join(timeout=0.3)
+            dev = getattr(self, "_cap_dev", None)
+            if dev:
+                dev.close()
+            self._cap_dev = None
+            return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     def __init__(self):
         # Detect which registered board is connected (by VID/PID); fall back to
         # the registry default (Aula Win60 HE) so behaviour is unchanged when no

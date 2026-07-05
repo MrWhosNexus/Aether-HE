@@ -16,3 +16,22 @@ def test_list_hid_devices_shape(monkeypatch):
     assert d["vid"] == "0x2e3c" and d["pid"] == "0xc365"
     assert d["usage_page"] == "0xff1b" and d["interface_number"] == 2
     assert isinstance(d["path"], str)
+
+def test_capture_is_read_only(monkeypatch):
+    reads = {"n": 0}
+    class FakeDev:
+        def open_path(self, p): pass
+        def set_nonblocking(self, v): pass
+        def read(self, n, timeout_ms=0):
+            reads["n"] += 1
+            return [1, 0xab] if reads["n"] == 1 else []
+        def close(self): pass
+        # NOTE: intentionally no write / send_feature_report — a write would AttributeError
+    monkeypatch.setattr(app_web.hid, "device", lambda: FakeDev())
+    a = _api()
+    assert a.open_capture("\\?\\hid#1")["ok"] is True
+    import time; time.sleep(0.05)
+    out = a.read_capture()
+    assert out["ok"] is True
+    assert any(r["hex"] for r in out["reports"])   # got the 01ab report
+    assert a.stop_capture()["ok"] is True
