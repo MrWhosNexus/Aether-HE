@@ -34588,7 +34588,7 @@
   }) => {
     const scope = selectedCount > 0 ? `${selectedCount} selected key${selectedCount > 1 ? "s" : ""}` : "no keys (select some)";
     const canApply = selectedCount > 0;
-    const applyBtnCls = enabled => `px-4 h-9 rounded-md border font-display text-[12px] uppercase tracking-[0.16em] transition-all ${enabled ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_18px_var(--accent-glow)] hover:brightness-110" : "border-white/[0.06] bg-white/[0.02] text-slate-500 cursor-not-allowed"}`;
+    const applyBtnCls = enabled => `px-4 h-9 rounded-md border font-display text-[12px] uppercase tracking-[0.16em] transition-all ${enabled ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_18px_var(--accent-glow)] hover:brightness-110" : "border-[var(--line)] bg-white/[0.02] text-[var(--text-faint)] cursor-not-allowed"}`;
     const [tab, setTab] = useState("travel");
     // Confirmation toast — shows the exact keys + value the user just wrote so
     // there's no ambiguity about scope. Fades after 2.4s.
@@ -34648,15 +34648,15 @@
     }), /*#__PURE__*/React.createElement("div", {
       className: "grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6"
     }, /*#__PURE__*/React.createElement("div", {
-      className: "rounded-xl border border-white/[0.06] bg-white/[0.02] p-4"
+      className: "glass p-4"
     }, /*#__PURE__*/React.createElement("div", {
       className: "flex items-center justify-between mb-3"
     }, /*#__PURE__*/React.createElement("span", {
-      className: "font-display text-[11px] uppercase tracking-[0.18em] text-slate-300"
+      className: "font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)]"
     }, "Travel Test"), /*#__PURE__*/React.createElement("button", {
       onClick: () => setTravelTest(!travelTest),
       className: `relative w-10 h-5 rounded-full border transition-colors
-                          ${travelTest ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-white/[0.08]"}`
+                          ${travelTest ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-[var(--line)]"}`
     }, /*#__PURE__*/React.createElement("span", {
       className: `absolute top-0.5 w-3.5 h-3.5 rounded-full transition-all
                                 ${travelTest ? "left-[20px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-slate-400"}`
@@ -34664,15 +34664,15 @@
       depth: travelTest ? liveDepth : actuation,
       actuation: actuation
     })), /*#__PURE__*/React.createElement("div", {
-      className: "rounded-xl border border-white/[0.06] bg-white/[0.02] p-5"
+      className: "glass p-5"
     }, tab === "travel" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
-      className: "text-[12px] text-slate-400 mb-3"
+      className: "text-[12px] text-[var(--text-dim)] mb-3"
     }, "Select keys on the board, set the actuation point, then press ", /*#__PURE__*/React.createElement("span", {
       className: "text-[var(--accent)]"
     }, "Apply"), " \u2014 only the selected keys are written. Nothing is sent while you move the slider."), /*#__PURE__*/React.createElement("div", {
       className: "mb-5 inline-flex items-center gap-2 px-3 h-7 rounded-md border border-[var(--accent)]/30 bg-[var(--accent)]/[0.06]"
     }, /*#__PURE__*/React.createElement("span", {
-      className: "font-mono text-[10px] uppercase tracking-[0.18em] text-slate-400"
+      className: "font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-dim)]"
     }, "Applying to"), /*#__PURE__*/React.createElement("span", {
       className: "font-display text-[11px] uppercase tracking-[0.16em] text-[var(--accent)]"
     }, scope)), /*#__PURE__*/React.createElement("div", {
@@ -34689,17 +34689,17 @@
       className: "flex items-center gap-2 mt-2"
     }, /*#__PURE__*/React.createElement("button", {
       onClick: () => setActuation(Math.max(0.1, actuation - 0.05)),
-      className: "w-7 h-7 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20"
+      className: "w-7 h-7 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"
     }, "\u2212"), /*#__PURE__*/React.createElement("div", {
-      className: "px-3 h-7 rounded-md border border-white/[0.06] bg-white/[0.02] grid place-items-center font-mono text-[12px] text-slate-100"
+      className: "px-3 h-7 rounded-md border border-[var(--line)] bg-white/[0.02] grid place-items-center font-mono text-[12px] text-[var(--text)]"
     }, actuation.toFixed(2), " mm"), /*#__PURE__*/React.createElement("button", {
       onClick: () => setActuation(Math.min(4.0, actuation + 0.05)),
-      className: "w-7 h-7 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20"
+      className: "w-7 h-7 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"
     }, "+"))), /*#__PURE__*/React.createElement("label", {
       className: "flex items-center gap-2 cursor-pointer select-none mb-3"
     }, /*#__PURE__*/React.createElement("span", {
       className: `w-4 h-4 rounded border grid place-items-center transition
-                                  ${rtEnabled ? "border-[var(--accent)] bg-[var(--accent)]/20" : "border-white/15 bg-white/[0.02]"}`,
+                                  ${rtEnabled ? "border-[var(--accent)] bg-[var(--accent)]/20" : "border-[var(--line)] bg-white/[0.02]"}`,
       onClick: () => setRtEnabled(!rtEnabled)
     }, rtEnabled && /*#__PURE__*/React.createElement(ICheck, {
       size: 10,
@@ -34710,11 +34710,11 @@
       onChange: e => setRtEnabled(e.target.checked),
       className: "sr-only"
     }), /*#__PURE__*/React.createElement("span", {
-      className: "font-display text-[11.5px] uppercase tracking-[0.16em] text-slate-200"
+      className: "font-display text-[11.5px] uppercase tracking-[0.16em] text-[var(--text)]"
     }, "Rapid Trigger"), /*#__PURE__*/React.createElement(Chip, {
       color: "accent"
     }, "RT")), /*#__PURE__*/React.createElement("p", {
-      className: "text-[11.5px] text-slate-500 leading-relaxed mb-4"
+      className: "text-[11.5px] text-[var(--text-faint)] leading-relaxed mb-4"
     }, "Rapid Trigger dynamically actuates and resets your key based on your intent \u2014 perfect for counter-strafing and rebound presses."), rtEnabled && /*#__PURE__*/React.createElement("div", {
       className: "grid grid-cols-2 gap-5 mt-4 p-4 rounded-lg border border-[var(--accent)]/20 bg-[var(--accent)]/[0.05]"
     }, /*#__PURE__*/React.createElement(Slider, {
@@ -34740,9 +34740,9 @@
       disabled: !canApply,
       className: applyBtnCls(canApply)
     }, "Apply to ", selectedCount || 0, " key", selectedCount === 1 ? "" : "s"), confirm ? /*#__PURE__*/React.createElement(ConfirmToast, null) : /*#__PURE__*/React.createElement("span", {
-      className: "font-mono text-[10.5px] uppercase tracking-[0.18em] text-slate-500"
+      className: "font-mono text-[10.5px] uppercase tracking-[0.18em] text-[var(--text-faint)]"
     }, canApply ? "writes only the selected keys" : "select keys on the board to enable"))), tab === "dead" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
-      className: "text-[12px] text-slate-400 mb-5"
+      className: "text-[12px] text-[var(--text-dim)] mb-5"
     }, "Configure the dead-band region near the keycap's rest and bottom-out positions \u2014 noise inside this band is ignored. Press ", /*#__PURE__*/React.createElement("span", {
       className: "text-[var(--accent)]"
     }, "Apply"), " to write to the selected keys."), /*#__PURE__*/React.createElement("div", {
@@ -34770,7 +34770,7 @@
       disabled: !canApply,
       className: applyBtnCls(canApply)
     }, "Apply to ", selectedCount || 0, " key", selectedCount === 1 ? "" : "s"), confirm ? /*#__PURE__*/React.createElement(ConfirmToast, null) : /*#__PURE__*/React.createElement("span", {
-      className: "font-mono text-[10.5px] uppercase tracking-[0.18em] text-slate-500"
+      className: "font-mono text-[10.5px] uppercase tracking-[0.18em] text-[var(--text-faint)]"
     }, canApply ? "writes only the selected keys" : "select keys on the board to enable"))), tab === "switch" && (() => {
       const SWITCHES = [{
         id: "hm1",
@@ -34819,7 +34819,7 @@
       }];
       const cur = SWITCHES.find(s => s.id === (switchId || "hm1")) || SWITCHES[0];
       return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
-        className: "text-[12px] text-slate-400 mb-5"
+        className: "text-[12px] text-[var(--text-dim)] mb-5"
       }, "Select the magnetic switch profile installed in your board. Calibration curves load automatically."), /*#__PURE__*/React.createElement("div", {
         className: "grid grid-cols-2 gap-3 mb-5"
       }, SWITCHES.map(s => {
@@ -34828,11 +34828,11 @@
           key: s.id,
           onClick: () => onPickSwitch && onPickSwitch(s.id),
           className: `text-left rounded-lg border p-3 transition-all
-                                ${active ? "border-[var(--accent)]/50 bg-[var(--accent)]/[0.06] shadow-[0_0_14px_var(--accent-glow)]" : "border-white/[0.06] bg-white/[0.02] hover:border-white/20"}`
+                                ${active ? "border-[var(--accent)]/50 bg-[var(--accent)]/[0.06] shadow-[0_0_14px_var(--accent-glow)]" : "border-[var(--line)] bg-white/[0.02] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`
         }, /*#__PURE__*/React.createElement("div", {
           className: "flex items-center gap-2"
         }, /*#__PURE__*/React.createElement("div", {
-          className: "font-display text-[14px] text-slate-100"
+          className: "font-display text-[14px] text-[var(--text)]"
         }, s.name), /*#__PURE__*/React.createElement("span", {
           className: "w-2.5 h-2.5 rounded-full",
           style: {
@@ -34840,10 +34840,10 @@
             boxShadow: `0 0 8px ${s.dot}`
           }
         })), /*#__PURE__*/React.createElement("div", {
-          className: "font-mono text-[10px] text-slate-500 uppercase tracking-[0.18em] mt-0.5"
+          className: "font-mono text-[10px] text-[var(--text-faint)] uppercase tracking-[0.18em] mt-0.5"
         }, s.sub));
       })), /*#__PURE__*/React.createElement("div", {
-        className: "rounded-xl border border-white/[0.06] bg-black/30 p-4"
+        className: "rounded-xl border border-[var(--line)] bg-[rgba(5,11,14,0.5)] p-4"
       }, /*#__PURE__*/React.createElement("div", {
         className: "flex items-center gap-2 mb-3"
       }, /*#__PURE__*/React.createElement("span", {
@@ -34853,44 +34853,44 @@
           boxShadow: `0 0 8px ${cur.dot}`
         }
       }), /*#__PURE__*/React.createElement("span", {
-        className: "font-display text-[13px] text-slate-100"
+        className: "font-display text-[13px] text-[var(--text)]"
       }, cur.name), /*#__PURE__*/React.createElement("span", {
-        className: "font-mono text-[10px] text-slate-500 uppercase tracking-[0.18em]"
+        className: "font-mono text-[10px] text-[var(--text-faint)] uppercase tracking-[0.18em]"
       }, cur.maker, " \xB7 ", cur.sub)), /*#__PURE__*/React.createElement("div", {
         className: "grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3 font-mono text-[11px]"
       }, [["Total Travel", cur.travel], ["Actuation Range", cur.range], ["Initial Force", cur.force], ["Sensing", cur.poles + " Hall"], ["Rated Life", cur.life + " presses"], ["Tech", "Magnetic / Analog"]].map(([k, v]) => /*#__PURE__*/React.createElement("div", {
         key: k
       }, /*#__PURE__*/React.createElement("div", {
-        className: "text-slate-500 uppercase tracking-[0.14em] text-[9.5px]"
+        className: "text-[var(--text-faint)] uppercase tracking-[0.14em] text-[9.5px]"
       }, k), /*#__PURE__*/React.createElement("div", {
-        className: "text-slate-100 mt-0.5"
+        className: "text-[var(--text)] mt-0.5"
       }, v))))));
     })(), tab === "poll" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
-      className: "text-[12px] text-slate-400 mb-5"
+      className: "text-[12px] text-[var(--text-dim)] mb-5"
     }, "Switch the polling rate of the device. The keyboard will restart and disconnect briefly after switching."), /*#__PURE__*/React.createElement("div", {
       className: "flex flex-wrap gap-2"
     }, [1, 2, 4, 8].map(p => /*#__PURE__*/React.createElement("button", {
       key: p,
       onClick: () => setPolling(p),
       className: `px-4 h-9 rounded-md border font-display text-[12px] uppercase tracking-[0.16em] transition-all
-                                ${polling === p ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_18px_var(--accent-glow)]" : "border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20"}`
+                                ${polling === p ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_18px_var(--accent-glow)]" : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`
     }, p, "KHz"))), /*#__PURE__*/React.createElement("div", {
-      className: "mt-6 p-4 rounded-lg border border-white/[0.06] bg-black/30 font-mono text-[11px] text-slate-400 leading-relaxed"
+      className: "mt-6 p-4 rounded-lg border border-[var(--line)] bg-[rgba(5,11,14,0.5)] font-mono text-[11px] text-[var(--text-dim)] leading-relaxed"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
-      className: "text-slate-500"
+      className: "text-[var(--text-faint)]"
     }, "current"), " \xB7 ", /*#__PURE__*/React.createElement("span", {
       className: "text-[var(--accent)]"
     }, polling, "000 Hz"), " \xB7 ", (1000 / polling).toFixed(2), "ms tick"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
-      className: "text-slate-500"
+      className: "text-[var(--text-faint)]"
     }, "latency"), " \xB7 ~", (0.5 + 1 / polling).toFixed(2), "ms end-to-end"))), tab === "calib" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-      className: "font-display text-[12px] uppercase tracking-[0.18em] text-slate-200 mb-3"
+      className: "font-display text-[12px] uppercase tracking-[0.18em] text-[var(--text)] mb-3"
     }, "Key Calibration"), /*#__PURE__*/React.createElement("button", {
       onClick: () => onCalibrate && onCalibrate(!calibrating),
       className: "px-5 h-10 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-fg)] font-display text-[12px] uppercase tracking-[0.18em] shadow-[0_0_18px_var(--accent-glow)] mb-5"
     }, calibrating ? "Stop Calibration" : "Start Calibration"), /*#__PURE__*/React.createElement("div", {
-      className: "font-display text-[11px] uppercase tracking-[0.18em] text-slate-300 mb-2"
+      className: "font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)] mb-2"
     }, "Calibration steps:"), /*#__PURE__*/React.createElement("ol", {
-      className: "space-y-2 text-[12px] text-slate-400 max-w-2xl"
+      className: "space-y-2 text-[12px] text-[var(--text-dim)] max-w-2xl"
     }, ["Click the Start Calibration button", "Press the required key (Hit bottom)", "Wait for the corresponding key to change color, and the key calibration is complete", "Click the Stop Calibration button"].map((step, i) => /*#__PURE__*/React.createElement("li", {
       key: i,
       className: "flex items-start gap-3"
@@ -34968,7 +34968,7 @@
     key: b.label,
     onClick: b.onClick,
     className: `w-[110px] h-8 rounded-md border font-display text-[10.5px] uppercase tracking-[0.16em] transition-all
-                    ${b.primary ? "border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] hover:bg-[var(--accent)]/25 shadow-[0_0_10px_var(--accent-glow)]" : "border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20"}`
+                    ${b.primary ? "border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] hover:bg-[var(--accent)]/25 shadow-[0_0_10px_var(--accent-glow)]" : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`
   }, b.label)));
 
   /* ===== LIGHTING SECTION ===== */
@@ -35233,24 +35233,24 @@
     onUpdate,
     onRemove
   }) => /*#__PURE__*/React.createElement("div", {
-    className: "rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4"
+    className: "glass p-4"
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-between mb-3"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-    className: "font-display text-[12px] uppercase tracking-[0.18em] text-slate-200"
+    className: "font-display text-[12px] uppercase tracking-[0.18em] text-[var(--text)]"
   }, "Effect Zones"), /*#__PURE__*/React.createElement("div", {
-    className: "font-mono text-[10px] text-slate-500 mt-0.5"
+    className: "font-mono text-[10px] text-[var(--text-faint)] mt-0.5"
   }, "Select keys on the board, add a zone, give it its own effect")), /*#__PURE__*/React.createElement("button", {
     onClick: onAdd,
     disabled: !selectedKeys || selectedKeys.size === 0,
     className: "px-2.5 h-8 rounded-md border border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] disabled:opacity-40 font-display text-[10.5px] uppercase tracking-[0.16em]"
   }, "+ Zone (", selectedKeys?.size ?? 0, ")")), (!zones || zones.length === 0) && /*#__PURE__*/React.createElement("div", {
-    className: "font-mono text-[11px] text-slate-500"
+    className: "font-mono text-[11px] text-[var(--text-faint)]"
   }, "No zones yet \u2014 select keys, then click \u201C+ Zone\u201D. Keys outside every zone stay off."), /*#__PURE__*/React.createElement("div", {
     className: "flex flex-col gap-2"
   }, (zones || []).map(z => /*#__PURE__*/React.createElement("div", {
     key: z.id,
-    className: "rounded-lg border border-white/[0.06] bg-black/20 p-2.5"
+    className: "rounded-lg border border-[var(--line)] bg-[rgba(5,11,14,0.35)] p-2.5"
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-2 mb-2"
   }, /*#__PURE__*/React.createElement("select", {
@@ -35258,16 +35258,16 @@
     onChange: e => onUpdate(z.id, {
       mode: e.target.value
     }),
-    className: "flex-1 h-8 rounded-md bg-black/40 border border-white/[0.08] text-slate-100 font-display text-[11px] uppercase tracking-[0.12em] px-2 outline-none"
+    className: "flex-1 h-8 rounded-md bg-[rgba(5,11,14,0.5)] border border-[var(--line)] text-[var(--text)] font-display text-[11px] uppercase tracking-[0.12em] px-2 outline-none"
   }, ZONE_MODES.map(m => /*#__PURE__*/React.createElement("option", {
     key: m.id,
     value: m.id
   }, m.label))), /*#__PURE__*/React.createElement("span", {
-    className: "font-mono text-[10px] text-slate-500 whitespace-nowrap"
+    className: "font-mono text-[10px] text-[var(--text-faint)] whitespace-nowrap"
   }, z.codes.length, " keys"), /*#__PURE__*/React.createElement("button", {
     onClick: () => onRemove(z.id),
     title: "Remove zone",
-    className: "w-7 h-7 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-400 hover:text-rose-300 hover:border-rose-400/40"
+    className: "w-7 h-7 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:text-rose-300 hover:border-rose-400/40"
   }, "\u2715")), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-2"
   }, /*#__PURE__*/React.createElement("div", {
@@ -35295,16 +35295,16 @@
     onClick: () => onUpdate(z.id, {
       colors: z.colors.filter((_, j) => j !== i)
     }),
-    className: "absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-slate-900 ring-1 ring-white/20 text-slate-300 hover:text-rose-300 grid place-items-center text-[9px]"
+    className: "absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-slate-900 ring-1 ring-white/20 text-[var(--text-dim)] hover:text-rose-300 grid place-items-center text-[9px]"
   }, "\u2715"))), (z.colors || []).length < 4 && /*#__PURE__*/React.createElement("button", {
     onClick: () => onUpdate(z.id, {
       colors: [...(z.colors || []), "#ffffff"]
     }),
-    className: "w-7 h-7 rounded-md border-2 border-dashed border-white/15 text-slate-400 hover:border-white/30 grid place-items-center text-[12px]"
+    className: "w-7 h-7 rounded-md border-2 border-dashed border-[var(--line)] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] grid place-items-center text-[12px]"
   }, "+")), /*#__PURE__*/React.createElement("div", {
     className: "flex-1 flex items-center gap-2"
   }, /*#__PURE__*/React.createElement("span", {
-    className: "font-mono text-[9px] uppercase tracking-[0.18em] text-slate-500"
+    className: "font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--text-faint)]"
   }, "Spd"), /*#__PURE__*/React.createElement("input", {
     type: "range",
     className: "aether flex-1",

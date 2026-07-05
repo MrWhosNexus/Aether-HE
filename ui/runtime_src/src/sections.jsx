@@ -373,7 +373,7 @@ const ActuationSection = ({
     `px-4 h-9 rounded-md border font-display text-[12px] uppercase tracking-[0.16em] transition-all ${
       enabled
         ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_18px_var(--accent-glow)] hover:brightness-110"
-        : "border-white/[0.06] bg-white/[0.02] text-slate-500 cursor-not-allowed"
+        : "border-[var(--line)] bg-white/[0.02] text-[var(--text-faint)] cursor-not-allowed"
     }`;
   const [tab, setTab] = useState("travel");
   // Confirmation toast — shows the exact keys + value the user just wrote so
@@ -411,12 +411,12 @@ const ActuationSection = ({
 
       <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
         {/* Left: switch render */}
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+        <div className="glass p-4">
           <div className="flex items-center justify-between mb-3">
-            <span className="font-display text-[11px] uppercase tracking-[0.18em] text-slate-300">Travel Test</span>
+            <span className="font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)]">Travel Test</span>
             <button onClick={() => setTravelTest(!travelTest)}
               className={`relative w-10 h-5 rounded-full border transition-colors
-                          ${travelTest ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-white/[0.08]"}`}>
+                          ${travelTest ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-[var(--line)]"}`}>
               <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full transition-all
                                 ${travelTest ? "left-[20px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-slate-400"}`}/>
             </button>
@@ -425,14 +425,14 @@ const ActuationSection = ({
         </div>
 
         {/* Right: per-tab content */}
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5">
+        <div className="glass p-5">
           {tab === "travel" && (
             <div>
-              <p className="text-[12px] text-slate-400 mb-3">
+              <p className="text-[12px] text-[var(--text-dim)] mb-3">
                 Select keys on the board, set the actuation point, then press <span className="text-[var(--accent)]">Apply</span> — only the selected keys are written. Nothing is sent while you move the slider.
               </p>
               <div className="mb-5 inline-flex items-center gap-2 px-3 h-7 rounded-md border border-[var(--accent)]/30 bg-[var(--accent)]/[0.06]">
-                <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-400">Applying to</span>
+                <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-dim)]">Applying to</span>
                 <span className="font-display text-[11px] uppercase tracking-[0.16em] text-[var(--accent)]">{scope}</span>
               </div>
               <div className="mb-5">
@@ -440,26 +440,26 @@ const ActuationSection = ({
                         onChange={setActuation}/>
                 <div className="flex items-center gap-2 mt-2">
                   <button onClick={() => setActuation(Math.max(0.1, actuation - 0.05))}
-                    className="w-7 h-7 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20">−</button>
-                  <div className="px-3 h-7 rounded-md border border-white/[0.06] bg-white/[0.02] grid place-items-center font-mono text-[12px] text-slate-100">
+                    className="w-7 h-7 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]">−</button>
+                  <div className="px-3 h-7 rounded-md border border-[var(--line)] bg-white/[0.02] grid place-items-center font-mono text-[12px] text-[var(--text)]">
                     {actuation.toFixed(2)} mm
                   </div>
                   <button onClick={() => setActuation(Math.min(4.0, actuation + 0.05))}
-                    className="w-7 h-7 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20">+</button>
+                    className="w-7 h-7 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]">+</button>
                 </div>
               </div>
 
               <label className="flex items-center gap-2 cursor-pointer select-none mb-3">
                 <span className={`w-4 h-4 rounded border grid place-items-center transition
-                                  ${rtEnabled ? "border-[var(--accent)] bg-[var(--accent)]/20" : "border-white/15 bg-white/[0.02]"}`}
+                                  ${rtEnabled ? "border-[var(--accent)] bg-[var(--accent)]/20" : "border-[var(--line)] bg-white/[0.02]"}`}
                       onClick={() => setRtEnabled(!rtEnabled)}>
                   {rtEnabled && <ICheck size={10} className="text-[var(--accent)]"/>}
                 </span>
                 <input type="checkbox" checked={rtEnabled} onChange={(e) => setRtEnabled(e.target.checked)} className="sr-only"/>
-                <span className="font-display text-[11.5px] uppercase tracking-[0.16em] text-slate-200">Rapid Trigger</span>
+                <span className="font-display text-[11.5px] uppercase tracking-[0.16em] text-[var(--text)]">Rapid Trigger</span>
                 <Chip color="accent">RT</Chip>
               </label>
-              <p className="text-[11.5px] text-slate-500 leading-relaxed mb-4">
+              <p className="text-[11.5px] text-[var(--text-faint)] leading-relaxed mb-4">
                 Rapid Trigger dynamically actuates and resets your key based on your intent — perfect for counter-strafing and rebound presses.
               </p>
 
@@ -479,7 +479,7 @@ const ActuationSection = ({
                 </button>
                 {confirm
                   ? <ConfirmToast/>
-                  : <span className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-slate-500">
+                  : <span className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-[var(--text-faint)]">
                       {canApply ? "writes only the selected keys" : "select keys on the board to enable"}
                     </span>}
               </div>
@@ -488,7 +488,7 @@ const ActuationSection = ({
 
           {tab === "dead" && (
             <div>
-              <p className="text-[12px] text-slate-400 mb-5">
+              <p className="text-[12px] text-[var(--text-dim)] mb-5">
                 Configure the dead-band region near the keycap's rest and bottom-out positions — noise inside this band is ignored. Press <span className="text-[var(--accent)]">Apply</span> to write to the selected keys.
               </p>
               <div className="grid grid-cols-2 gap-6">
@@ -504,7 +504,7 @@ const ActuationSection = ({
                 </button>
                 {confirm
                   ? <ConfirmToast/>
-                  : <span className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-slate-500">
+                  : <span className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-[var(--text-faint)]">
                       {canApply ? "writes only the selected keys" : "select keys on the board to enable"}
                     </span>}
               </div>
@@ -525,7 +525,7 @@ const ActuationSection = ({
             const cur = SWITCHES.find(s => s.id === (switchId || "hm1")) || SWITCHES[0];
             return (
             <div>
-              <p className="text-[12px] text-slate-400 mb-5">
+              <p className="text-[12px] text-[var(--text-dim)] mb-5">
                 Select the magnetic switch profile installed in your board. Calibration curves load automatically.
               </p>
               <div className="grid grid-cols-2 gap-3 mb-5">
@@ -536,22 +536,22 @@ const ActuationSection = ({
                     className={`text-left rounded-lg border p-3 transition-all
                                 ${active
                                   ? "border-[var(--accent)]/50 bg-[var(--accent)]/[0.06] shadow-[0_0_14px_var(--accent-glow)]"
-                                  : "border-white/[0.06] bg-white/[0.02] hover:border-white/20"}`}>
+                                  : "border-[var(--line)] bg-white/[0.02] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`}>
                     <div className="flex items-center gap-2">
-                      <div className="font-display text-[14px] text-slate-100">{s.name}</div>
+                      <div className="font-display text-[14px] text-[var(--text)]">{s.name}</div>
                       <span className="w-2.5 h-2.5 rounded-full" style={{ background: s.dot, boxShadow: `0 0 8px ${s.dot}` }}/>
                     </div>
-                    <div className="font-mono text-[10px] text-slate-500 uppercase tracking-[0.18em] mt-0.5">{s.sub}</div>
+                    <div className="font-mono text-[10px] text-[var(--text-faint)] uppercase tracking-[0.18em] mt-0.5">{s.sub}</div>
                   </button>
                   );
                 })}
               </div>
               {/* Switch info readout for the selected profile */}
-              <div className="rounded-xl border border-white/[0.06] bg-black/30 p-4">
+              <div className="rounded-xl border border-[var(--line)] bg-[rgba(5,11,14,0.5)] p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <span className="w-2.5 h-2.5 rounded-full" style={{ background: cur.dot, boxShadow: `0 0 8px ${cur.dot}` }}/>
-                  <span className="font-display text-[13px] text-slate-100">{cur.name}</span>
-                  <span className="font-mono text-[10px] text-slate-500 uppercase tracking-[0.18em]">{cur.maker} · {cur.sub}</span>
+                  <span className="font-display text-[13px] text-[var(--text)]">{cur.name}</span>
+                  <span className="font-mono text-[10px] text-[var(--text-faint)] uppercase tracking-[0.18em]">{cur.maker} · {cur.sub}</span>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3 font-mono text-[11px]">
                   {[
@@ -560,8 +560,8 @@ const ActuationSection = ({
                     ["Rated Life", cur.life + " presses"], ["Tech", "Magnetic / Analog"],
                   ].map(([k, v]) => (
                     <div key={k}>
-                      <div className="text-slate-500 uppercase tracking-[0.14em] text-[9.5px]">{k}</div>
-                      <div className="text-slate-100 mt-0.5">{v}</div>
+                      <div className="text-[var(--text-faint)] uppercase tracking-[0.14em] text-[9.5px]">{k}</div>
+                      <div className="text-[var(--text)] mt-0.5">{v}</div>
                     </div>
                   ))}
                 </div>
@@ -572,7 +572,7 @@ const ActuationSection = ({
 
           {tab === "poll" && (
             <div>
-              <p className="text-[12px] text-slate-400 mb-5">
+              <p className="text-[12px] text-[var(--text-dim)] mb-5">
                 Switch the polling rate of the device. The keyboard will restart and disconnect briefly after switching.
               </p>
               <div className="flex flex-wrap gap-2">
@@ -581,27 +581,27 @@ const ActuationSection = ({
                     className={`px-4 h-9 rounded-md border font-display text-[12px] uppercase tracking-[0.16em] transition-all
                                 ${polling === p
                                   ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_18px_var(--accent-glow)]"
-                                  : "border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20"}`}>
+                                  : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`}>
                     {p}KHz
                   </button>
                 ))}
               </div>
-              <div className="mt-6 p-4 rounded-lg border border-white/[0.06] bg-black/30 font-mono text-[11px] text-slate-400 leading-relaxed">
-                <div><span className="text-slate-500">current</span> · <span className="text-[var(--accent)]">{polling}000 Hz</span> · {(1000/polling).toFixed(2)}ms tick</div>
-                <div><span className="text-slate-500">latency</span> · ~{(0.5 + 1/polling).toFixed(2)}ms end-to-end</div>
+              <div className="mt-6 p-4 rounded-lg border border-[var(--line)] bg-[rgba(5,11,14,0.5)] font-mono text-[11px] text-[var(--text-dim)] leading-relaxed">
+                <div><span className="text-[var(--text-faint)]">current</span> · <span className="text-[var(--accent)]">{polling}000 Hz</span> · {(1000/polling).toFixed(2)}ms tick</div>
+                <div><span className="text-[var(--text-faint)]">latency</span> · ~{(0.5 + 1/polling).toFixed(2)}ms end-to-end</div>
               </div>
             </div>
           )}
 
           {tab === "calib" && (
             <div>
-              <div className="font-display text-[12px] uppercase tracking-[0.18em] text-slate-200 mb-3">Key Calibration</div>
+              <div className="font-display text-[12px] uppercase tracking-[0.18em] text-[var(--text)] mb-3">Key Calibration</div>
               <button onClick={() => onCalibrate && onCalibrate(!calibrating)}
                 className="px-5 h-10 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-fg)] font-display text-[12px] uppercase tracking-[0.18em] shadow-[0_0_18px_var(--accent-glow)] mb-5">
                 {calibrating ? "Stop Calibration" : "Start Calibration"}
               </button>
-              <div className="font-display text-[11px] uppercase tracking-[0.18em] text-slate-300 mb-2">Calibration steps:</div>
-              <ol className="space-y-2 text-[12px] text-slate-400 max-w-2xl">
+              <div className="font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)] mb-2">Calibration steps:</div>
+              <ol className="space-y-2 text-[12px] text-[var(--text-dim)] max-w-2xl">
                 {[
                   "Click the Start Calibration button",
                   "Press the required key (Hit bottom)",
@@ -673,7 +673,7 @@ const ActuationToolbar = ({ onSelectAll, onSelectInvert, onDeselectAll, onResetT
         className={`w-[110px] h-8 rounded-md border font-display text-[10.5px] uppercase tracking-[0.16em] transition-all
                     ${b.primary
                       ? "border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] hover:bg-[var(--accent)]/25 shadow-[0_0_10px_var(--accent-glow)]"
-                      : "border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20"}`}>
+                      : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`}>
         {b.label}
       </button>
     ))}
@@ -754,11 +754,11 @@ const ZONE_MODES = [
 
 /* Effect zones: each = a group of keys running its own effect+colors. */
 const ZonesPanel = ({ zones, selectedKeys, onAdd, onUpdate, onRemove }) => (
-  <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4">
+  <div className="glass p-4">
     <div className="flex items-center justify-between mb-3">
       <div>
-        <div className="font-display text-[12px] uppercase tracking-[0.18em] text-slate-200">Effect Zones</div>
-        <div className="font-mono text-[10px] text-slate-500 mt-0.5">Select keys on the board, add a zone, give it its own effect</div>
+        <div className="font-display text-[12px] uppercase tracking-[0.18em] text-[var(--text)]">Effect Zones</div>
+        <div className="font-mono text-[10px] text-[var(--text-faint)] mt-0.5">Select keys on the board, add a zone, give it its own effect</div>
       </div>
       <button onClick={onAdd} disabled={!selectedKeys || selectedKeys.size === 0}
         className="px-2.5 h-8 rounded-md border border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] disabled:opacity-40 font-display text-[10.5px] uppercase tracking-[0.16em]">
@@ -766,19 +766,19 @@ const ZonesPanel = ({ zones, selectedKeys, onAdd, onUpdate, onRemove }) => (
       </button>
     </div>
     {(!zones || zones.length === 0) && (
-      <div className="font-mono text-[11px] text-slate-500">No zones yet — select keys, then click “+ Zone”. Keys outside every zone stay off.</div>
+      <div className="font-mono text-[11px] text-[var(--text-faint)]">No zones yet — select keys, then click “+ Zone”. Keys outside every zone stay off.</div>
     )}
     <div className="flex flex-col gap-2">
       {(zones || []).map(z => (
-        <div key={z.id} className="rounded-lg border border-white/[0.06] bg-black/20 p-2.5">
+        <div key={z.id} className="rounded-lg border border-[var(--line)] bg-[rgba(5,11,14,0.35)] p-2.5">
           <div className="flex items-center gap-2 mb-2">
             <select value={z.mode} onChange={(e) => onUpdate(z.id, { mode: e.target.value })}
-              className="flex-1 h-8 rounded-md bg-black/40 border border-white/[0.08] text-slate-100 font-display text-[11px] uppercase tracking-[0.12em] px-2 outline-none">
+              className="flex-1 h-8 rounded-md bg-[rgba(5,11,14,0.5)] border border-[var(--line)] text-[var(--text)] font-display text-[11px] uppercase tracking-[0.12em] px-2 outline-none">
               {ZONE_MODES.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
             </select>
-            <span className="font-mono text-[10px] text-slate-500 whitespace-nowrap">{z.codes.length} keys</span>
+            <span className="font-mono text-[10px] text-[var(--text-faint)] whitespace-nowrap">{z.codes.length} keys</span>
             <button onClick={() => onRemove(z.id)} title="Remove zone"
-              className="w-7 h-7 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-400 hover:text-rose-300 hover:border-rose-400/40">✕</button>
+              className="w-7 h-7 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:text-rose-300 hover:border-rose-400/40">✕</button>
           </div>
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5">
@@ -791,17 +791,17 @@ const ZonesPanel = ({ zones, selectedKeys, onAdd, onUpdate, onRemove }) => (
                   </div>
                   {z.colors.length > 1 && (
                     <button onClick={() => onUpdate(z.id, { colors: z.colors.filter((_, j) => j !== i) })}
-                      className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-slate-900 ring-1 ring-white/20 text-slate-300 hover:text-rose-300 grid place-items-center text-[9px]">✕</button>
+                      className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-slate-900 ring-1 ring-white/20 text-[var(--text-dim)] hover:text-rose-300 grid place-items-center text-[9px]">✕</button>
                   )}
                 </div>
               ))}
               {(z.colors || []).length < 4 && (
                 <button onClick={() => onUpdate(z.id, { colors: [...(z.colors || []), "#ffffff"] })}
-                  className="w-7 h-7 rounded-md border-2 border-dashed border-white/15 text-slate-400 hover:border-white/30 grid place-items-center text-[12px]">+</button>
+                  className="w-7 h-7 rounded-md border-2 border-dashed border-[var(--line)] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] grid place-items-center text-[12px]">+</button>
               )}
             </div>
             <div className="flex-1 flex items-center gap-2">
-              <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-slate-500">Spd</span>
+              <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--text-faint)]">Spd</span>
               <input type="range" className="aether flex-1" min={0} max={100} step={1}
                 value={z.speed != null ? z.speed : 60} style={{ "--pct": (z.speed != null ? z.speed : 60) + "%" }}
                 onChange={(e) => onUpdate(z.id, { speed: parseFloat(e.target.value) })}/>
