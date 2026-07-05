@@ -3,11 +3,16 @@ a PR. NEVER merges; NEVER logs the API key. Pure helpers here are unit-tested;
 main() shells out to `gh`."""
 import argparse
 import ast
+import ipaddress
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # tools/ on path
 from validate_keymap import validate_keymap  # noqa: E402
@@ -19,6 +24,71 @@ _FILE_BLOCK = re.compile(r"=== FILE: (?P<name>[^\n=]+?) ===\n(?P<body>.*?)(?=\n=
 _REQUIRED_ENTRY_KEYS = {"slug", "name", "vid", "pid", "usage_page", "formFactor",
                         "protocol", "keymap", "capabilities", "status"}
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+
+_ALLOWED_HOSTS = {"github.com", "objects.githubusercontent.com",
+                   "user-images.githubusercontent.com", "raw.githubusercontent.com"}
+
+
+def _validate_url_host(url):
+    """Raise ValueError unless url is https, allowlisted host, and resolves only
+    to public (non-private/loopback/link-local/reserved/multicast) IPs."""
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme != "https":
+        raise ValueError("attachment fetch rejected: scheme must be https")
+    host = parsed.hostname
+    if not host or host not in _ALLOWED_HOSTS:
+        raise ValueError("attachment fetch rejected: host not allowlisted")
+    try:
+        addrs = socket.getaddrinfo(host, 443)
+    except Exception:
+        raise ValueError("attachment fetch rejected: DNS resolution failed")
+    for family, _, _, _, sockaddr in addrs:
+        ip = sockaddr[0]
+        addr = ipaddress.ip_address(ip)
+        if (addr.is_private or addr.is_loopback or addr.is_link_local
+                or addr.is_reserved or addr.is_multicast):
+            raise ValueError("attachment fetch rejected: host resolves to a non-public address")
+    return parsed
+
+
+def _safe_fetch_json(url, *, max_bytes=1000000, max_redirects=2):
+    """Fetch a JSON document over https from an allowlisted host, rejecting any
+    hostname that resolves to a private/loopback/link-local/reserved/multicast
+    IP, and never auto-following redirects (each hop is re-validated)."""
+    class _NoRedirect(urllib.request.HTTPErrorProcessor):
+        def http_response(self, request, response):
+            return response
+        https_response = http_response
+
+    opener = urllib.request.build_opener(_NoRedirect)
+    current = url
+    for _ in range(max_redirects + 1):
+        _validate_url_host(current)
+        try:
+            resp = opener.open(current, timeout=60)
+        except urllib.error.HTTPError as ex:
+            if ex.code in (301, 302, 303, 307, 308):
+                location = ex.headers.get("Location")
+                if not location:
+                    raise ValueError("attachment fetch rejected: redirect with no Location")
+                current = urllib.parse.urljoin(current, location)
+                continue
+            raise ValueError(f"attachment fetch rejected: HTTP error {ex.code}")
+        except Exception:
+            raise ValueError("attachment fetch rejected: request failed")
+        code = getattr(resp, "status", 200) or 200
+        if code in (301, 302, 303, 307, 308):
+            location = resp.headers.get("Location")
+            if not location:
+                raise ValueError("attachment fetch rejected: redirect with no Location")
+            current = urllib.parse.urljoin(current, location)
+            continue
+        try:
+            data = resp.read(max_bytes)
+            return json.loads(data.decode("utf-8"))
+        except Exception:
+            raise ValueError("attachment fetch rejected: invalid response body")
+    raise ValueError("attachment fetch rejected: too many redirects")
 
 
 def extract_json_block(body):
@@ -119,8 +189,10 @@ def run(issue_number, *, gh, complete, repo_root):
     if sub is None:
         url = extract_attachment_url(body)
         if url:
-            import urllib.request
-            sub = json.loads(urllib.request.urlopen(url, timeout=60).read().decode("utf-8"))
+            try:
+                sub = _safe_fetch_json(url)
+            except Exception:
+                sub = None
     if not isinstance(sub, dict):
         gh(["issue", "comment", str(issue_number), "--body",
             "Automated draft: no submission JSON found. Please attach the file the app generated."])

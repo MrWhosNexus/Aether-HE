@@ -97,3 +97,50 @@ def test_run_invalid_submission_comments_no_pr(tmp_path, monkeypatch):
     res = bot.run(9, gh=fake_gh, complete=lambda p: "", repo_root=str(tmp_path))
     assert res["ok"] is False and res["pr_url"] is None
     assert "invalid" in res["reason"].lower()
+
+
+# --- SSRF hardening for _safe_fetch_json ---
+
+def test_safe_fetch_json_rejects_http_scheme():
+    import pytest
+    with pytest.raises(Exception):
+        bot._safe_fetch_json("http://github.com/x/files/1/board.json")
+
+def test_safe_fetch_json_rejects_non_allowlisted_host():
+    import pytest
+    with pytest.raises(Exception):
+        bot._safe_fetch_json("https://evil.example.com/x.json")
+
+def test_safe_fetch_json_rejects_private_ip(monkeypatch):
+    import pytest
+    def fake_getaddrinfo(host, port):
+        return [(2, 1, 6, "", ("127.0.0.1", 443))]
+    monkeypatch.setattr(bot.socket, "getaddrinfo", fake_getaddrinfo)
+    with pytest.raises(Exception):
+        bot._safe_fetch_json("https://github.com/x/files/1/board.json")
+
+def test_safe_fetch_json_rejects_link_local_ip(monkeypatch):
+    import pytest
+    def fake_getaddrinfo(host, port):
+        return [(2, 1, 6, "", ("169.254.169.254", 443))]
+    monkeypatch.setattr(bot.socket, "getaddrinfo", fake_getaddrinfo)
+    with pytest.raises(Exception):
+        bot._safe_fetch_json("https://github.com/x/files/1/board.json")
+
+def test_safe_fetch_json_accepts_public_ip_and_parses(monkeypatch):
+    def fake_getaddrinfo(host, port):
+        return [(2, 1, 6, "", ("140.82.112.3", 443))]
+    monkeypatch.setattr(bot.socket, "getaddrinfo", fake_getaddrinfo)
+
+    class FakeResp:
+        status = 200
+        def read(self, n):
+            return b'{"schema": "aether-board-submission/1"}'
+
+    class FakeOpener:
+        def open(self, url, timeout=60):
+            return FakeResp()
+
+    monkeypatch.setattr(bot.urllib.request, "build_opener", lambda *a, **k: FakeOpener())
+    result = bot._safe_fetch_json("https://github.com/x/files/1/board.json")
+    assert result["schema"] == "aether-board-submission/1"
