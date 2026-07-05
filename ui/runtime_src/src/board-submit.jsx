@@ -54,11 +54,16 @@ function BoardSubmit({ open, onClose }) {
   };
 
   const submit = async () => {
+    const interfaces = (devices || [])
+      .filter(d => d.vid === dev.vid && d.pid === dev.pid)
+      .map(d => ({ interface_number: d.interface_number, usage_page: d.usage_page }));
+    const { path, ...devNoPath } = dev;   // drop raw HID path (public issue)
+    const deviceObj = { ...devNoPath, hid_descriptor_b64: "", interfaces };
     const obj = {
       schema: "aether-board-submission/1",
       submitted_at: new Date().toISOString(),
       app_version: (window.__resources && window.__resources.version) || "0.2.0",
-      device: dev, meta, size_template: `generic-${meta.size}`,
+      device: deviceObj, meta, size_template: `generic-${meta.size}`,
       input_capture: { duration_ms: reports.length ? reports[reports.length - 1].t : 0,
                        report_len: 64, reports, keys_seen: keysSeen },
       output_pcap: { attached: false, filename: null }, notes: "",
