@@ -7,6 +7,9 @@ block_cipher = None
 
 datas = [
     ("ui", "ui"),
+    # Multi-board registry + board defs (boards.py reads HERE/data/...); without
+    # this the frozen app can't resolve non-Win60 boards and warns on startup.
+    ("data", "data"),
     # Bundle the official ViGEmBus installer so users can install the kernel
     # driver from inside the app on first launch (Gamepad tab → Install button).
     ("vendor/ViGEmBus_Setup.exe", "vendor"),
@@ -20,11 +23,15 @@ hidden = [
     "webview.platforms.edgechromium",
     "clr_loader",
     "pythonnet",
+    # device_state.py imports this via a runtime sys.path.insert(".../tools"),
+    # which PyInstaller's static analysis can't follow — bundle it explicitly
+    # (with tools/ on pathex so the module is resolvable at build time).
+    "validate_keymap",
 ]
 
 a = Analysis(
     ["app_web.py"],
-    pathex=[],
+    pathex=["tools"],
     binaries=binaries,
     datas=datas,
     hiddenimports=hidden,
