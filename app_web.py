@@ -64,7 +64,6 @@ class Api:
         """Open an arbitrary HID device READ-ONLY and stream input reports.
         Never writes to the device — this is the safety guarantee for unknown boards."""
         try:
-            self._cap_stop = getattr(self, "_cap_stop", None)
             self.stop_capture()  # idempotent: close any prior capture
             dev = hid.device()
             dev.open_path(path.encode() if isinstance(path, str) else path)
@@ -75,17 +74,25 @@ class Api:
             self._cap_lock = threading.Lock()
             self._cap_stop = threading.Event()
 
+            # Snapshot per-capture objects as locals so the thread only ever
+            # touches its OWN buffer/lock, even if a new open_capture() call
+            # reassigns self._cap_* while this thread is still stopping.
+            lock = self._cap_lock
+            buf = self._cap_buf
+            stop_ev = self._cap_stop
+            t0 = self._cap_t0
+
             def loop():
-                while not self._cap_stop.is_set():
+                while not stop_ev.is_set():
                     try:
                         r = dev.read(64, timeout_ms=50)
                     except Exception:
                         break
                     if r:
-                        rec = {"t": int((time.time() - self._cap_t0) * 1000),
+                        rec = {"t": int((time.time() - t0) * 1000),
                                "hex": bytes(r).hex()}
-                        with self._cap_lock:
-                            self._cap_buf.append(rec)
+                        with lock:
+                            buf.append(rec)
                     else:
                         time.sleep(0.005)
 
@@ -102,8 +109,8 @@ class Api:
             if buf is None:
                 return {"ok": True, "reports": [], "count": 0}
             with self._cap_lock:
-                out = self._cap_buf
-                self._cap_buf = []
+                out = self._cap_buf[:]
+                self._cap_buf.clear()
             return {"ok": True, "reports": out, "count": len(out)}
         except Exception as e:
             return {"ok": False, "error": str(e)}
