@@ -504,20 +504,29 @@
 
 <style>
   :root {
-    --bg-0: #07080d;
-    --bg-1: #0b0d15;
-    --bg-2: #0f1220;
-    --bg-3: #161a29;
-    --line: rgba(148, 163, 184, 0.08);
+    --ink: #06110f;
+    --ink-2: #0a1a17;
+    --text: #eaf4f0;
+    --text-dim: #8fa9a2;
+    --text-faint: #557069;
+    --line: rgba(234, 244, 240, 0.09);
+    --good: #7be3b0;
+    --warn: #f4b268;
+    --bad: #f08a78;
+    --radius: 18px;
+    --glass-blur: 22px;
+    --glass-tint: 0.42;
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 
-    --accent: #9d4edd;
-    --accent-2: #9d4edd;
-    --accent-gradient: #9d4edd;
-    --accent-fg: #1a0833;
-    --accent-glow: rgba(157, 78, 221, 0.45);
+    /* applyTheme() writes these at runtime — names preserved, defaults changed */
+    --accent: #6fe8c0;
+    --accent-2: #f4b268;
+    --accent-gradient: #6fe8c0;
+    --accent-fg: #06110f;
+    --accent-glow: rgba(111, 232, 192, 0.45);
   }
 
-  html, body { background: var(--bg-0); color: #e6e8f0; font-family: 'Inter', system-ui, sans-serif; }
+  html, body { background: var(--ink); color: var(--text); font-family: var(--font-ui, 'Schibsted Grotesk', system-ui, sans-serif); }
   .font-display { font-family: 'Rajdhani', sans-serif; letter-spacing: 0.02em; }
   .font-mono { font-family: 'JetBrains Mono', monospace; }
 
@@ -601,16 +610,16 @@
 
   /* Soft card — Notion/Apple Health style: subtle elevation, soft edges */
   .surface {
-    background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015));
-    border: 1px solid rgba(255,255,255,0.04);
+    background: linear-gradient(180deg, rgba(234,244,240,0.04), rgba(234,244,240,0.015));
+    border: 1px solid rgba(234,244,240,0.04);
     box-shadow:
-      0 1px 0 rgba(255,255,255,0.04) inset,
+      0 1px 0 rgba(234,244,240,0.04) inset,
       0 20px 60px -24px rgba(0,0,0,0.7),
       0 4px 16px -8px rgba(0,0,0,0.4);
   }
   .surface-flat {
-    background: rgba(255,255,255,0.025);
-    border: 1px solid rgba(255,255,255,0.04);
+    background: rgba(234,244,240,0.025);
+    border: 1px solid rgba(234,244,240,0.04);
   }
 
   /* Pill segmented nav */
@@ -618,15 +627,15 @@
     background: linear-gradient(180deg, color-mix(in oklab, var(--accent) 22%, transparent), color-mix(in oklab, var(--accent) 12%, transparent));
     color: white;
     box-shadow:
-      0 1px 0 rgba(255,255,255,0.12) inset,
+      0 1px 0 rgba(234,244,240,0.12) inset,
       0 8px 24px -10px var(--accent-glow);
   }
 
   /* Dropdown menu */
   .menu-pop {
-    background: rgba(20, 24, 38, 0.95);
+    background: color-mix(in srgb, var(--ink-2) 95%, transparent);
     backdrop-filter: blur(12px);
-    border: 1px solid rgba(255,255,255,0.06);
+    border: 1px solid rgba(234,244,240,0.06);
     box-shadow: 0 20px 60px -16px rgba(0,0,0,0.7);
   }
 </style>

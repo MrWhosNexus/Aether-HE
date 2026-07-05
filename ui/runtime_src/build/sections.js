@@ -1559,7 +1559,7 @@
         background: `conic-gradient(from 0deg, #ff1f5a, #ffaa1f, #39ff8a, #00f5ff, #5b8cff, #9d4edd, #ff1f5a)`
       }
     }, /*#__PURE__*/React.createElement("div", {
-      className: "w-full h-full rounded-full bg-[var(--bg-1)] p-2 grid place-items-center"
+      className: "w-full h-full rounded-full bg-[var(--ink-2)] p-2 grid place-items-center"
     }, /*#__PURE__*/React.createElement("div", {
       className: "relative w-full h-full rounded-full overflow-hidden ring-1 ring-white/10",
       style: {

@@ -1167,7 +1167,7 @@ const _Old_Lighting_remove = ({ color, setColor, pattern, setPattern, brightness
                    style={{ background: `radial-gradient(circle, ${color}, transparent 70%)` }} />
               <div className="relative w-[170px] h-[170px] rounded-full p-[3px]"
                    style={{ background: `conic-gradient(from 0deg, #ff1f5a, #ffaa1f, #39ff8a, #00f5ff, #5b8cff, #9d4edd, #ff1f5a)` }}>
-                <div className="w-full h-full rounded-full bg-[var(--bg-1)] p-2 grid place-items-center">
+                <div className="w-full h-full rounded-full bg-[var(--ink-2)] p-2 grid place-items-center">
                   <div className="relative w-full h-full rounded-full overflow-hidden ring-1 ring-white/10"
                        style={{ background: color, boxShadow: `inset 0 0 30px rgba(0,0,0,0.4), 0 0 30px ${color}55` }}>
                     <input type="color" value={color} onChange={(e) => setColor(e.target.value)}

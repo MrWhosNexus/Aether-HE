@@ -510,7 +510,7 @@
     onOpenSettings,
     saveStatus
   }) => /*#__PURE__*/React.createElement("header", {
-    className: "sticky top-0 z-40 bg-[var(--bg-0)]/70 backdrop-blur-xl border-b border-white/[0.04]"
+    className: "sticky top-0 z-40 bg-[var(--ink)]/70 backdrop-blur-xl border-b border-white/[0.04]"
   }, /*#__PURE__*/React.createElement("div", {
     className: "max-w-[1400px] mx-auto px-6 lg:px-10 h-14 flex items-center gap-3"
   }, /*#__PURE__*/React.createElement("div", {

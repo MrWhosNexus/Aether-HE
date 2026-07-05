@@ -220,7 +220,7 @@ const ProfileDropdown = ({ profiles, activeId, onChange, onRename, onAdd, onDupl
    ============================================================ */
 const TopBar = ({ profiles, activeId, onProfileChange, onRenameProfile, onAddProfile, onDuplicateProfile, onDeleteProfile,
                    connected, connecting, onTogglePair, autoConnect, setAutoConnect, onOpenTheme, onOpenSettings, saveStatus }) => (
-  <header className="sticky top-0 z-40 bg-[var(--bg-0)]/70 backdrop-blur-xl border-b border-white/[0.04]">
+  <header className="sticky top-0 z-40 bg-[var(--ink)]/70 backdrop-blur-xl border-b border-white/[0.04]">
     <div className="max-w-[1400px] mx-auto px-6 lg:px-10 h-14 flex items-center gap-3">
       {/* Logo + name */}
       <div className="flex items-center gap-3">
