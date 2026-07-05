@@ -436,7 +436,7 @@ const ActuationSection = ({
                 <span className="font-display text-[11px] uppercase tracking-[0.16em] text-[var(--accent)]">{scope}</span>
               </div>
               <div className="mb-5">
-                <Slider label="Key Trigger Travel" value={actuation} min={0.1} max={4.0} step={0.05} unit="mm"
+                <Slider label="Key Trigger Travel" value={actuation} min={0.1} max={3.4} step={0.05} unit="mm"
                         onChange={setActuation}/>
                 <div className="flex items-center gap-2 mt-2">
                   <button onClick={() => setActuation(Math.max(0.1, actuation - 0.05))}

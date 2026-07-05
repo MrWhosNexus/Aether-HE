@@ -366,10 +366,15 @@ def build_heartbeat():
 
 
 def parse_trigger_read(body):
-    """Decode a cmd-33 sub-5 trigger-read response body (without report id)."""
+    """Decode a cmd-33 sub-5 trigger-read response body (without report id).
+
+    body[i] == r[i+1] for the raw 64-byte report r. Per the hardware-verified
+    sub-5 travel layout (see device_state.LiveReader): r[7]=row, r[8]=col,
+    r[9]/r[10]=depth lo/hi. In body terms row=body[6], col=body[7],
+    depth lo/hi = body[8]/body[9]. travel is in 0.01 mm units.
+    """
     return {
-        "mode": body[6],
-        "travel": (body[11] << 8) | body[7],
-        "interval1": (body[13] << 8) | body[9],
-        "interval2": (body[14] << 8) | body[10],
+        "row": body[6],
+        "col": body[7],
+        "travel": body[8] | (body[9] << 8),
     }

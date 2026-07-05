@@ -236,7 +236,7 @@ class Api:
 
     # ---- actuation / trigger ----
     def set_trigger_all(self, travel_mm, rt_press_mm=0.0, rt_release_mm=0.0,
-                        key_count=64, mode=2):
+                        key_count=64, mode=0):
         try:
             self._write(protocol.build_trigger(int(mode), list(range(int(key_count))),
                         float(travel_mm), float(rt_press_mm), float(rt_release_mm)))
