@@ -113,7 +113,7 @@ const Key = React.memo(({
                       ? "border-[var(--accent)]/60 shadow-[0_0_14px_var(--accent-glow)]"
                       : highlighted
                         ? "border-white/15"
-                        : "border-white/[0.07] hover:border-white/20"
+                        : "border-[var(--line)] hover:border-white/20"
                   }`}>
 
       {/* Travel fill from bottom */}
@@ -133,12 +133,12 @@ const Key = React.memo(({
       <div className="relative z-10 flex items-start justify-between">
         {displayLines ? (
           <div className="flex flex-col leading-[1.0]">
-            <span className="text-[10px] text-slate-200 font-medium">{displayLines[1]}</span>
-            <span className="text-[10px] text-slate-400 font-medium">{displayLines[0]}</span>
+            <span className="text-[10px] text-[var(--text)] font-medium">{displayLines[1]}</span>
+            <span className="text-[10px] text-[var(--text-dim)] font-medium">{displayLines[0]}</span>
           </div>
         ) : (
           <span className={`text-[11px] font-medium tracking-wide
-                            ${layer === "fn" && fnLabel ? "text-[var(--accent)]" : actuated ? "text-white" : "text-slate-200"}`}>
+                            ${layer === "fn" && fnLabel ? "text-[var(--accent)]" : actuated ? "text-white" : "text-[var(--text)]"}`}>
             {displayLabel}
           </span>
         )}
@@ -159,7 +159,7 @@ const Key = React.memo(({
                     rgba(255,255,255,0.06) 100%)`,
                 }}/>
           <div className="absolute bottom-[7px] inset-x-1 z-10 flex items-end justify-between">
-            <span className="font-mono text-[10px] font-semibold text-slate-100 leading-none">
+            <span className="font-mono text-[10px] font-semibold text-[var(--text)] leading-none">
               {actuationPoint.toFixed(2)}
             </span>
             {(rtPress > 0 || rtRelease > 0) && (

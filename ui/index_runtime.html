@@ -33951,7 +33951,7 @@
       className: `relative rounded-[5px] border text-left
                   px-1.5 pt-1 pb-0.5 h-[46px] overflow-hidden
                   transition-all duration-150
-                  ${calibrated ? "border-emerald-400 shadow-[0_0_0_1px_#10b981,0_0_14px_rgba(16,185,129,0.6)]" : calibrating ? "border-amber-400/40 animate-pulse" : selected ? mode === "lighting" ? "border-white shadow-[0_0_0_2px_#ffffff,0_0_12px_rgba(255,255,255,0.75)]" : "border-[var(--accent)]/80 shadow-[0_0_0_1px_var(--accent),0_0_18px_var(--accent-glow)]" : actuated ? "border-[var(--accent)]/60 shadow-[0_0_14px_var(--accent-glow)]" : highlighted ? "border-white/15" : "border-white/[0.07] hover:border-white/20"}`
+                  ${calibrated ? "border-emerald-400 shadow-[0_0_0_1px_#10b981,0_0_14px_rgba(16,185,129,0.6)]" : calibrating ? "border-amber-400/40 animate-pulse" : selected ? mode === "lighting" ? "border-white shadow-[0_0_0_2px_#ffffff,0_0_12px_rgba(255,255,255,0.75)]" : "border-[var(--accent)]/80 shadow-[0_0_0_1px_var(--accent),0_0_18px_var(--accent-glow)]" : actuated ? "border-[var(--accent)]/60 shadow-[0_0_14px_var(--accent-glow)]" : highlighted ? "border-white/15" : "border-[var(--line)] hover:border-white/20"}`
     }, mode !== "lighting" && depth > 0.02 && /*#__PURE__*/React.createElement("span", {
       "aria-hidden": true,
       className: "absolute inset-x-0 bottom-0 pointer-events-none",
@@ -33966,12 +33966,12 @@
     }, displayLines ? /*#__PURE__*/React.createElement("div", {
       className: "flex flex-col leading-[1.0]"
     }, /*#__PURE__*/React.createElement("span", {
-      className: "text-[10px] text-slate-200 font-medium"
+      className: "text-[10px] text-[var(--text)] font-medium"
     }, displayLines[1]), /*#__PURE__*/React.createElement("span", {
-      className: "text-[10px] text-slate-400 font-medium"
+      className: "text-[10px] text-[var(--text-dim)] font-medium"
     }, displayLines[0])) : /*#__PURE__*/React.createElement("span", {
       className: `text-[11px] font-medium tracking-wide
-                            ${layer === "fn" && fnLabel ? "text-[var(--accent)]" : actuated ? "text-white" : "text-slate-200"}`
+                            ${layer === "fn" && fnLabel ? "text-[var(--accent)]" : actuated ? "text-white" : "text-[var(--text)]"}`
     }, displayLabel)), mode === "actuation" && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", {
       "aria-hidden": true,
       className: "absolute left-1 right-1 bottom-[3px] h-[3px] rounded-sm pointer-events-none z-0",
@@ -33985,7 +33985,7 @@
     }), /*#__PURE__*/React.createElement("div", {
       className: "absolute bottom-[7px] inset-x-1 z-10 flex items-end justify-between"
     }, /*#__PURE__*/React.createElement("span", {
-      className: "font-mono text-[10px] font-semibold text-slate-100 leading-none"
+      className: "font-mono text-[10px] font-semibold text-[var(--text)] leading-none"
     }, actuationPoint.toFixed(2)), (rtPress > 0 || rtRelease > 0) && /*#__PURE__*/React.createElement("div", {
       className: "flex gap-1 leading-none"
     }, /*#__PURE__*/React.createElement("span", {
