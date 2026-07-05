@@ -272,12 +272,17 @@
      Desktop-widget shell — ported from Nexus styles.css (.widget/.dock)
      + a top bar of Impact section tabs. Reuses --ink/--accent/--line/--radius.
      ============================================================ */
-  .desktop-main { position: relative; }
+  /* Scroll viewport below the sticky top bar — NOT zoomed, so the top bar and
+     scrollbars stay fixed while the inner canvas scales. */
+  .desktop-main { position: relative; height: calc(100vh - 64px); overflow: auto; }
+  /* The desktop canvas that actually zooms (top bar excluded). Fixed design
+     size so zoom < 1 fits it and zoom > 1 is pannable via desktop-main scroll. */
   .workspace {
     position: relative;
-    width: 100%;
-    min-height: calc(100vh - 60px);
+    width: 1480px;
+    min-height: 900px;
     padding-bottom: 90px;   /* room for the dock */
+    zoom: var(--ws-zoom, 1);
   }
 
   /* --- widget window --- */

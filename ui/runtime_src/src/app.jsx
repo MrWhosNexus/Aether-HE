@@ -391,21 +391,35 @@ function App() {
   });
   useEffect(() => { try { localStorage.setItem("aether-zoom", String(uiZoom)); } catch {} }, [uiZoom]);
 
-  // Scale the whole app to the window. CSS `zoom` (not transform) scales the
-  // coordinate system itself, so widget drag/resize pointer math stays correct.
-  // Fit the design canvas (sized to the widest workspace) to the window, then
-  // apply the user's zoom multiplier.
+  // Scale only the WORKSPACE (widgets) to the window — the top bar stays fixed.
+  // CSS `zoom` (not transform) scales the coordinate system itself, so widget
+  // drag/resize pointer math stays correct. Fit the design canvas to the area
+  // below the top bar, then apply the user's zoom multiplier.
   useEffect(() => {
-    const DESIGN_W = 1480, DESIGN_H = 940;
+    const DESIGN_W = 1480, DESIGN_H = 900, TOPBAR = 64;
     const fit = () => {
-      const base = Math.min(window.innerWidth / DESIGN_W, window.innerHeight / DESIGN_H);
-      const root = document.getElementById("root");
-      if (root) root.style.zoom = Math.max(0.4, Math.min(base * uiZoom, 2.2));
+      const base = Math.min(window.innerWidth / DESIGN_W, (window.innerHeight - TOPBAR) / DESIGN_H);
+      const el = document.getElementById("desktop-main");
+      if (el) el.style.setProperty("--ws-zoom", String(Math.max(0.4, Math.min(base * uiZoom, 2.4))));
     };
     fit();
     window.addEventListener("resize", fit);
     return () => window.removeEventListener("resize", fit);
   }, [uiZoom]);
+
+  // Ctrl + mouse wheel over the workspace zooms in/out.
+  useEffect(() => {
+    const el = document.getElementById("desktop-main");
+    if (!el) return;
+    const onWheel = (e) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      const step = e.deltaY < 0 ? 0.08 : -0.08;
+      setUiZoom(z => Math.max(0.5, Math.min(2, +(z + step).toFixed(2))));
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
 
   // Connection is OFF until the user pairs (or auto-connect is enabled).
   const [connected, setConnected] = useState(false);
@@ -1096,7 +1110,7 @@ function App() {
         zoom={uiZoom} setZoom={setUiZoom}
       />
 
-      <main className="desktop-main">
+      <main id="desktop-main" className="desktop-main">
         <Workspace section={section} widgets={WIDGETS[section] || []} ctx={ctx}/>
       </main>
 

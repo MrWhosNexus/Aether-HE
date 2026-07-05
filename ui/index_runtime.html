@@ -275,12 +275,17 @@
      Desktop-widget shell — ported from Nexus styles.css (.widget/.dock)
      + a top bar of Impact section tabs. Reuses --ink/--accent/--line/--radius.
      ============================================================ */
-  .desktop-main { position: relative; }
+  /* Scroll viewport below the sticky top bar — NOT zoomed, so the top bar and
+     scrollbars stay fixed while the inner canvas scales. */
+  .desktop-main { position: relative; height: calc(100vh - 64px); overflow: auto; }
+  /* The desktop canvas that actually zooms (top bar excluded). Fixed design
+     size so zoom < 1 fits it and zoom > 1 is pannable via desktop-main scroll. */
   .workspace {
     position: relative;
-    width: 100%;
-    min-height: calc(100vh - 60px);
+    width: 1480px;
+    min-height: 900px;
     padding-bottom: 90px;   /* room for the dock */
+    zoom: var(--ws-zoom, 1);
   }
 
   /* --- widget window --- */
@@ -41540,22 +41545,39 @@
       } catch {}
     }, [uiZoom]);
 
-    // Scale the whole app to the window. CSS `zoom` (not transform) scales the
-    // coordinate system itself, so widget drag/resize pointer math stays correct.
-    // Fit the design canvas (sized to the widest workspace) to the window, then
-    // apply the user's zoom multiplier.
+    // Scale only the WORKSPACE (widgets) to the window — the top bar stays fixed.
+    // CSS `zoom` (not transform) scales the coordinate system itself, so widget
+    // drag/resize pointer math stays correct. Fit the design canvas to the area
+    // below the top bar, then apply the user's zoom multiplier.
     useEffect(() => {
       const DESIGN_W = 1480,
-        DESIGN_H = 940;
+        DESIGN_H = 900,
+        TOPBAR = 64;
       const fit = () => {
-        const base = Math.min(window.innerWidth / DESIGN_W, window.innerHeight / DESIGN_H);
-        const root = document.getElementById("root");
-        if (root) root.style.zoom = Math.max(0.4, Math.min(base * uiZoom, 2.2));
+        const base = Math.min(window.innerWidth / DESIGN_W, (window.innerHeight - TOPBAR) / DESIGN_H);
+        const el = document.getElementById("desktop-main");
+        if (el) el.style.setProperty("--ws-zoom", String(Math.max(0.4, Math.min(base * uiZoom, 2.4))));
       };
       fit();
       window.addEventListener("resize", fit);
       return () => window.removeEventListener("resize", fit);
     }, [uiZoom]);
+
+    // Ctrl + mouse wheel over the workspace zooms in/out.
+    useEffect(() => {
+      const el = document.getElementById("desktop-main");
+      if (!el) return;
+      const onWheel = e => {
+        if (!e.ctrlKey) return;
+        e.preventDefault();
+        const step = e.deltaY < 0 ? 0.08 : -0.08;
+        setUiZoom(z => Math.max(0.5, Math.min(2, +(z + step).toFixed(2))));
+      };
+      el.addEventListener("wheel", onWheel, {
+        passive: false
+      });
+      return () => el.removeEventListener("wheel", onWheel);
+    }, []);
 
     // Connection is OFF until the user pairs (or auto-connect is enabled).
     const [connected, setConnected] = useState(false);
@@ -42504,6 +42526,7 @@
       zoom: uiZoom,
       setZoom: setUiZoom
     }), /*#__PURE__*/React.createElement("main", {
+      id: "desktop-main",
       className: "desktop-main"
     }, /*#__PURE__*/React.createElement(Workspace, {
       section: section,
