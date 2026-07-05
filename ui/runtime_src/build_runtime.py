@@ -157,7 +157,7 @@ def main():
 <head>
 {head}
 </head>
-<body class="min-h-screen overflow-x-auto" style="min-width: 1200px;">
+<body class="min-h-screen" style="overflow: hidden;">
 <div class="bg-layer" aria-hidden="true">
   <div class="aurora-blob" style="background: radial-gradient(circle, var(--accent), transparent 70%); top: -10%; left: -5%;"></div>
   <div class="aurora-blob b2" style="background: radial-gradient(circle, var(--accent-2), transparent 70%); top: 20%; right: -10%;"></div>

@@ -464,7 +464,7 @@
   .topbar-gear:hover { color: var(--text); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
 </style>
 </head>
-<body class="min-h-screen overflow-x-auto" style="min-width: 1200px;">
+<body class="min-h-screen" style="overflow: hidden;">
 <div class="bg-layer" aria-hidden="true">
   <div class="aurora-blob" style="background: radial-gradient(circle, var(--accent), transparent 70%); top: -10%; left: -5%;"></div>
   <div class="aurora-blob b2" style="background: radial-gradient(circle, var(--accent-2), transparent 70%); top: 20%; right: -10%;"></div>
@@ -41413,6 +41413,22 @@
       } catch {}
       setWizardOpen(false);
     };
+
+    // Scale the whole app to the window. CSS `zoom` (not transform) scales the
+    // coordinate system itself, so widget drag/resize pointer math stays correct.
+    // Fit the design canvas to the window (width- and height-bounded), clamped.
+    useEffect(() => {
+      const DESIGN_W = 1400,
+        DESIGN_H = 860;
+      const fit = () => {
+        const z = Math.min(window.innerWidth / DESIGN_W, window.innerHeight / DESIGN_H);
+        const root = document.getElementById("root");
+        if (root) root.style.zoom = Math.max(0.55, Math.min(z, 1.8));
+      };
+      fit();
+      window.addEventListener("resize", fit);
+      return () => window.removeEventListener("resize", fit);
+    }, []);
 
     // Connection is OFF until the user pairs (or auto-connect is enabled).
     const [connected, setConnected] = useState(false);

@@ -384,6 +384,21 @@ function App() {
     setWizardOpen(false);
   };
 
+  // Scale the whole app to the window. CSS `zoom` (not transform) scales the
+  // coordinate system itself, so widget drag/resize pointer math stays correct.
+  // Fit the design canvas to the window (width- and height-bounded), clamped.
+  useEffect(() => {
+    const DESIGN_W = 1400, DESIGN_H = 860;
+    const fit = () => {
+      const z = Math.min(window.innerWidth / DESIGN_W, window.innerHeight / DESIGN_H);
+      const root = document.getElementById("root");
+      if (root) root.style.zoom = Math.max(0.55, Math.min(z, 1.8));
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, []);
+
   // Connection is OFF until the user pairs (or auto-connect is enabled).
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
