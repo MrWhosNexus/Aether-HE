@@ -1489,7 +1489,7 @@ const OtherSection = ({ activeProfileName = "Profile", onResetProfile = () => {}
   };
   return (
     <div>
-      <nav className="flex items-center gap-1 border-b border-white/[0.06] mb-5">
+      <nav className="flex items-center gap-1 border-b border-[var(--line)] mb-5">
         <span className="relative flex items-center gap-2 px-2 h-10 -mb-px font-display text-[12px] uppercase tracking-[0.16em] text-[var(--accent)]">
           <IGrid size={13}/> Settings
           <span className="absolute left-0 right-0 -bottom-px h-px bg-[var(--accent)] shadow-[0_0_8px_var(--accent-glow)]" />
@@ -1499,26 +1499,26 @@ const OtherSection = ({ activeProfileName = "Profile", onResetProfile = () => {}
       {/* App / system */}
       <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-4 max-w-3xl">
         {autostart.supported && (
-          <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 flex items-center justify-between">
+          <div className="glass p-4 flex items-center justify-between">
             <div>
-              <div className="font-display text-[12px] uppercase tracking-[0.18em] text-slate-200">Start on launch</div>
-              <div className="text-[11.5px] text-slate-400 mt-1">Open Aether automatically when you sign in to Windows.</div>
+              <div className="font-display text-[12px] uppercase tracking-[0.18em] text-[var(--text)]">Start on launch</div>
+              <div className="text-[11.5px] text-[var(--text-dim)] mt-1">Open Aether automatically when you sign in to Windows.</div>
             </div>
             <button onClick={toggleAutostart}
               className={`relative w-12 h-6 rounded-full border transition-colors shrink-0 ml-4
-                          ${autostart.enabled ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-white/[0.08]"}`}>
+                          ${autostart.enabled ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-[rgba(5,11,14,0.5)] border-[var(--line)]"}`}>
               <span className={`absolute top-0.5 rounded-full transition-all
-                                ${autostart.enabled ? "left-[26px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-slate-400"}`}
+                                ${autostart.enabled ? "left-[26px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-[var(--text-faint)]"}`}
                     style={{ width: 18, height: 18 }}/>
             </button>
           </div>
         )}
 
         {/* Current profile management */}
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
-          <div className="font-display text-[12px] uppercase tracking-[0.18em] text-slate-200">Current profile</div>
-          <div className="text-[12.5px] text-slate-100 mt-1 truncate">{activeProfileName}</div>
-          <div className="text-[11px] text-slate-500 mt-0.5">Use the profile dropdown (top-left) to add, rename, duplicate or delete profiles.</div>
+        <div className="glass p-4">
+          <div className="font-display text-[12px] uppercase tracking-[0.18em] text-[var(--text)]">Current profile</div>
+          <div className="text-[12.5px] text-[var(--text)] mt-1 truncate">{activeProfileName}</div>
+          <div className="text-[11px] text-[var(--text-faint)] mt-0.5">Use the profile dropdown (top-left) to add, rename, duplicate or delete profiles.</div>
           <button onClick={onResetProfile}
             className="mt-3 px-3 h-8 rounded-md border border-rose-400/30 bg-rose-500/10 text-rose-100 font-display text-[10.5px] uppercase tracking-[0.16em] hover:bg-rose-500/15">
             Reset this profile
@@ -1526,28 +1526,28 @@ const OtherSection = ({ activeProfileName = "Profile", onResetProfile = () => {}
         </div>
 
         {/* Updates */}
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 lg:col-span-2">
+        <div className="glass p-4 lg:col-span-2">
           <div className="flex items-baseline justify-between gap-3">
-            <div className="font-display text-[12px] uppercase tracking-[0.18em] text-slate-200">Updates</div>
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
+            <div className="font-display text-[12px] uppercase tracking-[0.18em] text-[var(--text)]">Updates</div>
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-faint)]">
               v{upd.version || "—"}
             </span>
           </div>
           <div className="text-[11.5px] mt-1 min-h-[18px]">
-            {upd.phase === "checking"  && <span className="text-slate-400">Checking for updates…</span>}
+            {upd.phase === "checking"  && <span className="text-[var(--text-dim)]">Checking for updates…</span>}
             {upd.phase === "uptodate"  && <span className="text-emerald-400/80">You're on the latest version{upd.msg ? " — " + upd.msg : "."}</span>}
             {upd.phase === "available" && <span className="text-[var(--accent)]">Update available → v{upd.info?.latest}</span>}
-            {upd.phase === "installing"&& <span className="text-slate-400">{upd.msg || "Installing…"}</span>}
+            {upd.phase === "installing"&& <span className="text-[var(--text-dim)]">{upd.msg || "Installing…"}</span>}
             {upd.phase === "done"      && <span className="text-emerald-400/80">{upd.msg}</span>}
             {upd.phase === "error"     && <span className="text-rose-300/90">Update error: {upd.msg}</span>}
-            {upd.phase === "idle"      && <span className="text-slate-500">Check for a newer release on GitHub.</span>}
+            {upd.phase === "idle"      && <span className="text-[var(--text-faint)]">Check for a newer release on GitHub.</span>}
           </div>
           {upd.phase === "available" && upd.info?.notes && (
-            <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap text-[11px] text-slate-400 bg-black/20 rounded-md p-2 border border-white/[0.05]">{upd.info.notes}</pre>
+            <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap text-[11px] text-[var(--text-dim)] bg-[rgba(5,11,14,0.5)] rounded-md p-2 border border-[var(--line)]">{upd.info.notes}</pre>
           )}
           <div className="mt-3 flex gap-2">
             <button onClick={() => checkUpdate(false)} disabled={upd.phase === "checking" || upd.phase === "installing"}
-              className="px-3 h-8 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-200 font-display text-[10.5px] uppercase tracking-[0.16em] hover:border-white/20 disabled:opacity-40">
+              className="px-3 h-8 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text)] font-display text-[10.5px] uppercase tracking-[0.16em] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] disabled:opacity-40">
               Check for updates
             </button>
             {upd.phase === "available" && (
@@ -1560,17 +1560,17 @@ const OtherSection = ({ activeProfileName = "Profile", onResetProfile = () => {}
         </div>
 
         {/* Settings file */}
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 lg:col-span-2">
+        <div className="glass p-4 lg:col-span-2">
           <div className="flex items-baseline justify-between gap-3">
-            <div className="font-display text-[12px] uppercase tracking-[0.18em] text-slate-200">Settings file</div>
-            <span className={`font-mono text-[10px] uppercase tracking-[0.18em] ${settingsInfo.exists ? "text-emerald-400/80" : "text-slate-500"}`}>
+            <div className="font-display text-[12px] uppercase tracking-[0.18em] text-[var(--text)]">Settings file</div>
+            <span className={`font-mono text-[10px] uppercase tracking-[0.18em] ${settingsInfo.exists ? "text-emerald-400/80" : "text-[var(--text-faint)]"}`}>
               {settingsInfo.exists ? "✓ saved" : "not yet written"}
             </span>
           </div>
-          <div className="font-mono text-[11px] text-slate-400 mt-2 break-all">{settingsInfo.path || "(loading…)"}</div>
+          <div className="font-mono text-[11px] text-[var(--text-dim)] mt-2 break-all">{settingsInfo.path || "(loading…)"}</div>
           <div className="mt-3 flex gap-2">
             <button onClick={revealSettings}
-              className="px-3 h-8 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-200 font-display text-[10.5px] uppercase tracking-[0.16em] hover:border-white/20">
+              className="px-3 h-8 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text)] font-display text-[10.5px] uppercase tracking-[0.16em] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]">
               Show in folder
             </button>
           </div>
@@ -1578,7 +1578,7 @@ const OtherSection = ({ activeProfileName = "Profile", onResetProfile = () => {}
       </div>
 
       <div>
-        <div className="font-display text-[12px] uppercase tracking-[0.18em] text-slate-200 mb-3">If Win Lock is ON:</div>
+        <div className="font-display text-[12px] uppercase tracking-[0.18em] text-[var(--text)] mb-3">If Win Lock is ON:</div>
         <div className="flex flex-col gap-3 max-w-md">
           {[
             { id: "win",      label: "Disable Windows key" },
@@ -1589,10 +1589,10 @@ const OtherSection = ({ activeProfileName = "Profile", onResetProfile = () => {}
             <label key={o.id} className="flex items-center gap-2.5 cursor-pointer select-none">
               <span onClick={() => setWinLock(w => ({ ...w, [o.id]: !w[o.id] }))}
                     className={`w-4 h-4 rounded border grid place-items-center transition
-                                ${winLock[o.id] ? "border-[var(--accent)] bg-[var(--accent)]/20" : "border-white/15 bg-white/[0.02]"}`}>
+                                ${winLock[o.id] ? "border-[var(--accent)] bg-[var(--accent)]/20" : "border-[var(--line)] bg-white/[0.02]"}`}>
                 {winLock[o.id] && <ICheck size={10} className="text-[var(--accent)]"/>}
               </span>
-              <span className="text-[12.5px] text-slate-300">{o.label}</span>
+              <span className="text-[12.5px] text-[var(--text-dim)]">{o.label}</span>
             </label>
           ))}
         </div>
@@ -1715,13 +1715,13 @@ const GamepadSection = ({ connected, enabled, onToggle, map, onApplyMap, default
   return (
     <div>
       {/* Header: enable capture */}
-      <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5 mb-5">
+      <div className="glass p-5 mb-5">
         <div className="flex items-center justify-between">
           <div>
-            <div className="font-display text-[13px] uppercase tracking-[0.18em] text-slate-100 flex items-center gap-2">
+            <div className="font-display text-[13px] uppercase tracking-[0.18em] text-[var(--text)] flex items-center gap-2">
               <IZap size={15}/> Virtual Gamepad
             </div>
-            <p className="text-[12px] text-slate-400 mt-1.5 max-w-xl">
+            <p className="text-[12px] text-[var(--text-dim)] mt-1.5 max-w-xl">
               Streams live key travel into a system gamepad — press a key deeper for more throttle / steering.
               Maps below drive the analog axes &amp; buttons. {!connected && <span className="text-amber-400/80">Connect the board to capture.</span>}
             </p>
@@ -1729,16 +1729,16 @@ const GamepadSection = ({ connected, enabled, onToggle, map, onApplyMap, default
           <button onClick={() => onToggle(!enabled)} disabled={!connected}
             className={`relative w-12 h-6 rounded-full border transition-colors shrink-0 ml-4
                         ${!connected ? "opacity-40 cursor-not-allowed" : ""}
-                        ${enabled ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-white/[0.08]"}`}>
+                        ${enabled ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-[rgba(5,11,14,0.5)] border-[var(--line)]"}`}>
             <span className={`absolute top-0.5 w-4.5 h-4.5 rounded-full transition-all
-                              ${enabled ? "left-[26px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-slate-400"}`}
+                              ${enabled ? "left-[26px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-[var(--text-faint)]"}`}
                   style={{ width: 18, height: 18 }}/>
           </button>
         </div>
         <div className="mt-3 font-mono text-[11px]">
           {enabled
             ? <span className="text-emerald-400">● Capturing → "Aula Win60 HE Virtual Gamepad"</span>
-            : <span className="text-slate-500">○ Idle</span>}
+            : <span className="text-[var(--text-faint)]">○ Idle</span>}
         </div>
         {error && (
           <div className="mt-3 rounded-md border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-[11.5px] text-rose-100 flex items-center justify-between gap-3">
@@ -1754,12 +1754,12 @@ const GamepadSection = ({ connected, enabled, onToggle, map, onApplyMap, default
       </div>
 
       {/* Mapping rows */}
-      <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5">
+      <div className="glass p-5">
         <div className="flex items-center justify-between mb-3">
-          <span className="font-display text-[11px] uppercase tracking-[0.18em] text-slate-300">Key → Control Mapping</span>
+          <span className="font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)]">Key → Control Mapping</span>
           <div className="flex gap-2">
             <button onClick={() => onApplyMap(defaultMap.map(r => ({ ...r })))}
-              className="px-3 h-8 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-300 font-display text-[10.5px] uppercase tracking-[0.16em] hover:border-white/20 flex items-center gap-1.5">
+              className="px-3 h-8 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] font-display text-[10.5px] uppercase tracking-[0.16em] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] flex items-center gap-1.5">
               <IRefresh size={12}/> Driving Defaults
             </button>
             <button onClick={addRow}
@@ -1769,7 +1769,7 @@ const GamepadSection = ({ connected, enabled, onToggle, map, onApplyMap, default
           </div>
         </div>
 
-        <div className="grid grid-cols-[1fr_1.4fr_1.2fr_28px] gap-2 px-1 mb-1.5 font-mono text-[9.5px] uppercase tracking-[0.18em] text-slate-500">
+        <div className="grid grid-cols-[1fr_1.4fr_1.2fr_28px] gap-2 px-1 mb-1.5 font-mono text-[9.5px] uppercase tracking-[0.18em] text-[var(--text-faint)]">
           <span>Key</span><span>Control</span><span>Behaviour</span><span/>
         </div>
 
@@ -1779,11 +1779,11 @@ const GamepadSection = ({ connected, enabled, onToggle, map, onApplyMap, default
             return (
               <div key={i} className="grid grid-cols-[1fr_1.4fr_1.2fr_28px] gap-2 items-center">
                 <select value={r.key} onChange={(e) => setRow(i, { key: e.target.value })}
-                  className="h-9 rounded-md bg-black/30 border border-white/[0.06] px-2 font-mono text-[12px] text-slate-100 outline-none focus:border-white/20">
+                  className="h-9 rounded-md bg-[rgba(5,11,14,0.5)] border border-[var(--line)] px-2 font-mono text-[12px] text-[var(--text)] outline-none focus:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]">
                   {PAD_KEYS.map(k => <option key={k} value={k}>{k}</option>)}
                 </select>
                 <select value={r.axis} onChange={(e) => setRow(i, { axis: e.target.value })}
-                  className="h-9 rounded-md bg-black/30 border border-white/[0.06] px-2 font-mono text-[12px] text-slate-100 outline-none focus:border-white/20">
+                  className="h-9 rounded-md bg-[rgba(5,11,14,0.5)] border border-[var(--line)] px-2 font-mono text-[12px] text-[var(--text)] outline-none focus:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]">
                   {PAD_AXES.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
                 </select>
                 {meta.stick ? (
@@ -1793,7 +1793,7 @@ const GamepadSection = ({ connected, enabled, onToggle, map, onApplyMap, default
                         className={`flex-1 h-9 rounded-md border font-mono text-[13px] transition-all
                                     ${(r.direction || 1) === val
                                       ? "border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)]"
-                                      : "border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20"}`}>
+                                      : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`}>
                         {lbl}
                       </button>
                     ))}
@@ -1804,22 +1804,22 @@ const GamepadSection = ({ connected, enabled, onToggle, map, onApplyMap, default
                            value={r.threshold_mm ?? 1.5}
                            style={{ "--pct": (((r.threshold_mm ?? 1.5) - 0.2) / 3.8) * 100 + "%" }}
                            onChange={(e) => setRow(i, { threshold_mm: parseFloat(e.target.value) })}/>
-                    <span className="font-mono text-[10px] text-slate-400 w-12 text-right">{(r.threshold_mm ?? 1.5).toFixed(1)}mm</span>
+                    <span className="font-mono text-[10px] text-[var(--text-dim)] w-12 text-right">{(r.threshold_mm ?? 1.5).toFixed(1)}mm</span>
                   </div>
                 ) : (
-                  <span className="font-mono text-[10px] text-slate-500 pl-1">analog 0→max</span>
+                  <span className="font-mono text-[10px] text-[var(--text-faint)] pl-1">analog 0→max</span>
                 )}
                 <button onClick={() => removeRow(i)}
-                  className="w-7 h-7 grid place-items-center rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-500 hover:text-rose-300 hover:border-rose-400/30">
+                  className="w-7 h-7 grid place-items-center rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-faint)] hover:text-rose-300 hover:border-rose-400/30">
                   <ITrash size={12}/>
                 </button>
               </div>
             );
           })}
-          {!rows.length && <div className="text-[12px] text-slate-500 py-4 text-center">No mappings — add one or load driving defaults.</div>}
+          {!rows.length && <div className="text-[12px] text-[var(--text-faint)] py-4 text-center">No mappings — add one or load driving defaults.</div>}
         </div>
 
-        <p className="text-[11px] text-slate-500 mt-4 leading-relaxed">
+        <p className="text-[11px] text-[var(--text-faint)] mt-4 leading-relaxed">
           Sticks combine opposing keys (e.g. A=− and D=+ on Left Stick X). Triggers &amp; sticks are analog —
           deeper press = larger value. Buttons fire past their threshold. Changes apply live while capturing.
         </p>
