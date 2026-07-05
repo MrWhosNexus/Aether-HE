@@ -40,7 +40,12 @@
     --accent-glow: rgba(111, 232, 192, 0.45);
   }
 
-  html, body { background: var(--ink); color: var(--text); font-family: var(--font-ui); }
+  html, body {
+    background: var(--ink); color: var(--text); font-family: var(--font-ui);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
   .font-display { font-family: var(--font-display); letter-spacing: 0.02em; }
   .font-mono { font-family: var(--font-mono); }
 

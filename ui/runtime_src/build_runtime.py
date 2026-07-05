@@ -148,7 +148,7 @@ def main():
 <div class="bg-layer" aria-hidden="true">
   <div class="aurora-blob" style="background: radial-gradient(circle, var(--accent), transparent 70%); top: -10%; left: -5%;"></div>
   <div class="aurora-blob b2" style="background: radial-gradient(circle, var(--accent-2), transparent 70%); top: 20%; right: -10%;"></div>
-  <div class="aurora-blob b3" style="background: radial-gradient(circle, var(--good), transparent 70%); bottom: -15%; left: 20%;"></div>
+  <div class="aurora-blob b3" style="background: radial-gradient(circle, var(--accent-3, var(--accent)), transparent 70%); bottom: -15%; left: 20%;"></div>
   <div class="grain"></div>
   <div class="vignette"></div>
 </div>
