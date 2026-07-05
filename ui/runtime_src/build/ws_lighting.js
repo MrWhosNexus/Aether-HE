@@ -7,7 +7,8 @@
      device RGB values, never re-tokenized.
      ============================================================ */
   const {
-    useState
+    useState,
+    useRef
   } = React;
   const S = window.AetherSections || {};
   const Slider = S.Slider,
@@ -318,6 +319,111 @@
      Widget 1 — Mode Picker: firmware pattern grid, power/full-RGB,
      brightness/speed sliders, direction, striation orientation.
      ============================================================ */
+  /* DirectionDial — an angle picker for effect flow direction. The firmware
+     supports 4 cardinal directions (right0 left1 up2 down3), so the dial snaps
+     to the nearest. Drag or click anywhere on the ring to set the angle. */
+  const DIR_BYTE_AT = [0, 2, 1, 3]; // round(angle/90)%4 -> byte
+  const DIR_ANGLE_OF = {
+    0: 0,
+    2: 90,
+    1: 180,
+    3: 270
+  };
+  const DIR_NAME = {
+    0: "Right",
+    1: "Left",
+    2: "Up",
+    3: "Down"
+  };
+  function DirectionDial({
+    direction,
+    setDirection
+  }) {
+    const ref = useRef(null);
+    const angle = DIR_ANGLE_OF[direction] != null ? DIR_ANGLE_OF[direction] : 0;
+    const pick = e => {
+      const el = ref.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      let a = Math.atan2(r.top + r.height / 2 - e.clientY, e.clientX - (r.left + r.width / 2)) * 180 / Math.PI;
+      if (a < 0) a += 360;
+      setDirection(DIR_BYTE_AT[Math.round(a / 90) % 4]);
+    };
+    const marks = [["→", 0, {
+      right: 6,
+      top: "50%",
+      transform: "translateY(-50%)"
+    }], ["↑", 2, {
+      top: 6,
+      left: "50%",
+      transform: "translateX(-50%)"
+    }], ["←", 1, {
+      left: 6,
+      top: "50%",
+      transform: "translateY(-50%)"
+    }], ["↓", 3, {
+      bottom: 6,
+      left: "50%",
+      transform: "translateX(-50%)"
+    }]];
+    return /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-4"
+    }, /*#__PURE__*/React.createElement("div", {
+      ref: ref,
+      onPointerDown: e => {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        pick(e);
+      },
+      onPointerMove: e => e.buttons && pick(e),
+      style: {
+        width: 112,
+        height: 112,
+        cursor: "pointer",
+        touchAction: "none"
+      },
+      className: "relative rounded-full border border-[var(--line)] bg-white/[0.02]"
+    }, marks.map(([glyph, byte, css]) => /*#__PURE__*/React.createElement("span", {
+      key: byte,
+      style: {
+        position: "absolute",
+        fontSize: 11,
+        ...css,
+        color: direction === byte ? "var(--accent)" : "var(--text-faint)"
+      }
+    }, glyph)), /*#__PURE__*/React.createElement("div", {
+      style: {
+        position: "absolute",
+        left: "50%",
+        top: "50%",
+        width: 44,
+        height: 3,
+        borderRadius: 3,
+        background: "linear-gradient(90deg, transparent, var(--accent))",
+        transformOrigin: "left center",
+        transform: `rotate(${-angle}deg)`,
+        boxShadow: "0 0 10px var(--accent-glow)",
+        transition: "transform 0.2s var(--ease-out)"
+      }
+    }), /*#__PURE__*/React.createElement("div", {
+      style: {
+        position: "absolute",
+        left: "50%",
+        top: "50%",
+        width: 8,
+        height: 8,
+        marginLeft: -4,
+        marginTop: -4,
+        borderRadius: "50%",
+        background: "var(--accent)"
+      }
+    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--text-faint)]"
+    }, "Angle"), /*#__PURE__*/React.createElement("div", {
+      className: "font-title text-[20px] text-[var(--text)] leading-tight"
+    }, DIR_NAME[direction] || "Right"), /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[10px] text-[var(--text-faint)] mt-0.5"
+    }, angle, "\xB0 \xB7 snaps to 4-way")));
+  }
   function ModePickerWidget(ctx) {
     const {
       pattern,
@@ -418,17 +524,10 @@
       onChange: e => setSpeed(parseFloat(e.target.value))
     }))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
       className: "font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)] mb-2"
-    }, "Direction"), /*#__PURE__*/React.createElement("div", {
-      className: "grid grid-cols-4 gap-1.5 max-w-[220px]"
-    }, [["→", 0], ["←", 1], ["↑", 2], ["↓", 3]].map(([arrow, val]) => {
-      const active = direction === val;
-      return /*#__PURE__*/React.createElement("button", {
-        key: val,
-        onClick: () => setDirection(val),
-        className: `h-9 rounded-lg border text-[15px] transition-all
-                            ${active ? "border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)] shadow-[0_0_12px_var(--accent-glow)]" : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`
-      }, arrow);
-    }))), pattern === "striation" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    }, "Direction"), /*#__PURE__*/React.createElement(DirectionDial, {
+      direction: direction,
+      setDirection: setDirection
+    })), pattern === "striation" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
       className: "font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)] mb-2"
     }, "Stripe Orientation"), /*#__PURE__*/React.createElement("div", {
       className: "grid grid-cols-3 gap-1.5 max-w-[260px]"
