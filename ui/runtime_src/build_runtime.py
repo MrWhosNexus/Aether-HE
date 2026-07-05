@@ -85,11 +85,25 @@ def embed_local_fonts(head):
 
 def compile_jsx(manifest):
     babel = os.path.join(HERE, "vendor", "babel.js")
+    # Dependency order matters: desktop.jsx + workspace files must come BEFORE
+    # app.jsx so app.jsx can read window.AetherDesktop / window.AetherWorkspaces.
+    # Workspace files (src/workspaces/*.jsx) are auto-discovered so later waves
+    # can drop in keymap.jsx / lighting.jsx / etc. without editing this list.
+    ws_dir = os.path.join(HERE, "workspaces")
+    ws_jobs = []
+    if os.path.isdir(ws_dir):
+        for fn in sorted(os.listdir(ws_dir)):
+            if fn.endswith(".jsx"):
+                stem = os.path.splitext(fn)[0]
+                ws_jobs.append((f"workspaces/{fn}", f"ws_{stem}.js"))
     jobs = [
         ("vendor/icons.jsx", "icons.js"),
         ("src/keyboard.jsx", "keyboard.js"),
         ("src/sections.jsx", "sections.js"),
         ("vendor/theme.jsx", "theme.js"),
+        ("src/desktop.jsx", "desktop.js"),
+        *ws_jobs,
+        ("src/wizard.jsx", "wizard.js"),
         ("src/app.jsx", "app.js"),
     ]
     pairs = [[os.path.join(HERE, i), os.path.join(BUILD, o)] for i, o in jobs]
@@ -116,17 +130,16 @@ def main():
     def built(name):
         return open(os.path.join(BUILD, name), encoding="utf-8").read()
 
-    # Dependency order: React, ReactDOM, Tailwind, then design modules, then App.
+    # Dependency order: React, ReactDOM, Tailwind, then the compiled design
+    # modules (in the exact order compile_jsx built them — desktop + workspaces
+    # land before app), then App is already last in that list.
     scripts = [
         ("react", vendor("react.js")),
         ("react-dom", vendor("react-dom.js")),
         ("tailwind", vendor("tailwind.js")),
-        ("icons", built("icons.js")),
-        ("keyboard", built("keyboard.js")),
-        ("sections", built("sections.js")),
-        ("theme", built("theme.js")),
-        ("app", built("app.js")),
     ]
+    for out in compiled:
+        scripts.append((os.path.splitext(out)[0], built(out)))
     # Capture any runtime JS error before the modules run, so app_web.py's
     # render-state probe can report it (window.__aetherErrors).
     err_collector = (
@@ -144,11 +157,11 @@ def main():
 <head>
 {head}
 </head>
-<body class="min-h-screen overflow-x-auto" style="min-width: 1200px;">
+<body class="min-h-screen" style="overflow: hidden;">
 <div class="bg-layer" aria-hidden="true">
   <div class="aurora-blob" style="background: radial-gradient(circle, var(--accent), transparent 70%); top: -10%; left: -5%;"></div>
   <div class="aurora-blob b2" style="background: radial-gradient(circle, var(--accent-2), transparent 70%); top: 20%; right: -10%;"></div>
-  <div class="aurora-blob b3" style="background: radial-gradient(circle, var(--good), transparent 70%); bottom: -15%; left: 20%;"></div>
+  <div class="aurora-blob b3" style="background: radial-gradient(circle, var(--accent-3, var(--accent)), transparent 70%); bottom: -15%; left: 20%;"></div>
   <div class="grain"></div>
   <div class="vignette"></div>
 </div>

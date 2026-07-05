@@ -11,6 +11,40 @@ const { KeyboardPanel } = window.AetherKeyboard;
 const { KeymapSection, ActuationSection, LightingSection, SOCDSection, GamepadSection, OtherSection, ActuationToolbar } = window.AetherSections;
 const { ThemePopup, useTheme } = window.AetherTheme;
 
+// Desktop-widget shell (foundation) + section widget registries.
+const { Workspace, TopBar: DesktopTopBar, SECTION_DEFS } = window.AetherDesktop;
+const SetupWizard = window.AetherWizard && window.AetherWizard.SetupWizard;
+
+// Placeholder for sections not yet built by later waves — a single
+// "coming soon" widget so the workspace surface isn't blank.
+const comingSoon = (label) => [{
+  id: "soon", title: label, default: { x: 60, y: 48, w: 420, h: 220 }, min: { w: 300, h: 160 },
+  render: () => (
+    <div className="grid place-items-center h-full text-center px-6">
+      <div>
+        <div className="font-title text-[22px] text-[var(--text)] mb-1">{label}</div>
+        <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-[var(--text-faint)]">workspace coming soon</div>
+      </div>
+    </div>
+  ),
+}];
+
+// Registry: section id → widget array, sourced from each workspace file's
+// window.AetherWorkspaces.<SECTION>_WIDGETS export; falls back to a placeholder
+// if a workspace file failed to load.
+const wsArr = (key, label) => {
+  const a = (window.AetherWorkspaces && window.AetherWorkspaces[key]) || [];
+  return a.length ? a : comingSoon(label);
+};
+const WIDGETS = {
+  actuation: wsArr("ACTUATION_WIDGETS", "Actuation"),
+  keymap:    wsArr("KEYMAP_WIDGETS", "Keymap"),
+  lighting:  wsArr("LIGHTING_WIDGETS", "Lighting"),
+  socd:      wsArr("SOCD_WIDGETS", "SOCD"),
+  gamepad:   wsArr("GAMEPAD_WIDGETS", "Gamepad"),
+  settings:  wsArr("SETTINGS_WIDGETS", "Settings"),
+};
+
 /* ============================================================
    HID bridge — talks to the native Python Api (window.pywebview.api).
    Every control calls these with real, structured values; there is NO
@@ -341,6 +375,51 @@ const HeroCard = ({ children, badge, breadcrumb }) => (
 function App() {
   const [theme, setTheme] = useTheme();
   const [themeOpen, setThemeOpen] = useState(false);
+  // First-run setup wizard: open until the user finishes/skips it once.
+  const [wizardOpen, setWizardOpen] = useState(() => {
+    try { return localStorage.getItem("aether-setup-done") !== "1"; } catch { return false; }
+  });
+  const closeWizard = () => {
+    try { localStorage.setItem("aether-setup-done", "1"); } catch {}
+    setWizardOpen(false);
+  };
+
+  // User zoom multiplier (top-bar − / % / + control), on top of the auto-fit.
+  const [uiZoom, setUiZoom] = useState(() => {
+    const v = parseFloat(localStorage.getItem("aether-zoom"));
+    return v > 0 ? v : 1;
+  });
+  useEffect(() => { try { localStorage.setItem("aether-zoom", String(uiZoom)); } catch {} }, [uiZoom]);
+
+  // Scale only the WORKSPACE (widgets) to the window — the top bar stays fixed.
+  // CSS `zoom` (not transform) scales the coordinate system itself, so widget
+  // drag/resize pointer math stays correct. Fit the design canvas to the area
+  // below the top bar, then apply the user's zoom multiplier.
+  useEffect(() => {
+    const DESIGN_W = 1480, DESIGN_H = 900, TOPBAR = 64;
+    const fit = () => {
+      const base = Math.min(window.innerWidth / DESIGN_W, (window.innerHeight - TOPBAR) / DESIGN_H);
+      const el = document.getElementById("desktop-main");
+      if (el) el.style.setProperty("--ws-zoom", String(Math.max(0.4, Math.min(base * uiZoom, 2.4))));
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [uiZoom]);
+
+  // Ctrl + mouse wheel over the workspace zooms in/out.
+  useEffect(() => {
+    const el = document.getElementById("desktop-main");
+    if (!el) return;
+    const onWheel = (e) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      const step = e.deltaY < 0 ? 0.08 : -0.08;
+      setUiZoom(z => Math.max(0.5, Math.min(2, +(z + step).toFixed(2))));
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
 
   // Connection is OFF until the user pairs (or auto-connect is enabled).
   const [connected, setConnected] = useState(false);
@@ -477,7 +556,7 @@ function App() {
           const active = migrated.profiles.find(p => p.id === aid);
           if (active?.state) applyState(active.state);
           if (migrated.globals?.autoConnect !== undefined) setAutoConnect(!!migrated.globals.autoConnect);
-          if (migrated.globals?.section) setSection(migrated.globals.section);
+          if (migrated.globals?.section) setSection(migrated.globals.section === "other" ? "settings" : migrated.globals.section);
         }
       } catch {}
       setTimeout(() => { applyingRef.current = false; setHydrated(true); }, 100);
@@ -672,21 +751,43 @@ function App() {
     try { localStorage.setItem("aether-autoconnect", autoConnect ? "1" : "0"); } catch {}
   }, [autoConnect]);
 
-  // One-shot auto-connect on launch, only if the user opted in. Waits for the
-  // pywebview bridge to be injected (it arrives asynchronously after load).
+  // One-shot auto-connect on launch, only if the user opted in. Fires once,
+  // after hydration resolves `autoConnect` from settings.json, so a persisted
+  // preference is honored. Guarded by a ref so it never fires twice.
   const didAuto = useRef(false);
   useEffect(() => {
-    const go = () => {
-      if (didAuto.current) return;
-      didAuto.current = true;
-      if (!autoConnect) return;
-      setConnecting(true);
-      apiCall("connect").then(r => setConnected(!!(r && r.ok))).finally(() => setConnecting(false));
+    if (!hydrated || didAuto.current) return;
+    didAuto.current = true;
+    if (autoConnect && !connected) togglePair();
+  }, [hydrated]);
+
+  // Auto-reconnect watchdog: while Auto is on, poll the real device state and
+  // (re)connect whenever the board appears — covers unplug/replug, not just
+  // launch. Uses refs so the long-lived interval never reads stale state.
+  const connectedRef = useRef(connected); connectedRef.current = connected;
+  const connectingRef = useRef(connecting); connectingRef.current = connecting;
+  useEffect(() => {
+    if (!hydrated || !autoConnect) return;
+    let alive = true, busy = false;
+    const tick = async () => {
+      if (!alive || busy || connectingRef.current) return;
+      busy = true;
+      try {
+        const s = await apiCall("status");
+        const isOpen = !!(s && s.connected);
+        if (isOpen) {
+          if (!connectedRef.current) setConnected(true);
+        } else {
+          if (connectedRef.current) { setConnected(false); setLiveDepths(null); }
+          const r = await apiCall("connect");
+          if (alive && r && r.ok) setConnected(true);
+        }
+      } catch {}
+      busy = false;
     };
-    if (getApi()) go();
-    else window.addEventListener("pywebviewready", go, { once: true });
-    return () => window.removeEventListener("pywebviewready", go);
-  }, []);
+    const id = setInterval(tick, 2500);
+    return () => { alive = false; clearInterval(id); };
+  }, [hydrated, autoConnect]);
 
   // Lighting. ALL animated effects run on the HOST per-key engine so their
   // behaviour is consistent and matches the names (auto Ripple/Cross/Fireworks,
@@ -931,140 +1032,93 @@ function App() {
     />
   ) : null;
 
+  // Selection helpers (were the ActuationToolbar / lighting select-all actions).
+  const selectAllKeys = () => {
+    const all = new Set(window.AetherKeyboard.KB_ROWS.flat().map(([_,__,c]) => c));
+    setSelectedKeys(all);
+  };
+  const selectInvertKeys = () => {
+    const all = window.AetherKeyboard.KB_ROWS.flat().map(([_,__,c]) => c);
+    setSelectedKeys(prev => new Set(all.filter(c => !prev.has(c))));
+  };
+  const deselectAllKeys = () => setSelectedKeys(new Set());
+  const resetTrigger = () => { setActuation(1.70); setRtPress(0.05); setRtRelease(0.05); };
+  const remapSelected = (label) => {
+    const hid = HID_BY_LABEL[label];
+    if (connected && hid != null && selectedKeys.size) apiCall("set_remap", Array.from(selectedKeys), hid);
+  };
+  const resetRemapSelected = () => {
+    if (connected && selectedKeys.size) apiCall("reset_remap", Array.from(selectedKeys));
+  };
+
+  /* ============================================================
+     ctx — the single object every workspace widget reads from. Carries ALL
+     existing state + handlers (no new backend). Section files (ACTUATION_WIDGETS
+     etc.) call only ctx.* — this is the LOCKED contract for parallel waves.
+     ============================================================ */
+  const ctx = {
+    // bridge + connection
+    apiCall, connected, connecting, togglePair,
+    autoConnect, setAutoConnect,
+    // profiles / persistence
+    profiles, activeId, switchProfile, renameProfile, addProfile, duplicateProfile, deleteProfile, applyState,
+    activeProfileName: (profiles.find(p => p.id === activeId) || {}).name || "Profile",
+    // theme
+    theme, setTheme, themeOpen, setThemeOpen,
+    setWizardOpen,
+    // section
+    section, setSection,
+    // key selection (shared across workspaces)
+    selectedKeys, setSelectedKeys, selectedKey,
+    selectAllKeys, selectInvertKeys, deselectAllKeys,
+    // actuation / rapid trigger
+    actuation, setActuation, rtPress, setRtPress, rtRelease, setRtRelease,
+    rtEnabled, setRtEnabled, resetTrigger,
+    applyActuation, applyDeadband, refreshPerKeyActuation, perKeyActuation,
+    deadTop, setDeadTop, deadBottom, setDeadBottom,
+    switchId, handlePickSwitch,
+    polling, handleSetPolling,
+    // travel test + calibration telemetry
+    travelTest, setTravelTest, liveDepths, liveMax,
+    calibrating, handleCalibrate, calibratedKeys,
+    // keymap
+    layer, setLayer, HID_BY_LABEL, remapSelected, resetRemapSelected,
+    // lighting
+    colors, setColors, bgColor, setBgColor, perKeyColors, setPerKeyColors,
+    pattern, setPattern, brightness, setBrightness, speed, setSpeed,
+    power, setPower, fullColor, setFullColor, direction, setDirection,
+    striOrient, setStriOrient, bgBright, setBgBright,
+    zones, addZone, updateZone, removeZone,
+    ledMap, ledMapLive,
+    // socd
+    socdMode, setSocdMode, hotkey, hotkeyEnabled, setHotkeyEnabled, handleSocdApply,
+    socdProfiles, setSocdProfiles, socdActive, setSocdActive,
+    // gamepad
+    gamepadOn, handleGamepadToggle, gamepadMap, handleGamepadMapApply, DEFAULT_PAD_MAP,
+    gamepadError, handleInstallVigem,
+  };
+
   return (
     <>
-      <TopBar
-        profiles={profiles} activeId={activeId}
-        onProfileChange={switchProfile} onRenameProfile={renameProfile}
-        onAddProfile={addProfile} onDuplicateProfile={duplicateProfile} onDeleteProfile={deleteProfile}
+      <DesktopTopBar
+        sections={SECTION_DEFS}
+        active={section}
+        onSelect={setSection}
         connected={connected} connecting={connecting} onTogglePair={togglePair}
         autoConnect={autoConnect} setAutoConnect={setAutoConnect}
-        onOpenTheme={() => setThemeOpen(true)}
-        onOpenSettings={() => setSection("other")}
-        saveStatus={saveStatus}
+        onOpenSettings={() => setSection("settings")}
+        zoom={uiZoom} setZoom={setUiZoom}
       />
 
-      <main className="max-w-[1400px] mx-auto px-6 lg:px-10 py-7 flex flex-col gap-6">
-        <SectionNav section={section} setSection={setSection}/>
-
-        <HeroCard breadcrumb={breadcrumb} badge={heroBadge}>
-          <KeyboardPanel
-            mode={keyboardMode}
-            layer={layer}
-            selectedKeys={selectedKeys}
-            setSelectedKeys={setSelectedKeys}
-            actuationPoint={actuation}
-            rtPress={rtEnabled ? rtPress : 0}
-            rtRelease={rtEnabled ? rtRelease : 0}
-            ledMap={ledMapLive || ledMap}
-            accent={theme.accent}
-            showPill={false}
-            leftSlot={leftSlot}
-            liveDepths={liveDepths}
-            calibrating={calibrating}
-            calibratedCodes={calibratedKeys}
-            perKeyOverride={
-              Object.fromEntries(
-                Object.entries(perKeyActuation).map(([c, mm]) => [c, { actuation: mm }])
-              )
-            }
-          />
-        </HeroCard>
-
-        {/* Section content card */}
-        <section key={section} className="surface rounded-3xl px-6 lg:px-10 py-7 section-anim">
-          {section === "keymap"    && (
-            <KeymapSection
-              selectedKey={selectedKey}
-              selectedCount={selectedKeys.size}
-              selectedKeys={selectedKeys}
-              connected={connected}
-              onRemap={(label) => {
-                const hid = HID_BY_LABEL[label];
-                if (connected && hid != null && selectedKeys.size)
-                  apiCall("set_remap", Array.from(selectedKeys), hid);
-              }}
-              onResetKey={() => {
-                if (connected && selectedKeys.size)
-                  apiCall("reset_remap", Array.from(selectedKeys));
-              }}
-            />
-          )}
-          {section === "actuation" && (
-            <ActuationSection
-              actuation={actuation} setActuation={setActuation}
-              rtPress={rtPress} setRtPress={setRtPress}
-              rtRelease={rtRelease} setRtRelease={setRtRelease}
-              rtEnabled={rtEnabled} setRtEnabled={setRtEnabled}
-              polling={polling} setPolling={handleSetPolling}
-              travelTest={travelTest} setTravelTest={setTravelTest}
-              calibrating={calibrating} onCalibrate={handleCalibrate}
-              deadTop={deadTop} setDeadTop={setDeadTop}
-              deadBottom={deadBottom} setDeadBottom={setDeadBottom}
-              switchId={switchId} onPickSwitch={handlePickSwitch}
-              liveDepth={liveMax}
-              selectedCount={selectedKeys.size}
-              selectedKeys={selectedKeys}
-              connected={connected}
-              onApplyActuation={applyActuation}
-              onApplyDeadband={applyDeadband}
-            />
-          )}
-          {section === "lighting" && (
-            <LightingSection
-              colors={colors} setColors={setColors}
-              bgColor={bgColor} setBgColor={setBgColor}
-              perKeyColors={perKeyColors} setPerKeyColors={setPerKeyColors}
-              pattern={pattern} setPattern={setPattern}
-              brightness={brightness} setBrightness={setBrightness}
-              speed={speed} setSpeed={setSpeed}
-              power={power} setPower={setPower}
-              fullColor={fullColor} setFullColor={setFullColor}
-              direction={direction} setDirection={setDirection}
-              striOrient={striOrient} setStriOrient={setStriOrient}
-              bgBright={bgBright} setBgBright={setBgBright}
-              zones={zones} onAddZone={addZone} onUpdateZone={updateZone} onRemoveZone={removeZone}
-              selectedKeys={selectedKeys}
-              onSelectAll={() => {
-                const all = new Set(window.AetherKeyboard.KB_ROWS.flat().map(([_,__,c]) => c));
-                setSelectedKeys(all);
-              }}
-              onClearSelection={() => setSelectedKeys(new Set())}
-            />
-          )}
-          {section === "socd" && (
-            <SOCDSection
-              socdMode={socdMode} setSocdMode={setSocdMode}
-              hotkey={hotkey}
-              hotkeyEnabled={hotkeyEnabled} setHotkeyEnabled={setHotkeyEnabled}
-              onApply={handleSocdApply}
-              profiles={socdProfiles} setProfiles={setSocdProfiles}
-              active={socdActive} setActive={setSocdActive}
-            />
-          )}
-          {section === "gamepad" && (
-            <GamepadSection
-              connected={connected}
-              enabled={gamepadOn} onToggle={handleGamepadToggle}
-              map={gamepadMap} onApplyMap={handleGamepadMapApply}
-              defaultMap={DEFAULT_PAD_MAP}
-              error={gamepadError} onInstallDriver={handleInstallVigem}
-            />
-          )}
-          {section === "other" && (
-            <OtherSection
-              activeProfileName={(profiles.find(p => p.id === activeId) || {}).name || "Profile"}
-              onResetProfile={() => {
-                if (!window.confirm("Reset this profile to defaults? This can't be undone.")) return;
-                applyState({});
-              }}
-            />
-          )}
-        </section>
+      <main id="desktop-main" className="desktop-main">
+        <Workspace section={section} widgets={WIDGETS[section] || []} ctx={ctx}/>
       </main>
 
-      {/* Theme Customizer popup */}
+      {/* Theme Customizer popup (preserved; surfaced by the Settings workspace) */}
       <ThemePopup open={themeOpen} onClose={() => setThemeOpen(false)} theme={theme} setTheme={setTheme}/>
+
+      {/* First-run setup wizard (reopenable from Settings via ctx.setWizardOpen). */}
+      {SetupWizard && <SetupWizard open={wizardOpen} onClose={closeWizard} ctx={ctx}/>}
     </>
   );
 }

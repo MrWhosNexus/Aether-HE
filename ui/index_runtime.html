@@ -34,6 +34,8 @@
     --font-display: 'Instrument Serif', georgia, serif;
     --font-ui: 'Schibsted Grotesk', system-ui, sans-serif;
     --font-mono: 'Fragment Mono', ui-monospace, monospace;
+    /* Titles only (top bar, section tabs, widget title bars). Impact, weight 400 — never bold. */
+    --font-title: Impact, 'Haettenschweiler', 'Arial Narrow Bold', sans-serif;
 
     /* applyTheme() writes these at runtime — names preserved, defaults changed */
     --accent: #6fe8c0;
@@ -43,9 +45,15 @@
     --accent-glow: rgba(111, 232, 192, 0.45);
   }
 
-  html, body { background: var(--ink); color: var(--text); font-family: var(--font-ui); }
+  html, body {
+    background: var(--ink); color: var(--text); font-family: var(--font-ui);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
   .font-display { font-family: var(--font-display); letter-spacing: 0.02em; }
   .font-mono { font-family: var(--font-mono); }
+  .font-title { font-family: var(--font-title); font-weight: 400; letter-spacing: 0.03em; }
 
   .bg-layer { position: fixed; inset: 0; overflow: hidden; z-index: 0; pointer-events: none; }
   .aurora-blob {
@@ -262,13 +270,228 @@
     border: 1px solid rgba(234,244,240,0.06);
     box-shadow: 0 20px 60px -16px rgba(0,0,0,0.7);
   }
+
+  /* ============================================================
+     Desktop-widget shell — ported from Nexus styles.css (.widget/.dock)
+     + a top bar of Impact section tabs. Reuses --ink/--accent/--line/--radius.
+     ============================================================ */
+  /* Scroll viewport below the sticky top bar — NOT zoomed, so the top bar and
+     scrollbars stay fixed while the inner canvas scales. */
+  .desktop-main { position: relative; height: calc(100vh - 64px); overflow: auto; }
+  /* The desktop canvas that actually zooms (top bar excluded). Fixed design
+     size so zoom < 1 fits it and zoom > 1 is pannable via desktop-main scroll. */
+  .workspace {
+    position: relative;
+    width: 1480px;
+    min-height: 900px;
+    padding-bottom: 90px;   /* room for the dock */
+    zoom: var(--ws-zoom, 1);
+  }
+
+  /* --- widget window --- */
+  .widget {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    min-width: 220px;
+    min-height: 120px;
+    border-radius: var(--radius);
+    transition: box-shadow 0.25s ease;
+    overflow: hidden;
+  }
+  .widget:hover {
+    box-shadow:
+      0 28px 70px -18px rgba(0,0,0,0.68),
+      inset 0 1px 0 rgba(234,244,240,0.18);
+  }
+  .widget.dragging, .widget.resizing {
+    transition: none;
+    z-index: 60;
+    box-shadow:
+      0 40px 90px -20px rgba(0,0,0,0.75),
+      inset 0 1px 0 rgba(234,244,240,0.18);
+  }
+
+  .widget-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 12px 10px 15px;
+    cursor: grab;
+    user-select: none;
+    flex: 0 0 auto;
+    position: relative;
+    border-bottom: 1px solid var(--line);
+  }
+  .widget.dragging .widget-head { cursor: grabbing; }
+  .widget-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: color-mix(in srgb, var(--accent) 85%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
+    flex: 0 0 auto;
+  }
+  .widget-title {
+    font-family: var(--font-title); font-weight: 400;
+    font-size: 18px; letter-spacing: 0.04em;
+    color: var(--text); text-transform: uppercase;
+  }
+  .widget-min {
+    margin-left: auto;
+    width: 24px; height: 24px; border-radius: 8px;
+    border: 1px solid var(--line); background: rgba(234,244,240,0.03);
+    color: var(--text-dim); cursor: pointer; line-height: 1;
+    font-size: 16px; display: grid; place-items: center;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .widget-min:hover { background: rgba(234,244,240,0.08); color: var(--text);
+    border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+  .widget-body {
+    flex: 1 1 auto; min-height: 0;
+    padding: 14px 16px 16px;
+    overflow: auto;
+  }
+  .widget-resize {
+    position: absolute; right: 0; bottom: 0;
+    width: 18px; height: 18px; cursor: nwse-resize; z-index: 2;
+    background:
+      linear-gradient(135deg, transparent 50%, color-mix(in srgb, var(--accent) 45%, transparent) 50%);
+    border-bottom-right-radius: var(--radius);
+  }
+
+  /* --- dock (minimized widgets) --- */
+  .dock {
+    position: fixed;
+    bottom: 18px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 6px; padding: 8px 10px;
+    z-index: 4000; border-radius: 16px;
+  }
+  .dock button {
+    height: 34px; padding: 0 14px;
+    display: grid; place-items: center;
+    border: 1px solid var(--line); background: rgba(234,244,240,0.03);
+    border-radius: 11px; color: var(--text-dim); cursor: pointer;
+    font-family: var(--font-title); font-weight: 400;
+    font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase;
+    transition: background 0.15s, color 0.15s, transform 0.18s var(--ease-out);
+  }
+  .dock button:hover {
+    background: rgba(234,244,240,0.08); color: var(--text);
+    transform: translateY(-3px) scale(1.04);
+    border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+
+  /* --- top bar --- */
+  .topbar {
+    position: sticky; top: 0; z-index: 40;
+    background: color-mix(in srgb, var(--ink) 70%, transparent);
+    backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+    border-bottom: 1px solid var(--line);
+  }
+  .topbar-inner {
+    max-width: 1600px; margin: 0 auto;
+    height: 54px; padding: 0 20px;
+    display: flex; align-items: center; gap: 16px;
+  }
+  .topbar-brand { display: flex; align-items: center; gap: 10px; }
+  .topbar-logo { width: 28px; height: 28px;
+    filter: drop-shadow(0 4px 14px var(--accent-glow)); }
+  .topbar-name {
+    font-family: var(--font-title); font-weight: 400;
+    font-size: 20px; letter-spacing: 0.12em; color: var(--text);
+  }
+  .topbar-tabs { display: flex; align-items: center; gap: 2px; }
+  .topbar-tab {
+    display: flex; align-items: center; gap: 7px;
+    height: 34px; padding: 0 14px; border-radius: 10px;
+    border: 1px solid transparent; background: transparent;
+    color: var(--text-dim); cursor: pointer;
+    font-family: var(--font-title); font-weight: 400;
+    font-size: 14px; letter-spacing: 0.08em; text-transform: uppercase;
+    transition: color 0.15s, background 0.15s, border-color 0.15s;
+  }
+  .topbar-tab:hover { color: var(--text); background: rgba(234,244,240,0.03); }
+  .topbar-tab.on {
+    color: var(--text);
+    background: linear-gradient(180deg,
+      color-mix(in oklab, var(--accent) 22%, transparent),
+      color-mix(in oklab, var(--accent) 12%, transparent));
+    box-shadow: 0 1px 0 rgba(234,244,240,0.12) inset, 0 8px 24px -10px var(--accent-glow);
+  }
+  .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .topbar-status {
+    display: flex; align-items: center; gap: 8px;
+    height: 34px; padding: 0 12px; border-radius: 11px;
+    border: 1px solid var(--line);
+    font-family: var(--font-title); font-size: 13px;
+    letter-spacing: 0.04em; color: var(--text); text-transform: uppercase;
+  }
+  .topbar-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-faint); }
+  .topbar-status.linked .topbar-dot { background: var(--good); box-shadow: 0 0 8px var(--good); }
+  .topbar-state {
+    font-family: var(--font-mono); font-size: 9.5px;
+    letter-spacing: 0.2em; text-transform: uppercase; color: var(--text-faint);
+  }
+  .topbar-status.linked .topbar-state { color: color-mix(in srgb, var(--good) 85%, transparent); }
+  .topbar-auto {
+    display: flex; align-items: center; gap: 6px;
+    height: 34px; padding: 0 10px; border-radius: 11px;
+    border: 1px solid var(--line); cursor: pointer; user-select: none;
+    font-family: var(--font-title); font-size: 12px;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim);
+  }
+  .topbar-check {
+    width: 14px; height: 14px; border-radius: 4px; display: grid; place-items: center;
+    border: 1px solid var(--line); background: rgba(234,244,240,0.02); color: var(--accent);
+  }
+  .topbar-check.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 20%, transparent); }
+  .topbar-pair {
+    display: flex; align-items: center; gap: 8px;
+    height: 34px; padding: 0 13px; border-radius: 11px;
+    border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent); cursor: pointer;
+    font-family: var(--font-title); font-size: 13px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    transition: background 0.15s;
+  }
+  .topbar-pair:hover { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+  .topbar-pair:disabled { opacity: 0.6; cursor: default; }
+  .topbar-pair.on {
+    border-color: color-mix(in srgb, var(--good) 40%, transparent);
+    background: color-mix(in srgb, var(--good) 12%, transparent);
+    color: var(--good);
+  }
+  .topbar-gear {
+    width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center;
+    border: 1px solid var(--line); background: transparent; color: var(--text-dim); cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .topbar-gear:hover { color: var(--text); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+
+  .topbar-zoom {
+    display: flex; align-items: center; gap: 2px;
+    border: 1px solid var(--line); border-radius: 10px; padding: 2px;
+    background: rgba(234, 244, 240, 0.03);
+  }
+  .topbar-zoom button {
+    width: 24px; height: 24px; border: 0; background: transparent;
+    color: var(--text-dim); font-size: 15px; line-height: 1; cursor: pointer;
+    border-radius: 7px; display: grid; place-items: center;
+    transition: background 0.15s, color 0.15s;
+  }
+  .topbar-zoom button:hover { background: rgba(234, 244, 240, 0.08); color: var(--text); }
+  .topbar-zoom span {
+    min-width: 42px; text-align: center; cursor: pointer;
+    font-size: 12px; letter-spacing: 0.04em; color: var(--text-dim);
+  }
+  .topbar-zoom span:hover { color: var(--text); }
 </style>
 </head>
-<body class="min-h-screen overflow-x-auto" style="min-width: 1200px;">
+<body class="min-h-screen" style="overflow: hidden;">
 <div class="bg-layer" aria-hidden="true">
   <div class="aurora-blob" style="background: radial-gradient(circle, var(--accent), transparent 70%); top: -10%; left: -5%;"></div>
   <div class="aurora-blob b2" style="background: radial-gradient(circle, var(--accent-2), transparent 70%); top: 20%; right: -10%;"></div>
-  <div class="aurora-blob b3" style="background: radial-gradient(circle, var(--good), transparent 70%); bottom: -15%; left: 20%;"></div>
+  <div class="aurora-blob b3" style="background: radial-gradient(circle, var(--accent-3, var(--accent)), transparent 70%); bottom: -15%; left: 20%;"></div>
   <div class="grain"></div>
   <div class="vignette"></div>
 </div>
@@ -34093,7 +34316,7 @@
     }, /*#__PURE__*/React.createElement("div", {
       className: "shrink-0 w-[110px] pt-2 flex flex-col gap-1.5"
     }, leftSlot), /*#__PURE__*/React.createElement("div", {
-      className: "relative w-full max-w-[720px] rounded-2xl border border-[var(--line)] bg-gradient-to-b from-white/[0.025] to-black/30 p-3.5 shadow-[0_24px_60px_-24px_rgba(0,0,0,0.8)]"
+      className: "relative w-full max-w-[960px] rounded-2xl border border-[var(--line)] bg-gradient-to-b from-white/[0.025] to-black/30 p-3.5 shadow-[0_24px_60px_-24px_rgba(0,0,0,0.8)]"
     }, /*#__PURE__*/React.createElement("span", {
       className: "pointer-events-none absolute -top-px left-12 right-12 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent"
     }), /*#__PURE__*/React.createElement("div", {
@@ -36372,6 +36595,13 @@
     }, "Sticks combine opposing keys (e.g. A=\u2212 and D=+ on Left Stick X). Triggers & sticks are analog \u2014 deeper press = larger value. Buttons fire past their threshold. Changes apply live while capturing.")));
   };
   window.AetherSections = {
+    // Shared primitives + telemetry parts, exported so workspace files (desktop
+    // widget bodies) can reuse them byte-identically instead of re-implementing.
+    Slider,
+    Chip,
+    SubTabs,
+    SwitchRender,
+    ToolbarButton,
     KeymapSection: React.memo(KeymapSection, (prev, next) => prev.selectedKey === next.selectedKey && prev.selectedCount === next.selectedCount && prev.selectedKeys === next.selectedKeys && prev.connected === next.connected),
     ActuationSection: React.memo(ActuationSection, (prev, next) => prev.actuation === next.actuation && prev.rtPress === next.rtPress && prev.rtRelease === next.rtRelease && prev.rtEnabled === next.rtEnabled && prev.polling === next.polling && prev.travelTest === next.travelTest && prev.calibrating === next.calibrating && prev.deadTop === next.deadTop && prev.deadBottom === next.deadBottom && prev.switchId === next.switchId && prev.liveDepth === next.liveDepth && prev.selectedCount === next.selectedCount && prev.selectedKeys === next.selectedKeys && prev.connected === next.connected),
     LightingSection: React.memo(LightingSection, (prev, next) => prev.colors === next.colors && prev.bgColor === next.bgColor && prev.perKeyColors === next.perKeyColors && prev.pattern === next.pattern && prev.brightness === next.brightness && prev.speed === next.speed && prev.power === next.power && prev.fullColor === next.fullColor && prev.direction === next.direction && prev.striOrient === next.striOrient && prev.bgBright === next.bgBright && prev.zones === next.zones && prev.selectedKeys === next.selectedKeys),
@@ -36943,6 +37173,3762 @@
   };
 })();
 </script>
+<script data-mod="desktop">
+(() => {
+  /* ============================================================
+     Desktop-widget shell for AetherHE.
+     Exposes window.AetherDesktop = { WidgetFrame, Workspace, Dock, TopBar }.
+     Plain JSX, uses global React (no libs). Vanilla pointer events for
+     drag + resize. Geometry persists per (workspace,widget) in localStorage
+     under key `aether-wgt:{workspace}:{id}`.
+     ============================================================ */
+  const {
+    useState,
+    useEffect,
+    useRef,
+    useCallback
+  } = React;
+  const I = window.AetherIcons || {};
+  const IKeyboard = I.IKeyboard,
+    IBulb = I.IBulb,
+    IGauge = I.IGauge,
+    ICrosshair = I.ICrosshair,
+    IZap = I.IZap,
+    ISettings = I.ISettings,
+    IPlug = I.IPlug,
+    IPower = I.IPower,
+    ICheck = I.ICheck,
+    IMore = I.IMore;
+  const GRID = 8;
+  const snap = v => Math.max(0, Math.round(v / GRID) * GRID);
+
+  /* ---- geometry persistence ---- */
+  const geoKey = (workspace, id) => `aether-wgt:${workspace}:${id}`;
+  const loadGeo = (workspace, id) => {
+    try {
+      const raw = localStorage.getItem(geoKey(workspace, id));
+      if (!raw) return null;
+      const g = JSON.parse(raw);
+      if (!g || typeof g !== "object") return null;
+      return g;
+    } catch {
+      return null;
+    }
+  };
+  const saveGeo = (workspace, id, geo) => {
+    try {
+      localStorage.setItem(geoKey(workspace, id), JSON.stringify(geo));
+    } catch {}
+  };
+
+  /* ============================================================
+     WidgetFrame — a draggable + resizable window with an Impact title bar.
+     Drag by the title bar, resize by the bottom-right handle, minimize button.
+     ============================================================ */
+  function WidgetFrame({
+    id,
+    workspace,
+    title,
+    defaultPos,
+    defaultSize,
+    minSize,
+    onMinimize,
+    z,
+    onFocus,
+    children
+  }) {
+    const min = minSize || {
+      w: 220,
+      h: 140
+    };
+    const init = loadGeo(workspace, id);
+    const [pos, setPos] = useState(() => init && init.pos || defaultPos || {
+      x: 40,
+      y: 40
+    });
+    const [size, setSize] = useState(() => init && init.size || defaultSize || {
+      w: 360,
+      h: 300
+    });
+    const [minimized, setMinimized] = useState(() => !!(init && init.minimized));
+    const [drag, setDrag] = useState(false);
+    const [resizing, setResizing] = useState(false);
+    const gesture = useRef(null);
+
+    // Persist geometry whenever it settles.
+    useEffect(() => {
+      saveGeo(workspace, id, {
+        pos,
+        size,
+        minimized
+      });
+    }, [workspace, id, pos, size, minimized]);
+
+    // Report minimized transitions up so the Workspace can drive the dock.
+    useEffect(() => {
+      if (onMinimize) onMinimize(id, minimized);
+    }, [minimized]);
+    const onTitleDown = useCallback(e => {
+      if (e.target.closest("button, input, textarea, select, a")) return;
+      gesture.current = {
+        kind: "drag",
+        px: e.clientX,
+        py: e.clientY,
+        x: pos.x,
+        y: pos.y
+      };
+      setDrag(true);
+      e.currentTarget.setPointerCapture(e.pointerId);
+    }, [pos.x, pos.y]);
+    const onResizeDown = useCallback(e => {
+      e.stopPropagation();
+      gesture.current = {
+        kind: "resize",
+        px: e.clientX,
+        py: e.clientY,
+        w: size.w,
+        h: size.h
+      };
+      setResizing(true);
+      e.currentTarget.setPointerCapture(e.pointerId);
+    }, [size.w, size.h]);
+    const onMove = useCallback(e => {
+      const g = gesture.current;
+      if (!g) return;
+      if (g.kind === "drag") {
+        setPos({
+          x: snap(g.x + (e.clientX - g.px)),
+          y: snap(g.y + (e.clientY - g.py))
+        });
+      } else if (g.kind === "resize") {
+        setSize({
+          w: Math.max(min.w, snap(g.w + (e.clientX - g.px))),
+          h: Math.max(min.h, snap(g.h + (e.clientY - g.py)))
+        });
+      }
+    }, [min.w, min.h]);
+    const endGesture = useCallback(() => {
+      gesture.current = null;
+      setDrag(false);
+      setResizing(false);
+    }, []);
+    if (minimized) return null;
+    return /*#__PURE__*/React.createElement("section", {
+      className: `widget glass${drag ? " dragging" : ""}${resizing ? " resizing" : ""}`,
+      style: {
+        left: pos.x,
+        top: pos.y,
+        width: size.w,
+        height: size.h,
+        zIndex: z || 1
+      },
+      onPointerDownCapture: () => onFocus && onFocus(id)
+    }, /*#__PURE__*/React.createElement("header", {
+      className: "widget-head",
+      onPointerDown: onTitleDown,
+      onPointerMove: onMove,
+      onPointerUp: endGesture,
+      onPointerCancel: endGesture
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "widget-dot",
+      "aria-hidden": true
+    }), /*#__PURE__*/React.createElement("span", {
+      className: "widget-title font-title"
+    }, title), /*#__PURE__*/React.createElement("button", {
+      className: "widget-min",
+      title: "Minimize",
+      "aria-label": `Minimize ${title}`,
+      onClick: e => {
+        e.stopPropagation();
+        setMinimized(true);
+      }
+    }, "\u2013")), /*#__PURE__*/React.createElement("div", {
+      className: "widget-body"
+    }, children), /*#__PURE__*/React.createElement("div", {
+      className: "widget-resize",
+      title: "Resize",
+      onPointerDown: onResizeDown,
+      onPointerMove: onMove,
+      onPointerUp: endGesture,
+      onPointerCancel: endGesture
+    }));
+  }
+
+  /* ============================================================
+     Dock — bottom-center pill of minimized-widget buttons.
+     ============================================================ */
+  function Dock({
+    items,
+    onRestore
+  }) {
+    if (!items || !items.length) return null;
+    return /*#__PURE__*/React.createElement("nav", {
+      className: "dock glass"
+    }, items.map(w => /*#__PURE__*/React.createElement("button", {
+      key: w.id,
+      className: "font-title",
+      title: `Restore ${w.title}`,
+      onClick: () => onRestore(w.id)
+    }, w.title)));
+  }
+
+  /* ============================================================
+     Workspace — absolute-positioned desktop surface. Renders each widget in a
+     WidgetFrame, plus a per-workspace Dock of minimized widgets to restore.
+     widgets = [{ id, title, default:{x,y,w,h}, min:{w,h}, render:(ctx)=>JSX }]
+     ============================================================ */
+  function Workspace({
+    section,
+    widgets,
+    ctx
+  }) {
+    const list = widgets || [];
+    // Track which widgets are minimized (seeded from persisted geometry).
+    const [minimized, setMinimized] = useState(() => {
+      const s = {};
+      list.forEach(w => {
+        const g = loadGeo(section, w.id);
+        if (g && g.minimized) s[w.id] = true;
+      });
+      return s;
+    });
+    // Reset when the workspace (section) changes.
+    useEffect(() => {
+      const s = {};
+      list.forEach(w => {
+        const g = loadGeo(section, w.id);
+        if (g && g.minimized) s[w.id] = true;
+      });
+      setMinimized(s);
+    }, [section]);
+    const handleMinimize = useCallback((id, isMin) => {
+      setMinimized(prev => prev[id] === isMin ? prev : {
+        ...prev,
+        [id]: isMin
+      });
+    }, []);
+    const restore = useCallback(id => {
+      // Flip persisted geometry and force a remount of that frame.
+      const g = loadGeo(section, id) || {};
+      saveGeo(section, id, {
+        ...g,
+        minimized: false
+      });
+      setMinimized(prev => ({
+        ...prev,
+        [id]: false
+      }));
+      setNonce(n => n + 1);
+    }, [section]);
+    const [nonce, setNonce] = useState(0);
+
+    // Stacking order: clicking a widget raises it above the others and it stays
+    // there until another is clicked. Seeded so array order is the initial stack.
+    const zTop = useRef(10 + list.length);
+    const [zmap, setZmap] = useState(() => {
+      const m = {};
+      list.forEach((w, i) => {
+        m[w.id] = 10 + i;
+      });
+      return m;
+    });
+    useEffect(() => {
+      const m = {};
+      list.forEach((w, i) => {
+        m[w.id] = 10 + i;
+      });
+      zTop.current = 10 + list.length;
+      setZmap(m);
+    }, [section]);
+    const raise = useCallback(id => {
+      setZmap(prev => prev[id] === zTop.current ? prev : {
+        ...prev,
+        [id]: ++zTop.current
+      });
+    }, []);
+    const dockItems = list.filter(w => minimized[w.id]);
+    return /*#__PURE__*/React.createElement("div", {
+      className: "workspace",
+      "data-section": section
+    }, list.map(w => /*#__PURE__*/React.createElement(WidgetFrame, {
+      key: `${section}:${w.id}:${nonce}`,
+      id: w.id,
+      workspace: section,
+      title: w.title,
+      defaultPos: {
+        x: w.default.x,
+        y: w.default.y
+      },
+      defaultSize: {
+        w: w.default.w,
+        h: w.default.h
+      },
+      minSize: w.min,
+      onMinimize: handleMinimize,
+      z: zmap[w.id],
+      onFocus: raise
+    }, React.createElement(w.render, ctx))), /*#__PURE__*/React.createElement(Dock, {
+      items: dockItems,
+      onRestore: restore
+    }));
+  }
+
+  /* ============================================================
+     TopBar — horizontal section tabs (Impact) + brand + connect cluster.
+     Sections: keymap, lighting, actuation, socd, gamepad, settings.
+     ============================================================ */
+  const SECTION_DEFS = [{
+    id: "keymap",
+    label: "Keymap",
+    icon: IKeyboard
+  }, {
+    id: "lighting",
+    label: "Lighting",
+    icon: IBulb
+  }, {
+    id: "actuation",
+    label: "Actuation",
+    icon: IGauge
+  }, {
+    id: "socd",
+    label: "SOCD",
+    icon: ICrosshair
+  }, {
+    id: "gamepad",
+    label: "Gamepad",
+    icon: IZap
+  }, {
+    id: "settings",
+    label: "Settings",
+    icon: ISettings
+  }];
+  function TopBar({
+    sections,
+    active,
+    onSelect,
+    connected,
+    connecting,
+    onTogglePair,
+    autoConnect,
+    setAutoConnect,
+    onOpenSettings,
+    zoom,
+    setZoom
+  }) {
+    const defs = sections || SECTION_DEFS;
+    return /*#__PURE__*/React.createElement("header", {
+      className: "topbar"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "topbar-inner"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "topbar-brand"
+    }, /*#__PURE__*/React.createElement("img", {
+      src: window.__resources && window.__resources.logo || "assets/logo.png",
+      alt: "",
+      className: "topbar-logo"
+    }), /*#__PURE__*/React.createElement("span", {
+      className: "topbar-name font-title"
+    }, "AETHER")), /*#__PURE__*/React.createElement("nav", {
+      className: "topbar-tabs"
+    }, defs.map(s => {
+      const Icon = s.icon;
+      const on = active === s.id;
+      return /*#__PURE__*/React.createElement("button", {
+        key: s.id,
+        onClick: () => onSelect(s.id),
+        className: `topbar-tab font-title${on ? " on" : ""}`
+      }, Icon && /*#__PURE__*/React.createElement(Icon, {
+        size: 14
+      }), /*#__PURE__*/React.createElement("span", null, s.label));
+    })), /*#__PURE__*/React.createElement("div", {
+      className: "topbar-right"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: `topbar-status${connected ? " linked" : ""}`
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "topbar-dot"
+    }), /*#__PURE__*/React.createElement("span", {
+      className: "font-title"
+    }, "WIN 60 HE"), /*#__PURE__*/React.createElement("span", {
+      className: "topbar-state"
+    }, connected ? "Linked" : "Offline")), /*#__PURE__*/React.createElement("label", {
+      className: "topbar-auto",
+      title: "Connect automatically on launch"
+    }, /*#__PURE__*/React.createElement("span", {
+      onClick: () => setAutoConnect(!autoConnect),
+      className: `topbar-check${autoConnect ? " on" : ""}`
+    }, autoConnect && ICheck && /*#__PURE__*/React.createElement(ICheck, {
+      size: 9
+    })), /*#__PURE__*/React.createElement("span", {
+      className: "font-title"
+    }, "Auto")), /*#__PURE__*/React.createElement("button", {
+      onClick: onTogglePair,
+      disabled: connecting,
+      className: `topbar-pair${connected ? " on" : ""}`
+    }, connected ? IPower && /*#__PURE__*/React.createElement(IPower, {
+      size: 13
+    }) : IPlug && /*#__PURE__*/React.createElement(IPlug, {
+      size: 13
+    }), /*#__PURE__*/React.createElement("span", {
+      className: "font-title"
+    }, connecting ? "…" : connected ? "Connected" : "Pair")), setZoom && /*#__PURE__*/React.createElement("div", {
+      className: "topbar-zoom",
+      title: "Zoom the workspace"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => setZoom(z => Math.max(0.5, +(z - 0.1).toFixed(2))),
+      "aria-label": "Zoom out"
+    }, "\u2013"), /*#__PURE__*/React.createElement("span", {
+      className: "font-title",
+      onClick: () => setZoom(1),
+      title: "Reset zoom"
+    }, Math.round((zoom || 1) * 100), "%"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setZoom(z => Math.min(2, +(z + 0.1).toFixed(2))),
+      "aria-label": "Zoom in"
+    }, "+")), /*#__PURE__*/React.createElement("button", {
+      title: "Settings",
+      onClick: onOpenSettings,
+      className: "topbar-gear"
+    }, ISettings && /*#__PURE__*/React.createElement(ISettings, {
+      size: 14
+    })))));
+  }
+  window.AetherDesktop = {
+    WidgetFrame,
+    Workspace,
+    Dock,
+    TopBar,
+    SECTION_DEFS
+  };
+})();
+</script>
+<script data-mod="ws_actuation">
+(() => {
+  /* ============================================================
+     Actuation workspace — the REFERENCE workspace for the desktop-widget shell.
+     Exports window.AetherWorkspaces.ACTUATION_WIDGETS — an array of widget descriptors:
+       { id, title, default:{x,y,w,h}, min:{w,h}, render:(ctx)=>JSX }
+     Each render() reads/calls ONLY ctx.* (state + handlers app.jsx passes down).
+     Control JSX + telemetry (SwitchRender depth math, live depth) reused verbatim
+     from the old ActuationSection via window.AetherSections shared primitives.
+     ============================================================ */
+  const {
+    useState
+  } = React;
+  const S = window.AetherSections || {};
+  const Slider = S.Slider,
+    Chip = S.Chip,
+    SwitchRender = S.SwitchRender;
+  const I = window.AetherIcons || {};
+  const ICheck = I.ICheck,
+    ICrosshair = I.ICrosshair;
+
+  /* Shared apply-button class + confirm toast (from ActuationSection). */
+  const applyBtnCls = enabled => `px-4 h-9 rounded-md border font-display text-[12px] uppercase tracking-[0.16em] transition-all ${enabled ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_18px_var(--accent-glow)] hover:brightness-110" : "border-[var(--line)] bg-white/[0.02] text-[var(--text-faint)] cursor-not-allowed"}`;
+  const useFlash = () => {
+    const [confirm, setConfirm] = useState(null);
+    const flash = msg => {
+      setConfirm(msg);
+      setTimeout(() => setConfirm(null), 2400);
+    };
+    return [confirm, flash];
+  };
+  const ConfirmToast = ({
+    confirm
+  }) => confirm ? /*#__PURE__*/React.createElement("span", {
+    className: "font-mono text-[11px] uppercase tracking-[0.16em] text-[var(--accent)]"
+  }, "\u2713 ", confirm) : null;
+
+  /* ===== Travel widget (actuation point + rapid trigger + live switch render) ===== */
+  function TravelWidget(ctx) {
+    const {
+      actuation,
+      setActuation,
+      rtPress,
+      setRtPress,
+      rtRelease,
+      setRtRelease,
+      rtEnabled,
+      setRtEnabled,
+      travelTest,
+      setTravelTest,
+      liveMax = 0,
+      selectedKeys,
+      applyActuation
+    } = ctx;
+    const selectedCount = selectedKeys ? selectedKeys.size : 0;
+    const scope = selectedCount > 0 ? `${selectedCount} selected key${selectedCount > 1 ? "s" : ""}` : "no keys (select some)";
+    const canApply = selectedCount > 0;
+    const [confirm, flash] = useFlash();
+    const handleApplyTravel = () => {
+      if (!canApply || !applyActuation) return;
+      applyActuation();
+      const rt = rtEnabled ? ` · RT press ${rtPress.toFixed(2)}mm / release ${rtRelease.toFixed(2)}mm` : "";
+      flash(`Wrote ${actuation.toFixed(2)}mm to ${selectedCount} key${selectedCount === 1 ? "" : "s"}${rt}`);
+    };
+    return /*#__PURE__*/React.createElement("div", {
+      className: "grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-5"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "glass p-4"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center justify-between mb-3"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)]"
+    }, "Travel Test"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setTravelTest(!travelTest),
+      className: `relative w-10 h-5 rounded-full border transition-colors
+                        ${travelTest ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-[var(--line)]"}`
+    }, /*#__PURE__*/React.createElement("span", {
+      className: `absolute top-0.5 w-3.5 h-3.5 rounded-full transition-all
+                              ${travelTest ? "left-[20px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-slate-400"}`
+    }))), /*#__PURE__*/React.createElement(SwitchRender, {
+      depth: travelTest ? liveMax : actuation,
+      actuation: actuation
+    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
+      className: "text-[12px] text-[var(--text-dim)] mb-3"
+    }, "Select keys on the board, set the actuation point, then press ", /*#__PURE__*/React.createElement("span", {
+      className: "text-[var(--accent)]"
+    }, "Apply"), " \u2014 only the selected keys are written. Nothing is sent while you move the slider."), /*#__PURE__*/React.createElement("div", {
+      className: "mb-5 inline-flex items-center gap-2 px-3 h-7 rounded-md border border-[var(--accent)]/30 bg-[var(--accent)]/[0.06]"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-dim)]"
+    }, "Applying to"), /*#__PURE__*/React.createElement("span", {
+      className: "font-display text-[11px] uppercase tracking-[0.16em] text-[var(--accent)]"
+    }, scope)), /*#__PURE__*/React.createElement("div", {
+      className: "mb-5"
+    }, /*#__PURE__*/React.createElement(Slider, {
+      label: "Key Trigger Travel",
+      value: actuation,
+      min: 0.1,
+      max: 3.4,
+      step: 0.05,
+      unit: "mm",
+      onChange: setActuation
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-2 mt-2"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => setActuation(Math.max(0.1, actuation - 0.05)),
+      className: "w-7 h-7 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"
+    }, "\u2212"), /*#__PURE__*/React.createElement("div", {
+      className: "px-3 h-7 rounded-md border border-[var(--line)] bg-white/[0.02] grid place-items-center font-mono text-[12px] text-[var(--text)]"
+    }, actuation.toFixed(2), " mm"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setActuation(Math.min(4.0, actuation + 0.05)),
+      className: "w-7 h-7 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"
+    }, "+"))), /*#__PURE__*/React.createElement("label", {
+      className: "flex items-center gap-2 cursor-pointer select-none mb-3"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: `w-4 h-4 rounded border grid place-items-center transition
+                            ${rtEnabled ? "border-[var(--accent)] bg-[var(--accent)]/20" : "border-[var(--line)] bg-white/[0.02]"}`,
+      onClick: () => setRtEnabled(!rtEnabled)
+    }, rtEnabled && ICheck && /*#__PURE__*/React.createElement(ICheck, {
+      size: 10,
+      className: "text-[var(--accent)]"
+    })), /*#__PURE__*/React.createElement("input", {
+      type: "checkbox",
+      checked: rtEnabled,
+      onChange: e => setRtEnabled(e.target.checked),
+      className: "sr-only"
+    }), /*#__PURE__*/React.createElement("span", {
+      className: "font-display text-[11.5px] uppercase tracking-[0.16em] text-[var(--text)]"
+    }, "Rapid Trigger"), Chip && /*#__PURE__*/React.createElement(Chip, {
+      color: "accent"
+    }, "RT")), /*#__PURE__*/React.createElement("p", {
+      className: "text-[11.5px] text-[var(--text-faint)] leading-relaxed mb-4"
+    }, "Rapid Trigger dynamically actuates and resets your key based on your intent \u2014 perfect for counter-strafing and rebound presses."), rtEnabled && /*#__PURE__*/React.createElement("div", {
+      className: "grid grid-cols-2 gap-5 mt-4 p-4 rounded-lg border border-[var(--accent)]/20 bg-[var(--accent)]/[0.05]"
+    }, /*#__PURE__*/React.createElement(Slider, {
+      label: "Press Sensitivity",
+      value: rtPress,
+      min: 0.05,
+      max: 2.0,
+      step: 0.05,
+      unit: "mm",
+      onChange: setRtPress
+    }), /*#__PURE__*/React.createElement(Slider, {
+      label: "Release Sensitivity",
+      value: rtRelease,
+      min: 0.05,
+      max: 2.0,
+      step: 0.05,
+      unit: "mm",
+      onChange: setRtRelease
+    })), /*#__PURE__*/React.createElement("div", {
+      className: "mt-6 flex items-center gap-3"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: handleApplyTravel,
+      disabled: !canApply,
+      className: applyBtnCls(canApply)
+    }, "Apply to ", selectedCount || 0, " key", selectedCount === 1 ? "" : "s"), confirm ? /*#__PURE__*/React.createElement(ConfirmToast, {
+      confirm: confirm
+    }) : /*#__PURE__*/React.createElement("span", {
+      className: "font-mono text-[10.5px] uppercase tracking-[0.18em] text-[var(--text-faint)]"
+    }, canApply ? "writes only the selected keys" : "select keys on the board to enable"))));
+  }
+
+  /* ===== Dead Band widget ===== */
+  function DeadBandWidget(ctx) {
+    const {
+      deadTop,
+      setDeadTop,
+      deadBottom,
+      setDeadBottom,
+      selectedKeys,
+      applyDeadband
+    } = ctx;
+    const selectedCount = selectedKeys ? selectedKeys.size : 0;
+    const canApply = selectedCount > 0;
+    const [confirm, flash] = useFlash();
+    const handleApplyDead = () => {
+      if (!canApply || !applyDeadband) return;
+      applyDeadband();
+      flash(`Wrote dead band ${(deadTop ?? 0.04).toFixed(2)}/${(deadBottom ?? 0.05).toFixed(2)}mm to ${selectedCount} key${selectedCount === 1 ? "" : "s"}`);
+    };
+    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
+      className: "text-[12px] text-[var(--text-dim)] mb-5"
+    }, "Configure the dead-band region near the keycap's rest and bottom-out positions \u2014 noise inside this band is ignored. Press ", /*#__PURE__*/React.createElement("span", {
+      className: "text-[var(--accent)]"
+    }, "Apply"), " to write to the selected keys."), /*#__PURE__*/React.createElement("div", {
+      className: "grid grid-cols-2 gap-6"
+    }, /*#__PURE__*/React.createElement(Slider, {
+      label: "Top Dead Band",
+      value: deadTop ?? 0.04,
+      min: 0,
+      max: 0.5,
+      step: 0.01,
+      unit: "mm",
+      onChange: setDeadTop
+    }), /*#__PURE__*/React.createElement(Slider, {
+      label: "Bottom Dead Band",
+      value: deadBottom ?? 0.05,
+      min: 0,
+      max: 0.5,
+      step: 0.01,
+      unit: "mm",
+      onChange: setDeadBottom
+    })), /*#__PURE__*/React.createElement("div", {
+      className: "mt-6 flex items-center gap-3"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: handleApplyDead,
+      disabled: !canApply,
+      className: applyBtnCls(canApply)
+    }, "Apply to ", selectedCount || 0, " key", selectedCount === 1 ? "" : "s"), confirm ? /*#__PURE__*/React.createElement(ConfirmToast, {
+      confirm: confirm
+    }) : /*#__PURE__*/React.createElement("span", {
+      className: "font-mono text-[10.5px] uppercase tracking-[0.18em] text-[var(--text-faint)]"
+    }, canApply ? "writes only the selected keys" : "select keys on the board to enable")));
+  }
+
+  /* ===== Switch widget ===== */
+  const SWITCHES = [{
+    id: "hm1",
+    name: "HM1",
+    sub: "Magnetic Switch",
+    dot: "#3b82f6",
+    maker: "Gateron",
+    travel: "4.0 mm",
+    force: "30 gf",
+    range: "0.1 – 4.0 mm",
+    poles: "Single",
+    life: "100 M"
+  }, {
+    id: "hh1",
+    name: "HH1",
+    sub: "Magnetic Switch",
+    dot: "#a3a300",
+    maker: "Gateron",
+    travel: "3.5 mm",
+    force: "40 gf",
+    range: "0.1 – 3.5 mm",
+    poles: "Single",
+    life: "100 M"
+  }, {
+    id: "cy1",
+    name: "CY1",
+    sub: "Magnetic Switch",
+    dot: "#cbd5e1",
+    maker: "KZZI",
+    travel: "3.4 mm",
+    force: "35 gf",
+    range: "0.1 – 3.4 mm",
+    poles: "Single",
+    life: "80 M"
+  }, {
+    id: "tc1",
+    name: "TC1",
+    sub: "TTC Kom",
+    dot: "#c026d3",
+    maker: "TTC",
+    travel: "3.6 mm",
+    force: "45 gf",
+    range: "0.2 – 3.6 mm",
+    poles: "Dual",
+    life: "100 M"
+  }];
+  function SwitchWidget(ctx) {
+    const {
+      switchId,
+      handlePickSwitch
+    } = ctx;
+    const cur = SWITCHES.find(s => s.id === (switchId || "hm1")) || SWITCHES[0];
+    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
+      className: "text-[12px] text-[var(--text-dim)] mb-5"
+    }, "Select the magnetic switch profile installed in your board. Calibration curves load automatically."), /*#__PURE__*/React.createElement("div", {
+      className: "grid grid-cols-2 gap-3 mb-5"
+    }, SWITCHES.map(s => {
+      const active = (switchId || "hm1") === s.id;
+      return /*#__PURE__*/React.createElement("button", {
+        key: s.id,
+        onClick: () => handlePickSwitch && handlePickSwitch(s.id),
+        className: `text-left rounded-lg border p-3 transition-all
+                        ${active ? "border-[var(--accent)]/50 bg-[var(--accent)]/[0.06] shadow-[0_0_14px_var(--accent-glow)]" : "border-[var(--line)] bg-white/[0.02] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`
+      }, /*#__PURE__*/React.createElement("div", {
+        className: "flex items-center gap-2"
+      }, /*#__PURE__*/React.createElement("div", {
+        className: "font-display text-[14px] text-[var(--text)]"
+      }, s.name), /*#__PURE__*/React.createElement("span", {
+        className: "w-2.5 h-2.5 rounded-full",
+        style: {
+          background: s.dot,
+          boxShadow: `0 0 8px ${s.dot}`
+        }
+      })), /*#__PURE__*/React.createElement("div", {
+        className: "font-mono text-[10px] text-[var(--text-faint)] uppercase tracking-[0.18em] mt-0.5"
+      }, s.sub));
+    })), /*#__PURE__*/React.createElement("div", {
+      className: "rounded-xl border border-[var(--line)] bg-[rgba(5,11,14,0.5)] p-4"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-2 mb-3"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "w-2.5 h-2.5 rounded-full",
+      style: {
+        background: cur.dot,
+        boxShadow: `0 0 8px ${cur.dot}`
+      }
+    }), /*#__PURE__*/React.createElement("span", {
+      className: "font-display text-[13px] text-[var(--text)]"
+    }, cur.name), /*#__PURE__*/React.createElement("span", {
+      className: "font-mono text-[10px] text-[var(--text-faint)] uppercase tracking-[0.18em]"
+    }, cur.maker, " \xB7 ", cur.sub)), /*#__PURE__*/React.createElement("div", {
+      className: "grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3 font-mono text-[11px]"
+    }, [["Total Travel", cur.travel], ["Actuation Range", cur.range], ["Initial Force", cur.force], ["Sensing", cur.poles + " Hall"], ["Rated Life", cur.life + " presses"], ["Tech", "Magnetic / Analog"]].map(([k, v]) => /*#__PURE__*/React.createElement("div", {
+      key: k
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "text-[var(--text-faint)] uppercase tracking-[0.14em] text-[9.5px]"
+    }, k), /*#__PURE__*/React.createElement("div", {
+      className: "text-[var(--text)] mt-0.5"
+    }, v))))));
+  }
+
+  /* ===== Polling Rate widget ===== */
+  function PollingWidget(ctx) {
+    const {
+      polling,
+      handleSetPolling
+    } = ctx;
+    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
+      className: "text-[12px] text-[var(--text-dim)] mb-5"
+    }, "Switch the polling rate of the device. The keyboard will restart and disconnect briefly after switching."), /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-wrap gap-2"
+    }, [1, 2, 4, 8].map(p => /*#__PURE__*/React.createElement("button", {
+      key: p,
+      onClick: () => handleSetPolling(p),
+      className: `px-4 h-9 rounded-md border font-display text-[12px] uppercase tracking-[0.16em] transition-all
+                        ${polling === p ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_18px_var(--accent-glow)]" : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`
+    }, p, "KHz"))), /*#__PURE__*/React.createElement("div", {
+      className: "mt-6 p-4 rounded-lg border border-[var(--line)] bg-[rgba(5,11,14,0.5)] font-mono text-[11px] text-[var(--text-dim)] leading-relaxed"
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+      className: "text-[var(--text-faint)]"
+    }, "current"), " \xB7 ", /*#__PURE__*/React.createElement("span", {
+      className: "text-[var(--accent)]"
+    }, polling, "000 Hz"), " \xB7 ", (1000 / polling).toFixed(2), "ms tick"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+      className: "text-[var(--text-faint)]"
+    }, "latency"), " \xB7 ~", (0.5 + 1 / polling).toFixed(2), "ms end-to-end")));
+  }
+
+  /* ===== Calibration widget ===== */
+  function CalibrationWidget(ctx) {
+    const {
+      calibrating,
+      handleCalibrate
+    } = ctx;
+    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "font-display text-[12px] uppercase tracking-[0.18em] text-[var(--text)] mb-3"
+    }, "Key Calibration"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => handleCalibrate && handleCalibrate(!calibrating),
+      className: "px-5 h-10 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-fg)] font-display text-[12px] uppercase tracking-[0.18em] shadow-[0_0_18px_var(--accent-glow)] mb-5"
+    }, calibrating ? "Stop Calibration" : "Start Calibration"), /*#__PURE__*/React.createElement("div", {
+      className: "font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)] mb-2"
+    }, "Calibration steps:"), /*#__PURE__*/React.createElement("ol", {
+      className: "space-y-2 text-[12px] text-[var(--text-dim)] max-w-2xl"
+    }, ["Click the Start Calibration button", "Press the required key (Hit bottom)", "Wait for the corresponding key to change color, and the key calibration is complete", "Click the Stop Calibration button"].map((step, i) => /*#__PURE__*/React.createElement("li", {
+      key: i,
+      className: "flex items-start gap-3"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "shrink-0 grid place-items-center w-5 h-5 rounded border border-[var(--accent)]/40 bg-[var(--accent)]/10 text-[var(--accent)] font-mono text-[10px]"
+    }, i + 1), /*#__PURE__*/React.createElement("span", null, step)))));
+  }
+  const ACTUATION_WIDGETS = [{
+    id: "travel",
+    title: "Travel",
+    default: {
+      x: 40,
+      y: 32,
+      w: 680,
+      h: 430
+    },
+    min: {
+      w: 420,
+      h: 320
+    },
+    render: TravelWidget
+  }, {
+    id: "dead",
+    title: "Dead Band",
+    default: {
+      x: 736,
+      y: 32,
+      w: 460,
+      h: 300
+    },
+    min: {
+      w: 320,
+      h: 240
+    },
+    render: DeadBandWidget
+  }, {
+    id: "switch",
+    title: "Switch",
+    default: {
+      x: 736,
+      y: 352,
+      w: 460,
+      h: 430
+    },
+    min: {
+      w: 340,
+      h: 300
+    },
+    render: SwitchWidget
+  }, {
+    id: "poll",
+    title: "Polling Rate",
+    default: {
+      x: 40,
+      y: 488,
+      w: 380,
+      h: 300
+    },
+    min: {
+      w: 300,
+      h: 240
+    },
+    render: PollingWidget
+  }, {
+    id: "calib",
+    title: "Calibration",
+    default: {
+      x: 440,
+      y: 488,
+      w: 456,
+      h: 360
+    },
+    min: {
+      w: 340,
+      h: 280
+    },
+    render: CalibrationWidget
+  }];
+  window.AetherWorkspaces = window.AetherWorkspaces || {};
+  window.AetherWorkspaces.ACTUATION_WIDGETS = ACTUATION_WIDGETS;
+})();
+</script>
+<script data-mod="ws_gamepad">
+(() => {
+  /* ============================================================
+     Gamepad workspace — window.AetherWorkspaces.GAMEPAD_WIDGETS.
+     Reuses GamepadSection JSX verbatim (split into 3 widgets) from
+     ui/runtime_src/src/sections.jsx — no re-implementation of the
+     virtual-pad capture / mapping UI, only layout is split.
+     ============================================================ */
+  const I = window.AetherIcons || {};
+  const {
+    IZap,
+    IRefresh,
+    IPlus,
+    ITrash
+  } = I;
+  const PAD_KEYS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "Space", "Enter", "L-Shift", "L-Ctrl", "Up", "Down", "Left", "Right"];
+  const PAD_AXES = [{
+    id: "LX",
+    label: "Left Stick X",
+    stick: true
+  }, {
+    id: "LY",
+    label: "Left Stick Y",
+    stick: true
+  }, {
+    id: "RX",
+    label: "Right Stick X",
+    stick: true
+  }, {
+    id: "RY",
+    label: "Right Stick Y",
+    stick: true
+  }, {
+    id: "LT",
+    label: "Left Trigger",
+    stick: false
+  }, {
+    id: "RT",
+    label: "Right Trigger",
+    stick: false
+  }, {
+    id: "BTN_A",
+    label: "Button A",
+    stick: false,
+    btn: true
+  }, {
+    id: "BTN_B",
+    label: "Button B",
+    stick: false,
+    btn: true
+  }, {
+    id: "BTN_X",
+    label: "Button X",
+    stick: false,
+    btn: true
+  }, {
+    id: "BTN_Y",
+    label: "Button Y",
+    stick: false,
+    btn: true
+  }, {
+    id: "BTN_LB",
+    label: "Bumper L",
+    stick: false,
+    btn: true
+  }, {
+    id: "BTN_RB",
+    label: "Bumper R",
+    stick: false,
+    btn: true
+  }];
+  const axisMeta = id => PAD_AXES.find(a => a.id === id) || PAD_AXES[0];
+
+  /* ===== Enable / Status widget ===== */
+  function EnableStatusWidget(ctx) {
+    const {
+      connected,
+      gamepadOn,
+      handleGamepadToggle,
+      gamepadError,
+      handleInstallVigem
+    } = ctx;
+    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center justify-between"
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "font-display text-[13px] uppercase tracking-[0.18em] text-[var(--text)] flex items-center gap-2"
+    }, IZap && /*#__PURE__*/React.createElement(IZap, {
+      size: 15
+    }), " Virtual Gamepad"), /*#__PURE__*/React.createElement("p", {
+      className: "text-[12px] text-[var(--text-dim)] mt-1.5 max-w-xl"
+    }, "Streams live key travel into a system gamepad \u2014 press a key deeper for more throttle / steering. Maps below drive the analog axes & buttons. ", !connected && /*#__PURE__*/React.createElement("span", {
+      className: "text-amber-400/80"
+    }, "Connect the board to capture."))), /*#__PURE__*/React.createElement("button", {
+      onClick: () => handleGamepadToggle(!gamepadOn),
+      disabled: !connected,
+      className: `relative w-12 h-6 rounded-full border transition-colors shrink-0 ml-4
+                      ${!connected ? "opacity-40 cursor-not-allowed" : ""}
+                      ${gamepadOn ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-[rgba(5,11,14,0.5)] border-[var(--line)]"}`
+    }, /*#__PURE__*/React.createElement("span", {
+      className: `absolute top-0.5 w-4.5 h-4.5 rounded-full transition-all
+                            ${gamepadOn ? "left-[26px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-[var(--text-faint)]"}`,
+      style: {
+        width: 18,
+        height: 18
+      }
+    }))), /*#__PURE__*/React.createElement("div", {
+      className: "mt-3 font-mono text-[11px]"
+    }, gamepadOn ? /*#__PURE__*/React.createElement("span", {
+      className: "text-emerald-400"
+    }, "\u25CF Capturing \u2192 \"Aula Win60 HE Virtual Gamepad\"") : /*#__PURE__*/React.createElement("span", {
+      className: "text-[var(--text-faint)]"
+    }, "\u25CB Idle")), gamepadError && /*#__PURE__*/React.createElement("div", {
+      className: "mt-3 rounded-md border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-[11.5px] text-rose-100 flex items-center justify-between gap-3"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "font-mono"
+    }, gamepadError.msg), gamepadError.needsDriver && /*#__PURE__*/React.createElement("button", {
+      onClick: handleInstallVigem,
+      className: "shrink-0 px-3 h-7 rounded-md border border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] font-display text-[10.5px] uppercase tracking-[0.16em] hover:bg-[var(--accent)]/25"
+    }, "Install ViGEmBus")));
+  }
+
+  /* ===== Axis Mapping widget ===== */
+  function AxisMappingWidget(ctx) {
+    const {
+      gamepadMap,
+      handleGamepadMapApply,
+      DEFAULT_PAD_MAP
+    } = ctx;
+    const rows = gamepadMap || [];
+    const setRow = (i, patch) => handleGamepadMapApply(rows.map((r, j) => j === i ? {
+      ...r,
+      ...patch
+    } : r));
+    const addRow = () => handleGamepadMapApply([...rows, {
+      key: "W",
+      axis: "RT",
+      direction: 1,
+      threshold_mm: 1.5
+    }]);
+    const removeRow = i => handleGamepadMapApply(rows.filter((_, j) => j !== i));
+    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center justify-between mb-3"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)]"
+    }, "Key \u2192 Control Mapping"), /*#__PURE__*/React.createElement("div", {
+      className: "flex gap-2"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => handleGamepadMapApply((DEFAULT_PAD_MAP || []).map(r => ({
+        ...r
+      }))),
+      className: "px-3 h-8 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] font-display text-[10.5px] uppercase tracking-[0.16em] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] flex items-center gap-1.5"
+    }, IRefresh && /*#__PURE__*/React.createElement(IRefresh, {
+      size: 12
+    }), " Driving Defaults"), /*#__PURE__*/React.createElement("button", {
+      onClick: addRow,
+      className: "px-3 h-8 rounded-md border border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] font-display text-[10.5px] uppercase tracking-[0.16em] hover:bg-[var(--accent)]/25 flex items-center gap-1.5"
+    }, IPlus && /*#__PURE__*/React.createElement(IPlus, {
+      size: 12
+    }), " Add"))), /*#__PURE__*/React.createElement("div", {
+      className: "grid grid-cols-[1fr_1.4fr_1.2fr_28px] gap-2 px-1 mb-1.5 font-mono text-[9.5px] uppercase tracking-[0.18em] text-[var(--text-faint)]"
+    }, /*#__PURE__*/React.createElement("span", null, "Key"), /*#__PURE__*/React.createElement("span", null, "Control"), /*#__PURE__*/React.createElement("span", null, "Behaviour"), /*#__PURE__*/React.createElement("span", null)), /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-col gap-2"
+    }, rows.map((r, i) => {
+      const meta = axisMeta(r.axis);
+      return /*#__PURE__*/React.createElement("div", {
+        key: i,
+        className: "grid grid-cols-[1fr_1.4fr_1.2fr_28px] gap-2 items-center"
+      }, /*#__PURE__*/React.createElement("select", {
+        value: r.key,
+        onChange: e => setRow(i, {
+          key: e.target.value
+        }),
+        className: "h-9 rounded-md bg-[rgba(5,11,14,0.5)] border border-[var(--line)] px-2 font-mono text-[12px] text-[var(--text)] outline-none focus:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"
+      }, PAD_KEYS.map(k => /*#__PURE__*/React.createElement("option", {
+        key: k,
+        value: k
+      }, k))), /*#__PURE__*/React.createElement("select", {
+        value: r.axis,
+        onChange: e => setRow(i, {
+          axis: e.target.value
+        }),
+        className: "h-9 rounded-md bg-[rgba(5,11,14,0.5)] border border-[var(--line)] px-2 font-mono text-[12px] text-[var(--text)] outline-none focus:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"
+      }, PAD_AXES.map(a => /*#__PURE__*/React.createElement("option", {
+        key: a.id,
+        value: a.id
+      }, a.label))), meta.stick ? /*#__PURE__*/React.createElement("div", {
+        className: "flex gap-1"
+      }, [["−", -1], ["+", 1]].map(([lbl, val]) => /*#__PURE__*/React.createElement("button", {
+        key: val,
+        onClick: () => setRow(i, {
+          direction: val
+        }),
+        className: `flex-1 h-9 rounded-md border font-mono text-[13px] transition-all
+                                  ${(r.direction || 1) === val ? "border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)]" : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`
+      }, lbl))) : meta.btn ? /*#__PURE__*/React.createElement("div", {
+        className: "flex items-center gap-2"
+      }, /*#__PURE__*/React.createElement("input", {
+        type: "range",
+        className: "aether flex-1",
+        min: 0.2,
+        max: 4.0,
+        step: 0.1,
+        value: r.threshold_mm ?? 1.5,
+        style: {
+          "--pct": ((r.threshold_mm ?? 1.5) - 0.2) / 3.8 * 100 + "%"
+        },
+        onChange: e => setRow(i, {
+          threshold_mm: parseFloat(e.target.value)
+        })
+      }), /*#__PURE__*/React.createElement("span", {
+        className: "font-mono text-[10px] text-[var(--text-dim)] w-12 text-right"
+      }, (r.threshold_mm ?? 1.5).toFixed(1), "mm")) : /*#__PURE__*/React.createElement("span", {
+        className: "font-mono text-[10px] text-[var(--text-faint)] pl-1"
+      }, "analog 0\u2192max"), /*#__PURE__*/React.createElement("button", {
+        onClick: () => removeRow(i),
+        className: "w-7 h-7 grid place-items-center rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-faint)] hover:text-rose-300 hover:border-rose-400/30"
+      }, ITrash && /*#__PURE__*/React.createElement(ITrash, {
+        size: 12
+      })));
+    }), !rows.length && /*#__PURE__*/React.createElement("div", {
+      className: "text-[12px] text-[var(--text-faint)] py-4 text-center"
+    }, "No mappings \u2014 add one or load driving defaults.")), /*#__PURE__*/React.createElement("p", {
+      className: "text-[11px] text-[var(--text-faint)] mt-4 leading-relaxed"
+    }, "Sticks combine opposing keys (e.g. A=\u2212 and D=+ on Left Stick X). Triggers & sticks are analog \u2014 deeper press = larger value. Buttons fire past their threshold. Changes apply live while capturing."));
+  }
+
+  /* ===== Driver Install widget (ViGEmBus) ===== */
+  function DriverInstallWidget(ctx) {
+    const {
+      handleInstallVigem,
+      gamepadError
+    } = ctx;
+    const needsDriver = !!(gamepadError && gamepadError.needsDriver);
+    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "font-display text-[12px] uppercase tracking-[0.18em] text-[var(--text)] mb-3"
+    }, "Driver"), /*#__PURE__*/React.createElement("p", {
+      className: "text-[12px] text-[var(--text-dim)] mb-5 leading-relaxed"
+    }, "The virtual gamepad is emulated through ", /*#__PURE__*/React.createElement("span", {
+      className: "text-[var(--text)]"
+    }, "ViGEmBus"), " \u2014 a kernel driver that exposes an Xbox 360-compatible controller to Windows. Install it once; no reboot is normally required."), /*#__PURE__*/React.createElement("button", {
+      onClick: handleInstallVigem,
+      className: "px-5 h-10 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-fg)] font-display text-[12px] uppercase tracking-[0.18em] shadow-[0_0_18px_var(--accent-glow)] mb-4"
+    }, "Install ViGEmBus"), /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[11px]"
+    }, needsDriver ? /*#__PURE__*/React.createElement("span", {
+      className: "text-amber-400/80"
+    }, "Driver missing \u2014 install required before capture will work.") : /*#__PURE__*/React.createElement("span", {
+      className: "text-[var(--text-faint)]"
+    }, "No driver issue detected.")));
+  }
+  const GAMEPAD_WIDGETS = [{
+    id: "enable",
+    title: "Enable / Status",
+    default: {
+      x: 40,
+      y: 32,
+      w: 620,
+      h: 300
+    },
+    min: {
+      w: 380,
+      h: 220
+    },
+    render: EnableStatusWidget
+  }, {
+    id: "axes",
+    title: "Axis Mapping",
+    default: {
+      x: 680,
+      y: 32,
+      w: 640,
+      h: 520
+    },
+    min: {
+      w: 460,
+      h: 340
+    },
+    render: AxisMappingWidget
+  }, {
+    id: "driver",
+    title: "Driver Install",
+    default: {
+      x: 40,
+      y: 352,
+      w: 500,
+      h: 300
+    },
+    min: {
+      w: 340,
+      h: 240
+    },
+    render: DriverInstallWidget
+  }];
+  window.AetherWorkspaces = window.AetherWorkspaces || {};
+  window.AetherWorkspaces.GAMEPAD_WIDGETS = GAMEPAD_WIDGETS;
+})();
+</script>
+<script data-mod="ws_keymap">
+(() => {
+  /* ============================================================
+     Keymap workspace — mirrors the Actuation reference workspace shape.
+     Exports window.AetherWorkspaces.KEYMAP_WIDGETS — an array of widget descriptors:
+       { id, title, default:{x,y,w,h}, min:{w,h}, render:(ctx)=>JSX }
+     Each render() reads/calls ONLY ctx.* (state + handlers app.jsx passes down).
+     Reuses KeyGrid JSX from sections.jsx's KeymapSection (basic/extended key picker)
+     and the existing keyboard.jsx KeyboardPanel for the selectable board — its
+     per-key device-color/actuation styling stays byte-identical, untouched here.
+     ============================================================ */
+  const {
+    useState
+  } = React;
+  const S = window.AetherSections || {};
+  const {
+    Chip,
+    ToolbarButton,
+    LayerPicker
+  } = S;
+  const KB = window.AetherKeyboard || {};
+  const KeyboardPanel = KB.KeyboardPanel;
+
+  /* ===== Key label sets (verbatim from sections.jsx KeymapSection) ===== */
+  const BASIC_KEYS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "1!", "2@", "3#", "$4", "5%", "6^", "7&", "8*", "9(", "0)", "-_", "=+", "{[", "}]", "\\|", "<>", ";:", "'\"", "`~", ",<", ".>", "/?"];
+  const EXTENDED_KEYS = ["Esc", "Tab", "Caps", "Back", "Enter", "Space", "L-Ctrl", "R-Ctrl", "L-Shift", "R-Shift", "L-Alt", "R-Alt", "L-Win", "R-Win", "Menu", "Left", "Up", "Right", "Down", "PrtSc", "ScrLk", "Pause", "Ins", "Home", "Del", "End", "PgUp", "PgDn", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12"];
+
+  /* KeyGrid — collapsible label picker (verbatim JSX from sections.jsx). */
+  const KeyGrid = ({
+    title,
+    keys,
+    picked,
+    onPick
+  }) => {
+    const [open, setOpen] = useState(true);
+    const I = window.AetherIcons || {};
+    const IChevronD = I.IChevronD;
+    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("button", {
+      onClick: () => setOpen(o => !o),
+      className: "flex items-center gap-2 mb-2 text-[var(--text-dim)] hover:text-[var(--text)]"
+    }, IChevronD && /*#__PURE__*/React.createElement(IChevronD, {
+      size: 12,
+      className: open ? "" : "-rotate-90"
+    }), /*#__PURE__*/React.createElement("span", {
+      className: "font-display text-[12px] uppercase tracking-[0.18em]"
+    }, title)), open && /*#__PURE__*/React.createElement("div", {
+      className: "grid grid-cols-[repeat(auto-fill,minmax(46px,1fr))] gap-1.5"
+    }, keys.map(k => {
+      const active = picked === k;
+      return /*#__PURE__*/React.createElement("button", {
+        key: k,
+        onClick: () => onPick(k),
+        className: `h-9 rounded-md border font-mono text-[11px] transition-all
+                            ${active ? "border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)] shadow-[0_0_12px_var(--accent-glow)]" : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] hover:text-[var(--text)]"}`
+      }, k);
+    })));
+  };
+
+  /* ===== Key Grid widget — the selectable keyboard board ===== */
+  function KeyGridWidget(ctx) {
+    const {
+      selectedKeys,
+      setSelectedKeys,
+      layer,
+      ledMap,
+      calibrating,
+      calibratedKeys,
+      liveDepths
+    } = ctx;
+    return /*#__PURE__*/React.createElement("div", {
+      className: "flex justify-center"
+    }, KeyboardPanel ? React.createElement(KeyboardPanel, {
+      mode: "keymap",
+      layer: layer || "default",
+      selectedKeys,
+      setSelectedKeys,
+      ledMap,
+      showPill: false,
+      compact: true,
+      calibrating: !!calibrating,
+      calibratedCodes: calibratedKeys,
+      liveDepths
+    }) : /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[11px] text-[var(--text-faint)]"
+    }, "Keyboard render unavailable."));
+  }
+
+  /* ===== Remap Editor widget — assign HID to selected keys ===== */
+  function RemapEditorWidget(ctx) {
+    const {
+      selectedKeys,
+      selectedKey,
+      HID_BY_LABEL,
+      remapSelected,
+      resetRemapSelected
+    } = ctx;
+    const [picked, setPicked] = useState(null);
+    const [flash, setFlash] = useState(null);
+    const showFlash = kind => {
+      setFlash(kind);
+      setTimeout(() => setFlash(null), 1400);
+    };
+    const selectedCount = selectedKeys ? selectedKeys.size : 0;
+    const curLabel = selectedKey || (selectedCount ? `${selectedCount} keys` : "None");
+    const doApply = () => {
+      if (!picked || !selectedCount || !remapSelected) return;
+      remapSelected(picked);
+      showFlash("applied");
+    };
+    const doReset = () => {
+      if (resetRemapSelected) resetRemapSelected();
+      setPicked(null);
+      showFlash("reset");
+    };
+    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("ol", {
+      className: "text-[12px] text-[var(--text-dim)] leading-relaxed space-y-2 mb-4 font-mono"
+    }, /*#__PURE__*/React.createElement("li", null, /*#__PURE__*/React.createElement("span", {
+      className: "text-[var(--accent)]"
+    }, "01."), " Click a key on the Key Grid widget."), /*#__PURE__*/React.createElement("li", null, /*#__PURE__*/React.createElement("span", {
+      className: "text-[var(--accent)]"
+    }, "02."), " Pick the new mapping below."), /*#__PURE__*/React.createElement("li", null, /*#__PURE__*/React.createElement("span", {
+      className: "text-[var(--accent)]"
+    }, "03."), " Hit ", /*#__PURE__*/React.createElement("span", {
+      className: "text-[var(--text)]"
+    }, "Apply"), " to flash.")), /*#__PURE__*/React.createElement("div", {
+      className: "flex items-stretch gap-2 mb-3"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "grid place-items-center px-3 min-w-[64px] rounded-md border border-[var(--line)] bg-white/[0.02] font-mono text-[11px] text-[var(--text-dim)]"
+    }, curLabel), /*#__PURE__*/React.createElement("div", {
+      className: "grid place-items-center text-[var(--text-faint)]"
+    }, "\u2192"), /*#__PURE__*/React.createElement("div", {
+      className: "flex-1 rounded-md border border-[var(--line)] bg-white/[0.02] px-3 grid place-items-start py-2"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "font-mono text-[12px] text-[var(--text)]"
+    }, picked || "—"), /*#__PURE__*/React.createElement("span", {
+      className: "font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--text-faint)]"
+    }, "remap target"))), /*#__PURE__*/React.createElement("div", {
+      className: "flex gap-2 mb-2"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: doReset,
+      className: "flex-1 h-9 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] font-display text-[11px] uppercase tracking-[0.18em] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"
+    }, "Default"), /*#__PURE__*/React.createElement("button", {
+      disabled: !picked || !selectedCount,
+      onClick: doApply,
+      className: `flex-1 h-9 rounded-md border font-display text-[11px] uppercase tracking-[0.18em] transition-all
+                      ${!picked || !selectedCount ? "border-[var(--line)] bg-white/[0.02] text-[var(--text-faint)] cursor-not-allowed" : "border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] hover:bg-[var(--accent)]/25 shadow-[0_0_12px_var(--accent-glow)]"}`
+    }, "Apply")), /*#__PURE__*/React.createElement("div", {
+      className: "h-5 mb-3 text-[11px] font-mono tracking-[0.14em]"
+    }, !selectedCount && /*#__PURE__*/React.createElement("span", {
+      className: "text-amber-400/80"
+    }, "Select a key on the Key Grid first."), flash === "applied" && /*#__PURE__*/React.createElement("span", {
+      className: "text-[var(--accent)]"
+    }, "\u2713 Remapped ", selectedCount, " key", selectedCount > 1 ? "s" : "", " \u2192 ", picked), flash === "reset" && /*#__PURE__*/React.createElement("span", {
+      className: "text-[var(--text-dim)]"
+    }, "\u21A9 Restored default mapping")), /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-col gap-4"
+    }, /*#__PURE__*/React.createElement(KeyGrid, {
+      title: "Basic Keys",
+      keys: BASIC_KEYS,
+      picked: picked,
+      onPick: setPicked
+    }), /*#__PURE__*/React.createElement(KeyGrid, {
+      title: "Extended Keys",
+      keys: EXTENDED_KEYS,
+      picked: picked,
+      onPick: setPicked
+    })));
+  }
+
+  /* ===== Layer Picker widget ===== */
+  function LayerPickerWidget(ctx) {
+    const {
+      layer,
+      setLayer,
+      selectAllKeys,
+      selectInvertKeys,
+      deselectAllKeys
+    } = ctx;
+    return /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-col gap-5"
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)] mb-2"
+    }, "Active Layer"), LayerPicker ? /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-row lg:flex-col gap-2"
+    }, React.createElement(LayerPicker, {
+      layer,
+      setLayer
+    })) : /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[11px] text-[var(--text-faint)]"
+    }, "Layer picker unavailable.")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)] mb-2"
+    }, "Selection"), /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-col gap-1.5"
+    }, ToolbarButton ? [{
+      label: "Select All",
+      onClick: selectAllKeys
+    }, {
+      label: "Select Invert",
+      onClick: selectInvertKeys
+    }, {
+      label: "Deselect All",
+      onClick: deselectAllKeys
+    }].map(b => /*#__PURE__*/React.createElement("div", {
+      key: b.label
+    }, React.createElement(ToolbarButton, {
+      onClick: b.onClick
+    }, b.label))) : /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[11px] text-[var(--text-faint)]"
+    }, "Toolbar unavailable."))), Chip && /*#__PURE__*/React.createElement("div", null, React.createElement(Chip, {
+      color: "accent"
+    }, layer === "fn" ? "Fn Layer" : "Default Layer")));
+  }
+  const KEYMAP_WIDGETS = [{
+    id: "keygrid",
+    title: "Key Grid",
+    default: {
+      x: 40,
+      y: 32,
+      w: 760,
+      h: 460
+    },
+    min: {
+      w: 520,
+      h: 360
+    },
+    render: KeyGridWidget
+  }, {
+    id: "remap",
+    title: "Remap Editor",
+    default: {
+      x: 820,
+      y: 32,
+      w: 460,
+      h: 460
+    },
+    min: {
+      w: 340,
+      h: 340
+    },
+    render: RemapEditorWidget
+  }, {
+    id: "layer",
+    title: "Layer Picker",
+    default: {
+      x: 40,
+      y: 516,
+      w: 320,
+      h: 300
+    },
+    min: {
+      w: 260,
+      h: 240
+    },
+    render: LayerPickerWidget
+  }];
+  window.AetherWorkspaces = window.AetherWorkspaces || {};
+  window.AetherWorkspaces.KEYMAP_WIDGETS = KEYMAP_WIDGETS;
+})();
+</script>
+<script data-mod="ws_lighting">
+(() => {
+  /* ============================================================
+     Lighting workspace — window.AetherWorkspaces.LIGHTING_WIDGETS.
+     Control JSX ported verbatim from the old LightingSection (sections.jsx)
+     and split across four widget bodies. Color values (hex swatches, style=
+     {{background:c}}, PatternPreview) are byte-identical — these are real
+     device RGB values, never re-tokenized.
+     ============================================================ */
+  const {
+    useState,
+    useRef
+  } = React;
+  const S = window.AetherSections || {};
+  const Slider = S.Slider,
+    Chip = S.Chip,
+    SubTabs = S.SubTabs,
+    ToolbarButton = S.ToolbarButton;
+  const I = window.AetherIcons || {};
+  const IPlus = I.IPlus;
+
+  /* ===== shared static data (verbatim from sections.jsx) ===== */
+  const LIGHT_MODES = [{
+    id: "wave",
+    label: "Wave",
+    icon: "〰"
+  }, {
+    id: "neon",
+    label: "Neon",
+    icon: "◎"
+  }, {
+    id: "radar",
+    label: "Radar",
+    icon: "◒"
+  }, {
+    id: "cross",
+    label: "Cross",
+    icon: "✚"
+  }, {
+    id: "breath",
+    label: "Breath",
+    icon: "○"
+  }, {
+    id: "static",
+    label: "Static",
+    icon: "■"
+  }, {
+    id: "aurora",
+    label: "Aurora",
+    icon: "◐"
+  }, {
+    id: "ripple",
+    label: "Ripple",
+    icon: "◎"
+  }, {
+    id: "twinkle",
+    label: "Twinkle",
+    icon: "✸"
+  }, {
+    id: "reactive",
+    label: "Reactive",
+    icon: "☼"
+  }, {
+    id: "striation",
+    label: "Striation",
+    icon: "⦹"
+  }, {
+    id: "fireworks",
+    label: "Fireworks",
+    icon: "✻"
+  }, {
+    id: "frenzy",
+    label: "Frenzy",
+    icon: "✺"
+  }, {
+    id: "autorip",
+    label: "Auto Ripple",
+    icon: "◈"
+  }, {
+    id: "speedres",
+    label: "Speed Respond",
+    icon: "⦿"
+  }, {
+    id: "rain",
+    label: "Rain",
+    icon: "☂"
+  }, {
+    id: "comet",
+    label: "Comet",
+    icon: "☄"
+  }, {
+    id: "tide",
+    label: "Tide",
+    icon: "≈"
+  }, {
+    id: "custom",
+    label: "Custom",
+    icon: "◇"
+  }];
+  const ZONE_MODES = [{
+    id: "twinkle",
+    label: "Twinkle"
+  }, {
+    id: "wave",
+    label: "Wave"
+  }, {
+    id: "striation",
+    label: "Striation"
+  }, {
+    id: "radar",
+    label: "Radar"
+  }, {
+    id: "ripple",
+    label: "Ripple"
+  }, {
+    id: "cross",
+    label: "Cross"
+  }, {
+    id: "fireworks",
+    label: "Fireworks"
+  }, {
+    id: "aurora",
+    label: "Aurora"
+  }, {
+    id: "breath",
+    label: "Breath"
+  }, {
+    id: "static",
+    label: "Static"
+  }, {
+    id: "rain",
+    label: "Rain"
+  }, {
+    id: "comet",
+    label: "Comet"
+  }, {
+    id: "tide",
+    label: "Tide"
+  }];
+  const PRESET_PALETTES = [["#9d4edd"], ["#00f5ff"], ["#ff3d6e"], ["#39ff8a"], ["#9d4edd", "#00f5ff"], ["#ff7a59", "#ffaa1f"], ["#ff3d6e", "#ffaa1f", "#39ff8a"], ["#ff3d6e", "#ffaa1f", "#39ff8a", "#3b82f6"]];
+  const BG_SWATCHES = ["#000000", "#0b0f19", "#1a0833", "#001318", "#0a1f10", "#241400", "#2a0814", "#ffffff"];
+
+  /* PatternPreview — verbatim from sections.jsx (real RGB color prop). */
+  const PatternPreview = ({
+    kind,
+    color
+  }) => /*#__PURE__*/React.createElement("svg", {
+    viewBox: "0 0 100 30",
+    className: "w-full h-8 mt-3",
+    preserveAspectRatio: "none"
+  }, kind === "static" && Array.from({
+    length: 8
+  }).map((_, i) => /*#__PURE__*/React.createElement("rect", {
+    key: i,
+    x: i * 13 + 2,
+    y: 6,
+    width: "10",
+    height: "18",
+    rx: "2",
+    fill: color,
+    opacity: "0.7"
+  })), kind === "wave" && Array.from({
+    length: 8
+  }).map((_, i) => /*#__PURE__*/React.createElement("rect", {
+    key: i,
+    x: i * 13 + 2,
+    y: 6,
+    width: "10",
+    height: "18",
+    rx: "2",
+    fill: color,
+    opacity: 0.2 + (Math.sin(i) + 1) * 0.4
+  })), kind === "react" && Array.from({
+    length: 8
+  }).map((_, i) => /*#__PURE__*/React.createElement("rect", {
+    key: i,
+    x: i * 13 + 2,
+    y: 6,
+    width: "10",
+    height: "18",
+    rx: "2",
+    fill: color,
+    opacity: i === 3 ? 1 : 0.15
+  })), kind === "ripple" && [10, 18, 26].map((r, i) => /*#__PURE__*/React.createElement("circle", {
+    key: i,
+    cx: "50",
+    cy: "15",
+    r: r,
+    fill: "none",
+    stroke: color,
+    strokeWidth: "0.8",
+    opacity: 1 - i * 0.3
+  })), kind === "breathe" && /*#__PURE__*/React.createElement("rect", {
+    x: "2",
+    y: "6",
+    width: "96",
+    height: "18",
+    rx: "3",
+    fill: color,
+    opacity: "0.5"
+  }), kind === "rain" && Array.from({
+    length: 6
+  }).map((_, i) => /*#__PURE__*/React.createElement("line", {
+    key: i,
+    x1: i * 18 + 8,
+    x2: i * 18 + 8,
+    y1: i * 4,
+    y2: i * 4 + 12,
+    stroke: color,
+    strokeWidth: "1.5"
+  })));
+
+  /* Preview "kind" for a given firmware pattern id (best-effort mapping). */
+  const previewKindFor = pattern => {
+    if (pattern === "static") return "static";
+    if (pattern === "wave" || pattern === "aurora" || pattern === "tide" || pattern === "comet") return "wave";
+    if (pattern === "reactive" || pattern === "cross" || pattern === "speedres") return "react";
+    if (pattern === "ripple" || pattern === "autorip" || pattern === "radar") return "ripple";
+    if (pattern === "breath" || pattern === "neon") return "breathe";
+    if (pattern === "rain" || pattern === "twinkle" || pattern === "fireworks" || pattern === "frenzy" || pattern === "striation") return "rain";
+    return "static";
+  };
+
+  /* ===== Effect zones panel (custom mode) — verbatim behavior from sections.jsx ===== */
+  const ZonesPanel = ({
+    zones,
+    selectedKeys,
+    onAdd,
+    onUpdate,
+    onRemove
+  }) => /*#__PURE__*/React.createElement("div", {
+    className: "glass p-4"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between mb-3"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "font-display text-[12px] uppercase tracking-[0.18em] text-[var(--text)]"
+  }, "Effect Zones"), /*#__PURE__*/React.createElement("div", {
+    className: "font-mono text-[10px] text-[var(--text-faint)] mt-0.5"
+  }, "Select keys on the board, add a zone, give it its own effect")), /*#__PURE__*/React.createElement("button", {
+    onClick: onAdd,
+    disabled: !selectedKeys || selectedKeys.size === 0,
+    className: "px-2.5 h-8 rounded-md border border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] disabled:opacity-40 font-display text-[10.5px] uppercase tracking-[0.16em]"
+  }, "+ Zone (", selectedKeys?.size ?? 0, ")")), (!zones || zones.length === 0) && /*#__PURE__*/React.createElement("div", {
+    className: "font-mono text-[11px] text-[var(--text-faint)]"
+  }, "No zones yet \u2014 select keys, then click \"+ Zone\". Keys outside every zone stay off."), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-2"
+  }, (zones || []).map(z => /*#__PURE__*/React.createElement("div", {
+    key: z.id,
+    className: "rounded-lg border border-[var(--line)] bg-[rgba(5,11,14,0.35)] p-2.5"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2 mb-2"
+  }, /*#__PURE__*/React.createElement("select", {
+    value: z.mode,
+    onChange: e => onUpdate(z.id, {
+      mode: e.target.value
+    }),
+    className: "flex-1 h-8 rounded-md bg-[rgba(5,11,14,0.5)] border border-[var(--line)] text-[var(--text)] font-display text-[11px] uppercase tracking-[0.12em] px-2 outline-none"
+  }, ZONE_MODES.map(m => /*#__PURE__*/React.createElement("option", {
+    key: m.id,
+    value: m.id
+  }, m.label))), /*#__PURE__*/React.createElement("span", {
+    className: "font-mono text-[10px] text-[var(--text-faint)] whitespace-nowrap"
+  }, z.codes.length, " keys"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => onRemove(z.id),
+    title: "Remove zone",
+    className: "w-7 h-7 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:text-rose-300 hover:border-rose-400/40"
+  }, "\u2715")), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-1.5"
+  }, (z.colors || []).map((c, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    className: "relative w-7 h-7"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "w-full h-full rounded-md ring-1 ring-white/10",
+    style: {
+      background: c
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: c,
+    onChange: e => {
+      const cs = [...z.colors];
+      cs[i] = e.target.value;
+      onUpdate(z.id, {
+        colors: cs
+      });
+    },
+    className: "absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+  })), z.colors.length > 1 && /*#__PURE__*/React.createElement("button", {
+    onClick: () => onUpdate(z.id, {
+      colors: z.colors.filter((_, j) => j !== i)
+    }),
+    className: "absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-slate-900 ring-1 ring-white/20 text-[var(--text-dim)] hover:text-rose-300 grid place-items-center text-[9px]"
+  }, "\u2715"))), (z.colors || []).length < 4 && /*#__PURE__*/React.createElement("button", {
+    onClick: () => onUpdate(z.id, {
+      colors: [...(z.colors || []), "#ffffff"]
+    }),
+    className: "w-7 h-7 rounded-md border-2 border-dashed border-[var(--line)] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] grid place-items-center text-[12px]"
+  }, "+")), /*#__PURE__*/React.createElement("div", {
+    className: "flex-1 flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--text-faint)]"
+  }, "Spd"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    className: "aether flex-1",
+    min: 0,
+    max: 100,
+    step: 1,
+    value: z.speed != null ? z.speed : 60,
+    style: {
+      "--pct": (z.speed != null ? z.speed : 60) + "%"
+    },
+    onChange: e => onUpdate(z.id, {
+      speed: parseFloat(e.target.value)
+    })
+  })))))));
+
+  /* ============================================================
+     Widget 1 — Mode Picker: firmware pattern grid, power/full-RGB,
+     brightness/speed sliders, direction, striation orientation.
+     ============================================================ */
+  /* DirectionDial — an angle picker for effect flow direction. The firmware
+     supports 4 cardinal directions (right0 left1 up2 down3), so the dial snaps
+     to the nearest. Drag or click anywhere on the ring to set the angle. */
+  const DIR_BYTE_AT = [0, 2, 1, 3]; // round(angle/90)%4 -> byte
+  const DIR_ANGLE_OF = {
+    0: 0,
+    2: 90,
+    1: 180,
+    3: 270
+  };
+  const DIR_NAME = {
+    0: "Right",
+    1: "Left",
+    2: "Up",
+    3: "Down"
+  };
+  function DirectionDial({
+    direction,
+    setDirection
+  }) {
+    const ref = useRef(null);
+    const angle = DIR_ANGLE_OF[direction] != null ? DIR_ANGLE_OF[direction] : 0;
+    const pick = e => {
+      const el = ref.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      let a = Math.atan2(r.top + r.height / 2 - e.clientY, e.clientX - (r.left + r.width / 2)) * 180 / Math.PI;
+      if (a < 0) a += 360;
+      setDirection(DIR_BYTE_AT[Math.round(a / 90) % 4]);
+    };
+    const marks = [["→", 0, {
+      right: 6,
+      top: "50%",
+      transform: "translateY(-50%)"
+    }], ["↑", 2, {
+      top: 6,
+      left: "50%",
+      transform: "translateX(-50%)"
+    }], ["←", 1, {
+      left: 6,
+      top: "50%",
+      transform: "translateY(-50%)"
+    }], ["↓", 3, {
+      bottom: 6,
+      left: "50%",
+      transform: "translateX(-50%)"
+    }]];
+    return /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-4"
+    }, /*#__PURE__*/React.createElement("div", {
+      ref: ref,
+      onPointerDown: e => {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        pick(e);
+      },
+      onPointerMove: e => e.buttons && pick(e),
+      style: {
+        width: 112,
+        height: 112,
+        cursor: "pointer",
+        touchAction: "none"
+      },
+      className: "relative rounded-full border border-[var(--line)] bg-white/[0.02]"
+    }, marks.map(([glyph, byte, css]) => /*#__PURE__*/React.createElement("span", {
+      key: byte,
+      style: {
+        position: "absolute",
+        fontSize: 11,
+        ...css,
+        color: direction === byte ? "var(--accent)" : "var(--text-faint)"
+      }
+    }, glyph)), /*#__PURE__*/React.createElement("div", {
+      style: {
+        position: "absolute",
+        left: "50%",
+        top: "50%",
+        width: 44,
+        height: 3,
+        borderRadius: 3,
+        background: "linear-gradient(90deg, transparent, var(--accent))",
+        transformOrigin: "left center",
+        transform: `rotate(${-angle}deg)`,
+        boxShadow: "0 0 10px var(--accent-glow)",
+        transition: "transform 0.2s var(--ease-out)"
+      }
+    }), /*#__PURE__*/React.createElement("div", {
+      style: {
+        position: "absolute",
+        left: "50%",
+        top: "50%",
+        width: 8,
+        height: 8,
+        marginLeft: -4,
+        marginTop: -4,
+        borderRadius: "50%",
+        background: "var(--accent)"
+      }
+    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--text-faint)]"
+    }, "Angle"), /*#__PURE__*/React.createElement("div", {
+      className: "font-title text-[20px] text-[var(--text)] leading-tight"
+    }, DIR_NAME[direction] || "Right"), /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[10px] text-[var(--text-faint)] mt-0.5"
+    }, angle, "\xB0 \xB7 snaps to 4-way")));
+  }
+  function ModePickerWidget(ctx) {
+    const {
+      pattern,
+      setPattern,
+      brightness,
+      setBrightness,
+      speed,
+      setSpeed,
+      power,
+      setPower,
+      fullColor,
+      setFullColor,
+      direction,
+      setDirection,
+      striOrient,
+      setStriOrient
+    } = ctx;
+    const fullColorOk = pattern !== "static" && pattern !== "custom";
+    return /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-col gap-5"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center justify-end gap-4 mb-1"
+    }, fullColorOk && /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-2",
+      title: "Cycle the full RGB spectrum (rainbow) instead of the chosen colors"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)]"
+    }, "Full RGB"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setFullColor(!fullColor),
+      className: `relative w-10 h-5 rounded-full border transition-colors
+                          ${fullColor ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-[var(--line)]"}`
+    }, /*#__PURE__*/React.createElement("span", {
+      className: `absolute top-0.5 w-3.5 h-3.5 rounded-full transition-all
+                                ${fullColor ? "left-[20px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-slate-400"}`
+    }))), /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-2"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)]"
+    }, "Power"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setPower(!power),
+      className: `relative w-10 h-5 rounded-full border transition-colors
+                        ${power ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-[var(--line)]"}`
+    }, /*#__PURE__*/React.createElement("span", {
+      className: `absolute top-0.5 w-3.5 h-3.5 rounded-full transition-all
+                              ${power ? "left-[20px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-slate-400"}`
+    })))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)] mb-2"
+    }, "Light Mode"), /*#__PURE__*/React.createElement("div", {
+      className: "grid grid-cols-3 gap-1.5"
+    }, LIGHT_MODES.map(m => {
+      const active = pattern === m.id;
+      return /*#__PURE__*/React.createElement("button", {
+        key: m.id,
+        onClick: () => setPattern(m.id),
+        className: `h-9 rounded-lg border font-display text-[11px] tracking-[0.06em] flex items-center justify-center gap-1.5 transition-all
+                            ${active ? "border-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_14px_var(--accent-glow)]" : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`,
+        style: active ? {
+          background: "var(--accent-gradient, var(--accent))"
+        } : {}
+      }, /*#__PURE__*/React.createElement("span", {
+        className: "text-[12px]"
+      }, m.icon), " ", m.label);
+    }))), /*#__PURE__*/React.createElement("div", {
+      className: "grid grid-cols-2 gap-5"
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-baseline justify-between mb-1.5"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)]"
+    }, "Brightness"), /*#__PURE__*/React.createElement("span", {
+      className: "font-mono text-[12px] text-[var(--accent)]"
+    }, Math.round(brightness), "%")), /*#__PURE__*/React.createElement("input", {
+      type: "range",
+      className: "aether w-full",
+      min: 0,
+      max: 100,
+      step: 1,
+      value: brightness,
+      style: {
+        "--pct": brightness + "%"
+      },
+      onChange: e => setBrightness(parseFloat(e.target.value))
+    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-baseline justify-between mb-1.5"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)]"
+    }, "Speed"), /*#__PURE__*/React.createElement("span", {
+      className: "font-mono text-[12px] text-[var(--accent)]"
+    }, Math.round(speed), "%")), /*#__PURE__*/React.createElement("input", {
+      type: "range",
+      className: "aether w-full",
+      min: 0,
+      max: 100,
+      step: 1,
+      value: speed,
+      style: {
+        "--pct": speed + "%"
+      },
+      onChange: e => setSpeed(parseFloat(e.target.value))
+    }))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)] mb-2"
+    }, "Direction"), /*#__PURE__*/React.createElement(DirectionDial, {
+      direction: direction,
+      setDirection: setDirection
+    })), pattern === "striation" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)] mb-2"
+    }, "Stripe Orientation"), /*#__PURE__*/React.createElement("div", {
+      className: "grid grid-cols-3 gap-1.5 max-w-[260px]"
+    }, [["Vertical", "v", "▥"], ["Horizontal", "h", "▤"], ["Both", "both", "▦"]].map(([lbl, val, ic]) => {
+      const active = (striOrient || "v") === val;
+      return /*#__PURE__*/React.createElement("button", {
+        key: val,
+        onClick: () => setStriOrient && setStriOrient(val),
+        className: `h-9 rounded-lg border text-[11px] uppercase tracking-[0.12em] flex items-center justify-center gap-1.5 transition-all
+                              ${active ? "border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)] shadow-[0_0_12px_var(--accent-glow)]" : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`
+      }, /*#__PURE__*/React.createElement("span", {
+        className: "text-[14px]"
+      }, ic), lbl);
+    }))));
+  }
+
+  /* ============================================================
+     Widget 2 — Color Palette: effect-colors palette + presets + background color.
+     ============================================================ */
+  function ColorPaletteWidget(ctx) {
+    const {
+      colors,
+      setColors,
+      bgColor,
+      setBgColor,
+      pattern
+    } = ctx;
+    const palette = colors || [];
+    const [activeSlot, setActiveSlot] = useState(0);
+    const setSlot = (i, value) => {
+      const p = [...palette];
+      p[i] = value;
+      setColors(p);
+    };
+    const addSlot = () => {
+      if (palette.length >= 4) return;
+      const seeds = ["#663390", "#009fa6", "#a62848", "#a66e14"];
+      const next = seeds[palette.length] || "#a6a6a6";
+      setColors([...palette, next]);
+      setActiveSlot(palette.length);
+    };
+    const removeSlot = i => {
+      if (palette.length <= 0) return;
+      const p = palette.filter((_, idx) => idx !== i);
+      setColors(p);
+      if (activeSlot >= p.length) setActiveSlot(p.length - 1);
+    };
+    return /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-col gap-4"
+    }, pattern !== "custom" ? /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-baseline justify-between mb-2"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)]"
+    }, "Effect colors \xB7 ", palette.length, "/4"), /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-3"
+    }, palette.length > 0 && /*#__PURE__*/React.createElement("button", {
+      onClick: () => setColors([]),
+      className: "font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--text-dim)] hover:text-rose-300"
+    }, "Clear all"), /*#__PURE__*/React.createElement("span", {
+      className: "font-mono text-[10px] text-[var(--text-faint)]"
+    }, "click slot to recolor"))), /*#__PURE__*/React.createElement("div", {
+      className: "flex items-stretch gap-2 mb-3"
+    }, palette.map((c, i) => {
+      const isActive = activeSlot === i;
+      return /*#__PURE__*/React.createElement("div", {
+        key: i,
+        className: "relative flex-1 min-w-0 group"
+      }, /*#__PURE__*/React.createElement("button", {
+        onClick: () => setActiveSlot(i),
+        className: `relative w-full h-16 rounded-2xl overflow-hidden ring-1 transition-all
+                                ${isActive ? "ring-2 ring-white/80 scale-[1.02]" : "ring-white/10 hover:scale-[1.01]"}`,
+        style: {
+          background: c,
+          boxShadow: `0 0 24px ${c}55, inset 0 0 0 1px rgba(255,255,255,0.06)`
+        }
+      }, /*#__PURE__*/React.createElement("span", {
+        className: "absolute bottom-1.5 left-2 text-[10px] font-mono text-white/85",
+        style: {
+          textShadow: "0 1px 4px rgba(0,0,0,0.6)"
+        }
+      }, c.toUpperCase()), /*#__PURE__*/React.createElement("input", {
+        type: "color",
+        value: c,
+        onChange: e => setSlot(i, e.target.value),
+        onClick: e => e.stopPropagation(),
+        className: "absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+      })), palette.length > 0 && /*#__PURE__*/React.createElement("button", {
+        onClick: e => {
+          e.stopPropagation();
+          removeSlot(i);
+        },
+        title: "Remove",
+        className: "absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-slate-900 ring-1 ring-white/20 text-slate-300 hover:text-rose-300 grid place-items-center text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+      }, "\u2715"));
+    }), palette.length < 4 && /*#__PURE__*/React.createElement("button", {
+      onClick: addSlot,
+      className: "flex-1 min-w-0 h-16 rounded-2xl border-2 border-dashed border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] hover:bg-white/[0.04] hover:text-white grid place-items-center transition-all"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "flex items-center gap-1.5 font-display text-[11px] uppercase tracking-[0.18em]"
+    }, IPlus && /*#__PURE__*/React.createElement(IPlus, {
+      size: 13
+    }), " Add"))), /*#__PURE__*/React.createElement("div", {
+      className: "grid grid-cols-4 gap-2"
+    }, PRESET_PALETTES.map((p, i) => /*#__PURE__*/React.createElement("button", {
+      key: i,
+      onClick: () => {
+        setColors([...p]);
+        setActiveSlot(0);
+      },
+      className: "h-7 rounded-lg ring-1 ring-white/10 hover:scale-[1.02] transition-transform overflow-hidden",
+      title: p.join(", ")
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "w-full h-full flex"
+    }, p.map((c, j) => /*#__PURE__*/React.createElement("span", {
+      key: j,
+      className: "flex-1",
+      style: {
+        background: c
+      }
+    }))))))) : /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[11px] text-[var(--text-faint)]"
+    }, "Custom mode drives colors per Effect Zone (see the Effect Preview widget) \u2014 the shared palette is hidden while Custom is active."), /*#__PURE__*/React.createElement("div", {
+      className: "glass p-4"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-baseline justify-between mb-2.5"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)]"
+    }, "Background color"), /*#__PURE__*/React.createElement("span", {
+      className: "font-mono text-[10px] text-[var(--text-faint)]"
+    }, "underlies the effect")), /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-3"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "relative w-14 h-12 rounded-xl overflow-hidden ring-1 ring-white/10",
+      style: {
+        background: bgColor,
+        boxShadow: `0 0 18px ${bgColor}55`
+      }
+    }, /*#__PURE__*/React.createElement("input", {
+      type: "color",
+      value: bgColor,
+      onChange: e => setBgColor(e.target.value),
+      className: "absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+    })), /*#__PURE__*/React.createElement("input", {
+      type: "text",
+      value: bgColor.toUpperCase(),
+      onChange: e => {
+        const v = e.target.value;
+        if (/^#[0-9a-fA-F]{6}$/.test(v)) setBgColor(v);else setBgColor(v);
+      },
+      className: "flex-1 h-10 px-3 rounded-lg bg-[rgba(5,11,14,0.5)] border border-[var(--line)] font-mono text-[12px] text-[var(--text)] outline-none focus:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"
+    }), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setBgColor("#000000"),
+      className: "px-2.5 h-10 rounded-lg border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:text-white hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] font-display text-[10.5px] uppercase tracking-[0.16em]"
+    }, "Off")), /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-1.5 mt-2.5"
+    }, BG_SWATCHES.map(c => /*#__PURE__*/React.createElement("button", {
+      key: c,
+      onClick: () => setBgColor(c),
+      className: `w-6 h-6 rounded-md ring-1 ${bgColor.toLowerCase() === c.toLowerCase() ? "ring-white scale-110" : "ring-white/15 hover:scale-105"} transition-transform`,
+      style: {
+        background: c
+      },
+      title: c
+    })))));
+  }
+
+  /* ============================================================
+     Widget 3 — Effect Preview: live SVG pattern preview + Custom effect zones.
+     ============================================================ */
+  function EffectPreviewWidget(ctx) {
+    const {
+      pattern,
+      colors,
+      bgColor,
+      zones,
+      addZone,
+      updateZone,
+      removeZone,
+      selectedKeys
+    } = ctx;
+    const palette = colors || [];
+    const previewColor = palette[0] || bgColor || "#9d4edd";
+    const kind = previewKindFor(pattern);
+    return /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-col gap-4"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "glass p-4"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-baseline justify-between mb-1"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)]"
+    }, "Preview"), /*#__PURE__*/React.createElement("span", {
+      className: "font-mono text-[10px] text-[var(--text-faint)] uppercase tracking-[0.16em]"
+    }, pattern)), /*#__PURE__*/React.createElement(PatternPreview, {
+      kind: kind,
+      color: previewColor
+    })), pattern === "custom" && /*#__PURE__*/React.createElement(ZonesPanel, {
+      zones: zones,
+      selectedKeys: selectedKeys,
+      onAdd: addZone,
+      onUpdate: updateZone,
+      onRemove: removeZone
+    }), pattern !== "custom" && /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[11px] text-[var(--text-faint)]"
+    }, "Switch Light Mode to \"Custom\" (Mode Picker widget) to build per-zone effects here."));
+  }
+
+  /* ============================================================
+     Widget 4 — Per-key Paint: assign/clear the active palette color to
+     the current key selection.
+     ============================================================ */
+  function PerKeyPaintWidget(ctx) {
+    const {
+      colors,
+      perKeyColors,
+      setPerKeyColors,
+      selectedKeys,
+      setSelectedKeys,
+      ledMap
+    } = ctx;
+    const palette = colors || [];
+    const [activeSlot, setActiveSlot] = useState(0);
+    const selCount = selectedKeys ? selectedKeys.size : 0;
+    const assignToSelection = () => {
+      if (!selectedKeys || selectedKeys.size === 0) return;
+      const c = palette[activeSlot] || palette[0] || "#ffffff";
+      const next = {
+        ...(perKeyColors || {})
+      };
+      selectedKeys.forEach(code => {
+        next[code] = c;
+      });
+      setPerKeyColors(next);
+    };
+    const clearPerKeyForSelection = () => {
+      if (!selectedKeys || selectedKeys.size === 0) return;
+      const next = {
+        ...(perKeyColors || {})
+      };
+      selectedKeys.forEach(code => {
+        delete next[code];
+      });
+      setPerKeyColors(next);
+    };
+    const selectAll = () => {
+      if (!setSelectedKeys) return;
+      setSelectedKeys(new Set(Object.keys(ledMap || {})));
+    };
+    const clearSelection = () => {
+      if (!setSelectedKeys) return;
+      setSelectedKeys(new Set());
+    };
+    return /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-col gap-4"
+    }, palette.length > 0 && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)] mb-2"
+    }, "Active slot"), /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-2"
+    }, palette.map((c, i) => /*#__PURE__*/React.createElement("button", {
+      key: i,
+      onClick: () => setActiveSlot(i),
+      className: `w-9 h-9 rounded-lg ring-1 transition-all ${activeSlot === i ? "ring-2 ring-white/80 scale-110" : "ring-white/10 hover:scale-105"}`,
+      style: {
+        background: c,
+        boxShadow: `0 0 12px ${c}55`
+      },
+      title: c.toUpperCase()
+    })))), /*#__PURE__*/React.createElement("div", {
+      className: "glass p-4"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center justify-between mb-3"
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "font-display text-[12px] uppercase tracking-[0.18em] text-[var(--text)]"
+    }, "Per-key colors"), /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[10px] text-[var(--text-faint)] mt-0.5"
+    }, selCount, " key", selCount === 1 ? "" : "s", " selected \xB7 Ctrl/\u2318-click to toggle")), /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-1.5"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: selectAll,
+      className: "px-2.5 h-8 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:text-white hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] font-display text-[10.5px] uppercase tracking-[0.16em]"
+    }, "Select all"), /*#__PURE__*/React.createElement("button", {
+      onClick: clearSelection,
+      className: "px-2.5 h-8 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:text-white hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] font-display text-[10.5px] uppercase tracking-[0.16em]"
+    }, "Clear"))), /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-2"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: assignToSelection,
+      disabled: !selectedKeys || selectedKeys.size === 0,
+      className: "flex-1 h-10 rounded-lg font-display text-[12px] uppercase tracking-[0.18em] text-[var(--accent-fg)] disabled:opacity-40 disabled:cursor-not-allowed transition-all hover:brightness-110",
+      style: {
+        background: "var(--accent-gradient, var(--accent))",
+        boxShadow: "0 8px 24px -8px var(--accent-glow)"
+      }
+    }, "Paint selected with slot ", activeSlot + 1), /*#__PURE__*/React.createElement("button", {
+      onClick: clearPerKeyForSelection,
+      disabled: !selectedKeys || selectedKeys.size === 0,
+      className: "px-3 h-10 rounded-lg border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:text-white hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] disabled:opacity-40 font-display text-[11.5px] uppercase tracking-[0.18em]"
+    }, "Reset"))));
+  }
+
+  /* ============================================================
+     Widget 5 — Live Keyboard: the real board painted with the live animated
+     effect frame (ctx.ledMapLive, polled from get_light_frame on the Lighting
+     tab). Click keys to build a selection for Per-key Paint. This is the
+     animated keyboard preview from the previous UI.
+     ============================================================ */
+  function LiveKeyboardWidget(ctx) {
+    const KB = window.AetherKeyboard || {};
+    const KeyboardPanel = KB.KeyboardPanel;
+    const {
+      ledMap,
+      ledMapLive,
+      perKeyColors,
+      selectedKeys,
+      setSelectedKeys,
+      connected
+    } = ctx;
+    if (typeof KeyboardPanel !== "function") {
+      return /*#__PURE__*/React.createElement("div", {
+        className: "font-mono text-[11px] text-[var(--text-faint)] p-2"
+      }, "keyboard layout unavailable");
+    }
+    return /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-col gap-2"
+    }, !connected && /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-faint)]"
+    }, "connect the board to see the live effect"), /*#__PURE__*/React.createElement("div", {
+      className: "flex justify-center"
+    }, React.createElement(KeyboardPanel, {
+      mode: "lighting",
+      layer: "default",
+      ledMap: ledMapLive || ledMap,
+      perKeyOverride: perKeyColors,
+      selectedKeys: selectedKeys || new Set(),
+      setSelectedKeys: setSelectedKeys || (() => {}),
+      showPill: false
+    })));
+  }
+
+  /* ============================================================
+     Layout — Live Keyboard is the hero (wide, top); controls below/around.
+     ============================================================ */
+  const LIGHTING_WIDGETS = [{
+    id: "live",
+    title: "Live Keyboard",
+    default: {
+      x: 40,
+      y: 32,
+      w: 1000,
+      h: 330
+    },
+    min: {
+      w: 560,
+      h: 240
+    },
+    render: LiveKeyboardWidget
+  }, {
+    id: "mode",
+    title: "Mode Picker",
+    default: {
+      x: 40,
+      y: 382,
+      w: 460,
+      h: 520
+    },
+    min: {
+      w: 340,
+      h: 420
+    },
+    render: ModePickerWidget
+  }, {
+    id: "palette",
+    title: "Color Palette",
+    default: {
+      x: 520,
+      y: 382,
+      w: 460,
+      h: 460
+    },
+    min: {
+      w: 340,
+      h: 340
+    },
+    render: ColorPaletteWidget
+  }, {
+    id: "preview",
+    title: "Effect Preview",
+    default: {
+      x: 1000,
+      y: 382,
+      w: 380,
+      h: 460
+    },
+    min: {
+      w: 300,
+      h: 300
+    },
+    render: EffectPreviewWidget
+  }, {
+    id: "perkey",
+    title: "Per-key Paint",
+    default: {
+      x: 1060,
+      y: 32,
+      w: 380,
+      h: 330
+    },
+    min: {
+      w: 340,
+      h: 260
+    },
+    render: PerKeyPaintWidget
+  }];
+  window.AetherWorkspaces = window.AetherWorkspaces || {};
+  window.AetherWorkspaces.LIGHTING_WIDGETS = LIGHTING_WIDGETS;
+})();
+</script>
+<script data-mod="ws_settings">
+(() => {
+  /* ============================================================
+     Settings workspace — app configuration & profile management.
+     Exports window.AetherWorkspaces.SETTINGS_WIDGETS — an array of widget descriptors:
+       { id, title, default:{x,y,w,h}, min:{w,h}, render:(ctx)=>JSX }
+     Each render() reads/calls ONLY ctx.* (state + handlers app.jsx passes down).
+     ============================================================ */
+  const {
+    useState,
+    useEffect
+  } = React;
+  const S = window.AetherSections || {};
+  const Slider = S.Slider,
+    Chip = S.Chip,
+    SubTabs = S.SubTabs,
+    ToolbarButton = S.ToolbarButton;
+  const I = window.AetherIcons || {};
+  const ICheck = I.ICheck,
+    IPlus = I.IPlus,
+    ITrash = I.ITrash,
+    IEdit = I.IEdit,
+    IDownload = I.IDownload,
+    IRefresh = I.IRefresh,
+    ISettings = I.ISettings;
+
+  /* ===== Profiles widget ===== */
+  function ProfilesWidget(ctx) {
+    const {
+      profiles = [],
+      activeId,
+      activeProfileName = "Default",
+      switchProfile,
+      renameProfile,
+      addProfile,
+      duplicateProfile,
+      deleteProfile
+    } = ctx;
+    const [editId, setEditId] = useState(null);
+    const [editName, setEditName] = useState("");
+    const [toast, setToast] = useState(null);
+    const flash = msg => {
+      setToast(msg);
+      setTimeout(() => setToast(null), 2400);
+    };
+    const handleAdd = () => {
+      if (addProfile) {
+        addProfile();
+        flash("Profile added");
+      }
+    };
+    const handleSwitch = id => {
+      if (switchProfile) {
+        switchProfile(id);
+      }
+    };
+    const handleStartEdit = (id, name) => {
+      setEditId(id);
+      setEditName(name);
+    };
+    const handleSaveEdit = id => {
+      if (editName.trim() && renameProfile) {
+        renameProfile(id, editName.trim());
+        setEditId(null);
+        flash(`Renamed to "${editName.trim()}"`);
+      }
+    };
+    const handleDuplicate = id => {
+      if (duplicateProfile) {
+        duplicateProfile(id);
+        flash("Profile duplicated");
+      }
+    };
+    const handleDelete = id => {
+      if (deleteProfile && profiles.length > 1) {
+        deleteProfile(id);
+        flash("Profile deleted");
+      }
+    };
+    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "mb-4"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)] mb-2"
+    }, "Profile Management"), /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center justify-between gap-2 mb-3"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "text-[13px] text-[var(--text)]"
+    }, profiles.length, " profile", profiles.length !== 1 ? "s" : ""), /*#__PURE__*/React.createElement("button", {
+      onClick: handleAdd,
+      className: "px-2.5 h-8 rounded-md border border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] font-display text-[10.5px] uppercase tracking-[0.16em] hover:bg-[var(--accent)]/25"
+    }, IPlus && /*#__PURE__*/React.createElement("span", {
+      className: "inline mr-1"
+    }, IPlus && "+"), "Add"))), /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-col gap-2 mb-4"
+    }, profiles.map(p => {
+      const isActive = activeId === p.id;
+      const isEditing = editId === p.id;
+      return /*#__PURE__*/React.createElement("div", {
+        key: p.id,
+        className: `rounded-lg border p-3 transition-all ${isActive ? "border-[var(--accent)]/50 bg-[var(--accent)]/[0.06]" : "border-[var(--line)] bg-white/[0.02]"}`
+      }, /*#__PURE__*/React.createElement("div", {
+        className: "flex items-center justify-between gap-2"
+      }, isEditing ? /*#__PURE__*/React.createElement("input", {
+        type: "text",
+        value: editName,
+        onChange: e => setEditName(e.target.value),
+        onKeyDown: e => {
+          if (e.key === "Enter") handleSaveEdit(p.id);
+          if (e.key === "Escape") setEditId(null);
+        },
+        className: "flex-1 h-7 rounded-md border border-[var(--accent)]/50 bg-[var(--accent)]/10 px-2 text-[12px] text-[var(--text)] font-display outline-none",
+        autoFocus: true
+      }) : /*#__PURE__*/React.createElement("button", {
+        onClick: () => handleSwitch(p.id),
+        className: `flex-1 text-left px-2 h-7 rounded-md border transition-all ${isActive ? "border-[var(--accent)]/50 bg-[var(--accent)]/10 text-[var(--accent)]" : "border-transparent bg-white/[0.02] text-[var(--text)] hover:border-[var(--line)]"} font-display text-[12px]`
+      }, p.name || "Untitled", isActive && /*#__PURE__*/React.createElement("span", {
+        className: "ml-2 text-[10px]"
+      }, "\u2713")), /*#__PURE__*/React.createElement("div", {
+        className: "flex items-center gap-1"
+      }, isEditing ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
+        onClick: () => handleSaveEdit(p.id),
+        className: "w-6 h-6 rounded-md border border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] flex items-center justify-center text-[11px]"
+      }, "\u2713"), /*#__PURE__*/React.createElement("button", {
+        onClick: () => setEditId(null),
+        className: "w-6 h-6 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] flex items-center justify-center text-[11px]"
+      }, "\u2715")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
+        onClick: () => handleStartEdit(p.id, p.name || "Untitled"),
+        className: "w-6 h-6 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] flex items-center justify-center text-[10px]",
+        title: "Rename"
+      }, IEdit ? "✎" : "E"), /*#__PURE__*/React.createElement("button", {
+        onClick: () => handleDuplicate(p.id),
+        className: "w-6 h-6 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] flex items-center justify-center text-[9px]",
+        title: "Duplicate"
+      }, "\u25C8"), /*#__PURE__*/React.createElement("button", {
+        onClick: () => handleDelete(p.id),
+        disabled: profiles.length <= 1,
+        className: "w-6 h-6 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-rose-400/40 hover:text-rose-300 disabled:opacity-40 flex items-center justify-center text-[10px]",
+        title: "Delete"
+      }, "\u2715")))));
+    })), toast && /*#__PURE__*/React.createElement("div", {
+      className: "mt-2 text-[11px] font-mono uppercase tracking-[0.16em] text-[var(--accent)]"
+    }, "\u2713 ", toast));
+  }
+
+  /* ===== Theme widget ===== */
+  function ThemeWidget(ctx) {
+    const {
+      theme = "dark",
+      setTheme,
+      setThemeOpen
+    } = ctx;
+    const themes = [{
+      id: "dark",
+      label: "Dark",
+      desc: "Dim background, bright accents"
+    }, {
+      id: "light",
+      label: "Light",
+      desc: "Bright background, muted accents"
+    }, {
+      id: "auto",
+      label: "Auto",
+      desc: "Match system preference"
+    }];
+    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)] mb-3"
+    }, "Appearance"), /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-col gap-2 mb-4"
+    }, themes.map(t => /*#__PURE__*/React.createElement("button", {
+      key: t.id,
+      onClick: () => setTheme && setTheme(t.id),
+      className: `text-left rounded-lg border p-2.5 transition-all ${theme === t.id ? "border-[var(--accent)]/50 bg-[var(--accent)]/[0.06]" : "border-[var(--line)] bg-white/[0.02] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center justify-between"
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "font-display text-[12px] text-[var(--text)]"
+    }, t.label), /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[10px] text-[var(--text-faint)] mt-0.5"
+    }, t.desc)), theme === t.id && /*#__PURE__*/React.createElement("span", {
+      className: "text-[var(--accent)]"
+    }, "\u2713"))))), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setThemeOpen && setThemeOpen(true),
+      className: "w-full h-9 rounded-md border border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] font-display text-[11px] uppercase tracking-[0.16em] hover:bg-[var(--accent)]/25 transition-all"
+    }, "Customize Colors"));
+  }
+
+  /* ===== Backup/Import widget ===== */
+  function BackupWidget(ctx) {
+    const {
+      applyState
+    } = ctx;
+    const [message, setMessage] = useState("");
+    const handleExport = () => {
+      try {
+        const state = {
+          timestamp: new Date().toISOString(),
+          app: "AetherHE",
+          profiles: [],
+          settings: {}
+        };
+        const json = JSON.stringify(state, null, 2);
+        const blob = new Blob([json], {
+          type: "application/json"
+        });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `aether-backup-${Date.now()}.json`;
+        link.click();
+        URL.revokeObjectURL(url);
+        setMessage("Settings exported");
+        setTimeout(() => setMessage(""), 2400);
+      } catch (e) {
+        setMessage("Export failed");
+        setTimeout(() => setMessage(""), 2400);
+      }
+    };
+    const handleImport = async () => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "application/json";
+      input.onchange = async e => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        try {
+          const text = await file.text();
+          const data = JSON.parse(text);
+          if (applyState && typeof applyState === "function") {
+            applyState(data);
+            setMessage("Settings imported");
+            setTimeout(() => setMessage(""), 2400);
+          }
+        } catch (err) {
+          setMessage("Import failed");
+          setTimeout(() => setMessage(""), 2400);
+        }
+      };
+      input.click();
+    };
+    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)] mb-3"
+    }, "Settings"), /*#__PURE__*/React.createElement("p", {
+      className: "text-[11.5px] text-[var(--text-faint)] leading-relaxed mb-4"
+    }, "Export or import your configuration. Backups include profiles, keymaps, lighting effects, and all settings."), /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-col gap-2"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: handleExport,
+      className: "h-9 rounded-md border border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] font-display text-[11px] uppercase tracking-[0.16em] hover:bg-[var(--accent)]/25 transition-all"
+    }, IDownload ? "↓" : "Export", " Export"), /*#__PURE__*/React.createElement("button", {
+      onClick: handleImport,
+      className: "h-9 rounded-md border border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] font-display text-[11px] uppercase tracking-[0.16em] hover:bg-[var(--accent)]/25 transition-all"
+    }, IDownload ? "↑" : "Import", " Import")), message && /*#__PURE__*/React.createElement("div", {
+      className: "mt-3 text-[11px] font-mono uppercase tracking-[0.16em] text-[var(--accent)]"
+    }, "\u2713 ", message));
+  }
+
+  /* ===== About/Update widget ===== */
+  function AboutWidget(ctx) {
+    const {
+      setWizardOpen
+    } = ctx;
+    const [version, setVersion] = useState("—");
+    const [updateState, setUpdateState] = useState({
+      phase: "idle",
+      msg: ""
+    });
+    useEffect(() => {
+      const api = window.pywebview?.api;
+      if (!api?.app_version) return;
+      api.app_version().then(r => {
+        if (r?.ok) setVersion(r.version);
+      }).catch(() => {});
+    }, []);
+    const checkUpdate = async () => {
+      const api = window.pywebview?.api;
+      if (!api?.check_update) return;
+      setUpdateState({
+        phase: "checking",
+        msg: "Checking for updates…"
+      });
+      try {
+        const r = await api.check_update();
+        if (r?.ok) {
+          if (r.available) {
+            setUpdateState({
+              phase: "available",
+              msg: `Update available: v${r.version}`
+            });
+          } else {
+            setUpdateState({
+              phase: "uptodate",
+              msg: "You're up to date"
+            });
+          }
+        } else {
+          setUpdateState({
+            phase: "error",
+            msg: "Check failed"
+          });
+        }
+      } catch (e) {
+        setUpdateState({
+          phase: "error",
+          msg: "Check failed"
+        });
+      }
+    };
+    const applyUpdate = async () => {
+      const api = window.pywebview?.api;
+      if (!api?.apply_update) return;
+      setUpdateState({
+        phase: "installing",
+        msg: "Downloading…"
+      });
+      try {
+        const r = await api.apply_update();
+        if (r?.ok) {
+          setUpdateState({
+            phase: "installed",
+            msg: "Update complete"
+          });
+        } else {
+          setUpdateState({
+            phase: "error",
+            msg: "Installation failed"
+          });
+        }
+      } catch (e) {
+        setUpdateState({
+          phase: "error",
+          msg: "Installation failed"
+        });
+      }
+    };
+    const openWizard = () => {
+      if (setWizardOpen) setWizardOpen(true);
+    };
+    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)] mb-3"
+    }, "About"), /*#__PURE__*/React.createElement("div", {
+      className: "rounded-lg border border-[var(--line)] bg-white/[0.02] p-3 mb-4"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-baseline justify-between mb-2"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-faint)]"
+    }, "Version"), /*#__PURE__*/React.createElement("span", {
+      className: "font-display text-[13px] text-[var(--text)]"
+    }, version)), /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[9px] text-[var(--text-faint)]"
+    }, "AetherHE Desktop Controller")), /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-col gap-2 mb-4"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: checkUpdate,
+      disabled: updateState.phase === "checking",
+      className: "h-9 rounded-md border border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] font-display text-[11px] uppercase tracking-[0.16em] hover:bg-[var(--accent)]/25 disabled:opacity-50 transition-all"
+    }, IRefresh ? "↻" : "Check", " Check for Updates"), (updateState.phase === "available" || updateState.phase === "installed") && /*#__PURE__*/React.createElement("button", {
+      onClick: applyUpdate,
+      disabled: updateState.phase === "installing",
+      className: "h-9 rounded-md border border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)] font-display text-[11px] uppercase tracking-[0.16em] hover:bg-[var(--accent)]/25 disabled:opacity-50 transition-all"
+    }, updateState.phase === "installing" ? "Installing…" : "Install Update"), /*#__PURE__*/React.createElement("button", {
+      onClick: openWizard,
+      className: "h-9 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] font-display text-[11px] uppercase tracking-[0.16em] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] transition-all"
+    }, "Setup Wizard")), updateState.msg && /*#__PURE__*/React.createElement("div", {
+      className: `text-[11px] font-mono uppercase tracking-[0.16em] ${updateState.phase === "error" ? "text-rose-300" : "text-[var(--text-faint)]"}`
+    }, updateState.msg));
+  }
+
+  /* ===== Widget array export ===== */
+  const SETTINGS_WIDGETS = [{
+    id: "profiles",
+    title: "Profiles",
+    default: {
+      x: 40,
+      y: 32,
+      w: 380,
+      h: 380
+    },
+    min: {
+      w: 300,
+      h: 280
+    },
+    render: ProfilesWidget
+  }, {
+    id: "theme",
+    title: "Theme",
+    default: {
+      x: 440,
+      y: 32,
+      w: 340,
+      h: 280
+    },
+    min: {
+      w: 280,
+      h: 220
+    },
+    render: ThemeWidget
+  }, {
+    id: "backup",
+    title: "Backup",
+    default: {
+      x: 40,
+      y: 432,
+      w: 380,
+      h: 240
+    },
+    min: {
+      w: 300,
+      h: 180
+    },
+    render: BackupWidget
+  }, {
+    id: "about",
+    title: "About/Update",
+    default: {
+      x: 440,
+      y: 432,
+      w: 340,
+      h: 320
+    },
+    min: {
+      w: 280,
+      h: 240
+    },
+    render: AboutWidget
+  }];
+  window.AetherWorkspaces = window.AetherWorkspaces || {};
+  window.AetherWorkspaces.SETTINGS_WIDGETS = SETTINGS_WIDGETS;
+})();
+</script>
+<script data-mod="ws_socd">
+(() => {
+  /* SOCD Workspace: 3-widget layout for key pair editor, hotkey control, and active pairs list */
+  const {
+    useState,
+    useEffect
+  } = React;
+  const {
+    IPlus,
+    ITrash,
+    IUnlink,
+    ICheck
+  } = window.AetherIcons;
+  const {
+    Chip,
+    ToolbarButton
+  } = window.AetherSections;
+  const BASIC_KEYS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "1!", "2@", "3#", "$4", "5%", "6^", "7&", "8*", "9(", "0)", "-_", "=+", "{[", "}]", "\\|", "<>", ";:", "'\"", "`~", ",<", ".>", "/?"];
+  const EXTENDED_KEYS = ["Esc", "Tab", "Caps", "Back", "Enter", "Space", "L-Ctrl", "R-Ctrl", "L-Shift", "R-Shift", "L-Alt", "R-Alt", "L-Win", "R-Win", "Menu", "Left", "Up", "Right", "Down", "PrtSc", "ScrLk", "Pause", "Ins", "Home", "Del", "End", "PgUp", "PgDn", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12"];
+
+  /* ===== KeyGrid: collapsible key picker ===== */
+  const KeyGrid = ({
+    title,
+    keys,
+    picked,
+    onPick
+  }) => {
+    const [open, setOpen] = useState(true);
+    const IChevronD = window.AetherIcons?.IChevronD;
+    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("button", {
+      onClick: () => setOpen(o => !o),
+      className: "flex items-center gap-2 mb-2 text-[var(--text-dim)] hover:text-[var(--text)]"
+    }, IChevronD && /*#__PURE__*/React.createElement(IChevronD, {
+      size: 12,
+      className: open ? "" : "-rotate-90"
+    }), /*#__PURE__*/React.createElement("span", {
+      className: "font-display text-[12px] uppercase tracking-[0.18em]"
+    }, title)), open && /*#__PURE__*/React.createElement("div", {
+      className: "grid grid-cols-[repeat(auto-fill,minmax(46px,1fr))] gap-1.5 mb-3"
+    }, keys.map(k => {
+      const active = picked === k;
+      return /*#__PURE__*/React.createElement("button", {
+        key: k,
+        onClick: () => onPick(k),
+        className: `h-9 rounded-md border font-mono text-[11px] transition-all
+                            ${active ? "border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)] shadow-[0_0_12px_var(--accent-glow)]" : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] hover:text-[var(--text)]"}`
+      }, k);
+    })));
+  };
+
+  /* ===== Pair Editor Widget ===== */
+  const PairEditorWidget = ctx => {
+    const {
+      socdProfiles,
+      setSocdProfiles,
+      socdActive,
+      setSocdActive
+    } = ctx;
+    const [editTarget, setEditTarget] = useState("k1"); // "k1" or "k2"
+    const cur = socdProfiles.find(p => p.id === socdActive) || socdProfiles[0];
+    const updateActive = patch => {
+      setSocdProfiles(ps => ps.map(p => p.id === socdActive ? {
+        ...p,
+        ...patch
+      } : p));
+    };
+    const addProfile = () => {
+      const next = `SOCD${socdProfiles.length + 1}`;
+      setSocdProfiles([...socdProfiles, {
+        id: next,
+        k1: "",
+        k2: "",
+        mode: 1
+      }]);
+      setSocdActive(next);
+    };
+    const delActive = () => {
+      if (socdProfiles.length <= 1) return;
+      const remaining = socdProfiles.filter(p => p.id !== socdActive);
+      setSocdProfiles(remaining);
+      setSocdActive(remaining[0].id);
+    };
+    return /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-col gap-4 h-full overflow-y-auto"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-3"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex-1"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-faint)] mb-1"
+    }, "Key 1"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setEditTarget("k1"),
+      className: `w-full h-9 rounded-md border grid place-items-center font-mono text-[14px] transition-colors
+                         ${editTarget === "k1" ? "border-[var(--accent)]/50 text-[var(--accent)] bg-[var(--accent)]/10 shadow-[0_0_8px_var(--accent-glow)]" : cur?.k1 ? "border-[var(--accent)]/30 text-[var(--accent)] bg-[var(--accent)]/10 hover:shadow-[0_0_8px_var(--accent-glow)]" : "border-[var(--line)] text-[var(--text-faint)] bg-white/[0.02] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`
+    }, cur?.k1 || "—")), /*#__PURE__*/React.createElement("div", {
+      className: "text-[var(--text-faint)] mt-5"
+    }, IUnlink && /*#__PURE__*/React.createElement(IUnlink, {
+      size: 14
+    })), /*#__PURE__*/React.createElement("div", {
+      className: "flex-1"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-faint)] mb-1"
+    }, "Key 2"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setEditTarget("k2"),
+      className: `w-full h-9 rounded-md border grid place-items-center font-mono text-[14px] transition-colors
+                         ${editTarget === "k2" ? "border-[var(--accent)]/50 text-[var(--accent)] bg-[var(--accent)]/10 shadow-[0_0_8px_var(--accent-glow)]" : cur?.k2 ? "border-[var(--accent)]/30 text-[var(--accent)] bg-[var(--accent)]/10 hover:shadow-[0_0_8px_var(--accent-glow)]" : "border-[var(--line)] text-[var(--text-faint)] bg-white/[0.02] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`
+    }, cur?.k2 || "—"))), /*#__PURE__*/React.createElement("div", {
+      className: "grid grid-cols-2 gap-1.5"
+    }, [1, 2, 3, 4].map(m => /*#__PURE__*/React.createElement("button", {
+      key: m,
+      onClick: () => updateActive({
+        mode: m
+      }),
+      className: `flex items-center gap-2 px-3 h-9 rounded-md border font-mono text-[12px] transition-all
+                        ${cur?.mode === m ? "border-[var(--accent)]/50 bg-[var(--accent)]/10 text-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`
+    }, /*#__PURE__*/React.createElement("span", {
+      className: `w-3 h-3 rounded-full border ${cur?.mode === m ? "border-[var(--accent)] bg-[var(--accent)]" : "border-[var(--text-faint)]"}`
+    }), "Model ", m))), editTarget === "k1" && /*#__PURE__*/React.createElement("div", {
+      className: "p-3 rounded-md border border-[var(--accent)]/30 bg-[var(--accent)]/[0.05]"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "font-display text-[10px] uppercase tracking-[0.16em] text-[var(--accent)] mb-2"
+    }, "Select Key 1"), /*#__PURE__*/React.createElement(KeyGrid, {
+      title: "Basic Keys",
+      keys: BASIC_KEYS,
+      picked: cur?.k1,
+      onPick: k => {
+        updateActive({
+          k1: k
+        });
+        setEditTarget("k2");
+      }
+    }), /*#__PURE__*/React.createElement(KeyGrid, {
+      title: "Extended Keys",
+      keys: EXTENDED_KEYS,
+      picked: cur?.k1,
+      onPick: k => {
+        updateActive({
+          k1: k
+        });
+        setEditTarget("k2");
+      }
+    })), editTarget === "k2" && /*#__PURE__*/React.createElement("div", {
+      className: "p-3 rounded-md border border-[var(--accent)]/30 bg-[var(--accent)]/[0.05]"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "font-display text-[10px] uppercase tracking-[0.16em] text-[var(--accent)] mb-2"
+    }, "Select Key 2"), /*#__PURE__*/React.createElement(KeyGrid, {
+      title: "Basic Keys",
+      keys: BASIC_KEYS,
+      picked: cur?.k2,
+      onPick: k => {
+        updateActive({
+          k2: k
+        });
+        setEditTarget(null);
+      }
+    }), /*#__PURE__*/React.createElement(KeyGrid, {
+      title: "Extended Keys",
+      keys: EXTENDED_KEYS,
+      picked: cur?.k2,
+      onPick: k => {
+        updateActive({
+          k2: k
+        });
+        setEditTarget(null);
+      }
+    })), /*#__PURE__*/React.createElement("div", {
+      className: "rounded-md border border-[var(--line)] bg-[rgba(5,11,14,0.5)] p-3 text-[11.5px] text-[var(--text-dim)] leading-relaxed"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "text-[var(--text)] font-display uppercase tracking-[0.18em] text-[10.5px] mb-2"
+    }, "When both Key1 and Key2 fire:"), /*#__PURE__*/React.createElement("div", {
+      className: "space-y-1.5 font-mono text-[10px]"
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+      className: "text-[var(--accent)]"
+    }, "Model 1"), " \xB7 First press wins; second is interrupted."), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+      className: "text-[var(--accent)]"
+    }, "Model 2"), " \xB7 Key1 interrupts Key2."), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+      className: "text-[var(--accent)]"
+    }, "Model 3"), " \xB7 Key2 interrupts Key1."), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+      className: "text-[var(--accent)]"
+    }, "Model 4"), " \xB7 Later-triggered key wins (Snap Tap)."))), /*#__PURE__*/React.createElement("div", {
+      className: "flex gap-2"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: addProfile,
+      className: "flex-1 flex items-center justify-center gap-1 h-8 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] font-display text-[11px] uppercase tracking-[0.16em]"
+    }, IPlus && /*#__PURE__*/React.createElement(IPlus, {
+      size: 12
+    }), " New"), /*#__PURE__*/React.createElement("button", {
+      onClick: delActive,
+      className: "flex-1 flex items-center justify-center gap-1 h-8 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-rose-400/40 hover:text-rose-300 font-display text-[11px] uppercase tracking-[0.16em]"
+    }, ITrash && /*#__PURE__*/React.createElement(ITrash, {
+      size: 12
+    }), " Delete")));
+  };
+
+  /* ===== Hotkey Widget ===== */
+  const HotkeyWidget = ctx => {
+    const {
+      hotkey,
+      hotkeyEnabled,
+      setHotkeyEnabled,
+      handleSocdApply,
+      socdProfiles
+    } = ctx;
+    return /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-col gap-4 h-full"
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)] mb-2"
+    }, "Switch hotkey"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setHotkeyEnabled(!hotkeyEnabled),
+      className: `relative w-10 h-5 rounded-full border transition-colors w-full flex items-center justify-between px-3
+                      ${hotkeyEnabled ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-[rgba(5,11,14,0.5)] border-[var(--line)]"}`
+    }, /*#__PURE__*/React.createElement("span", {
+      className: `absolute top-0.5 w-3.5 h-3.5 rounded-full transition-all
+                            ${hotkeyEnabled ? "left-[20px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-[var(--text-faint)]"}`
+    }))), /*#__PURE__*/React.createElement("div", {
+      className: "rounded-md border border-[var(--line)] bg-[rgba(5,11,14,0.5)] p-3"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-faint)] mb-1"
+    }, "Active hotkey"), /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[13px] text-[var(--accent)]"
+    }, hotkey || "—")), /*#__PURE__*/React.createElement("div", {
+      className: "rounded-md border border-[var(--line)] bg-[rgba(5,11,14,0.5)] p-3 flex-1 flex flex-col"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-faint)] mb-2"
+    }, "Status"), /*#__PURE__*/React.createElement("div", {
+      className: "flex-1 flex flex-col justify-center"
+    }, hotkeyEnabled ? /*#__PURE__*/React.createElement("div", {
+      className: "text-[11.5px] text-[var(--text)]"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "font-display uppercase tracking-[0.16em] text-[var(--accent)] mb-1"
+    }, "Enabled"), /*#__PURE__*/React.createElement("div", {
+      className: "text-[10.5px] text-[var(--text-dim)]"
+    }, "Press ", /*#__PURE__*/React.createElement("span", {
+      className: "font-mono text-[var(--accent)]"
+    }, hotkey), " to cycle SOCD profiles")) : /*#__PURE__*/React.createElement("div", {
+      className: "text-[11.5px] text-[var(--text-dim)]"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "font-display uppercase tracking-[0.16em] mb-1"
+    }, "Disabled"), /*#__PURE__*/React.createElement("div", {
+      className: "text-[10.5px]"
+    }, "Toggle to enable hotkey switching")))), /*#__PURE__*/React.createElement("button", {
+      onClick: () => handleSocdApply && handleSocdApply(socdProfiles, hotkeyEnabled),
+      className: "px-4 h-9 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-fg)] font-display text-[12px] uppercase tracking-[0.16em] shadow-[0_0_18px_var(--accent-glow)] hover:brightness-110"
+    }, "Apply"));
+  };
+
+  /* ===== Active Pairs Widget ===== */
+  const ActivePairsWidget = ctx => {
+    const {
+      socdProfiles,
+      socdActive,
+      setSocdActive
+    } = ctx;
+    return /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-col gap-3 h-full"
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-faint)] mb-2"
+    }, socdProfiles.length, "/20 pairs")), /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-col gap-1.5 flex-1 overflow-y-auto"
+    }, socdProfiles.map(p => /*#__PURE__*/React.createElement("button", {
+      key: p.id,
+      onClick: () => setSocdActive(p.id),
+      className: `flex flex-col px-3 py-2 rounded-md border font-mono text-[12px] transition-all
+                        ${socdActive === p.id ? "border-[var(--accent)]/50 bg-[var(--accent)]/10 text-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "font-display text-[11px] uppercase tracking-[0.16em]"
+    }, p.id), p.k1 && p.k2 ? /*#__PURE__*/React.createElement("div", {
+      className: "text-[10px] text-[var(--text-faint)] mt-1"
+    }, p.k1, " ", /*#__PURE__*/React.createElement("span", {
+      className: "text-[var(--text-faint)]"
+    }, "\u2194"), " ", p.k2, /*#__PURE__*/React.createElement("span", {
+      className: "ml-2 font-display text-[9px]"
+    }, "M", p.mode)) : /*#__PURE__*/React.createElement("div", {
+      className: "text-[10px] text-[var(--text-faint)] mt-1"
+    }, "unconfigured")))));
+  };
+
+  /* ===== Widget Array Export ===== */
+  window.AetherWorkspaces = window.AetherWorkspaces || {};
+  window.AetherWorkspaces.SOCD_WIDGETS = [{
+    id: "pair-editor",
+    title: "Pair Editor",
+    default: {
+      x: 20,
+      y: 20,
+      w: 440,
+      h: 520
+    },
+    min: {
+      w: 320,
+      h: 400
+    },
+    render: PairEditorWidget
+  }, {
+    id: "hotkey",
+    title: "Hotkey",
+    default: {
+      x: 480,
+      y: 20,
+      w: 360,
+      h: 160
+    },
+    min: {
+      w: 280,
+      h: 120
+    },
+    render: HotkeyWidget
+  }, {
+    id: "active-pairs",
+    title: "Active Pairs",
+    default: {
+      x: 480,
+      y: 200,
+      w: 360,
+      h: 340
+    },
+    min: {
+      w: 280,
+      h: 240
+    },
+    render: ActivePairsWidget
+  }];
+})();
+</script>
+<script data-mod="wizard">
+(() => {
+  /* ============================================================
+     SetupWizard — first-run guided setup for AetherHE.
+     Exposes window.AetherWizard = { SetupWizard }.
+     Plain JSX, global React (no libs). Glass panels + Impact (.font-title)
+     titles, matching desktop.jsx / sections.jsx styling. UI ONLY — reads/calls
+     ctx.* and window.pywebview.api.* exactly like the existing sections.
+  
+     4 steps:
+       1) Board selection   (from the board registry — Aula Win60 HE supported)
+       2) Board layout preview (reuses window.AetherKeyboard.KeyboardPanel, read-only)
+       3) Animation how-to  (points at the Lighting workspace)
+       4) JSON import       (returning users: file -> parse -> ctx.applyState)
+  
+     Persistence:
+       - board choice -> localStorage "aether-board"
+       - done flag    -> localStorage "aether-setup-done" = "1"
+         (coordinator can key first-run detection off the missing flag /
+          missing settings file, and re-open via ctx.setWizardOpen(true).)
+     ============================================================ */
+  const {
+    useState,
+    useEffect,
+    useMemo,
+    useRef
+  } = React;
+  const BOARD_ISSUE_URL = "https://github.com/MrWhosNexus/Aether-HE/issues/new?template=add-a-board.yml";
+  const LS_BOARD = "aether-board";
+  const LS_DONE = "aether-setup-done";
+
+  /* The supported-board list mirrors data/board_registry.json (read-only; the
+     file itself is backend-owned and not imported at build time). Only boards
+     whose protocol is wired are selectable; the rest read "coming soon". */
+  const BOARDS = [{
+    slug: "aula-win60-he",
+    name: "Aula Win60 HE",
+    form: "60%",
+    status: "supported"
+  }, {
+    slug: "aula-win60he-pro",
+    name: "Aula WIN 60 HE Pro",
+    form: "60%",
+    status: "bringup"
+  }, {
+    slug: "aula-mini60he-max",
+    name: "Aula MINI60HE Max",
+    form: "60%",
+    status: "bringup"
+  }, {
+    slug: "aula-mini60he-pro",
+    name: "Aula Mini 60 HE Pro",
+    form: "60%",
+    status: "planned"
+  }, {
+    slug: "aula-win60he-max",
+    name: "Aula Win60 HE Max",
+    form: "60%",
+    status: "planned"
+  }, {
+    slug: "aula-win68he-max",
+    name: "Aula win68 HE Max",
+    form: "65%",
+    status: "planned"
+  }, {
+    slug: "aula-f75-tri-mode",
+    name: "Aula F75 Tri-Mode",
+    form: "75%",
+    status: "planned"
+  }];
+  const STATUS_LABEL = {
+    supported: "Supported",
+    bringup: "Bring-up",
+    planned: "Coming soon"
+  };
+  const STEPS = ["Board", "Layout", "Animations", "Import"];
+
+  /* ---- persistence helpers ---- */
+  const loadBoard = () => {
+    try {
+      return localStorage.getItem(LS_BOARD) || "aula-win60-he";
+    } catch {
+      return "aula-win60-he";
+    }
+  };
+  const saveBoard = slug => {
+    try {
+      localStorage.setItem(LS_BOARD, slug);
+    } catch {}
+  };
+  const markDone = () => {
+    try {
+      localStorage.setItem(LS_DONE, "1");
+    } catch {}
+  };
+
+  /* ============================================================
+     Step 1 — Board selection.
+     ============================================================ */
+  function StepBoard({
+    board,
+    setBoard
+  }) {
+    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
+      className: "font-title",
+      style: {
+        fontSize: 28,
+        letterSpacing: "0.04em",
+        marginBottom: 6
+      }
+    }, "SELECT YOUR BOARD"), /*#__PURE__*/React.createElement("p", {
+      style: {
+        fontSize: 12.5,
+        opacity: 0.7,
+        marginBottom: 16
+      }
+    }, "Aether targets the Aula Win60 HE today. Pick your board \u2014 more are being brought up. Don't see yours?", " ", /*#__PURE__*/React.createElement("a", {
+      href: BOARD_ISSUE_URL,
+      target: "_blank",
+      rel: "noopener noreferrer",
+      style: {
+        color: "var(--accent)",
+        textDecoration: "underline"
+      }
+    }, "Submit your board"), "."), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "grid",
+        gridTemplateColumns: "1fr 1fr",
+        gap: 10
+      }
+    }, BOARDS.map(b => {
+      const selectable = b.status === "supported" || b.status === "bringup";
+      const on = board === b.slug;
+      return /*#__PURE__*/React.createElement("button", {
+        key: b.slug,
+        disabled: !selectable,
+        onClick: () => selectable && setBoard(b.slug),
+        className: "glass",
+        style: {
+          textAlign: "left",
+          padding: "12px 14px",
+          borderRadius: 10,
+          cursor: selectable ? "pointer" : "not-allowed",
+          opacity: selectable ? 1 : 0.45,
+          outline: on ? "2px solid var(--accent)" : "1px solid var(--line)",
+          boxShadow: on ? "0 0 18px var(--accent-glow)" : "none",
+          transition: "all 150ms"
+        }
+      }, /*#__PURE__*/React.createElement("div", {
+        className: "font-title",
+        style: {
+          fontSize: 15,
+          letterSpacing: "0.02em"
+        }
+      }, b.name), /*#__PURE__*/React.createElement("div", {
+        style: {
+          fontSize: 11,
+          opacity: 0.65,
+          marginTop: 4,
+          display: "flex",
+          gap: 8,
+          alignItems: "center"
+        }
+      }, /*#__PURE__*/React.createElement("span", null, b.form), /*#__PURE__*/React.createElement("span", {
+        style: {
+          padding: "1px 7px",
+          borderRadius: 999,
+          fontSize: 9.5,
+          textTransform: "uppercase",
+          letterSpacing: "0.12em",
+          color: b.status === "supported" ? "var(--accent)" : "var(--text-dim)",
+          border: "1px solid var(--line)"
+        }
+      }, STATUS_LABEL[b.status] || b.status)));
+    })));
+  }
+
+  /* ============================================================
+     Step 2 — Board layout preview (reuse KeyboardPanel, read-only).
+     ============================================================ */
+  function StepLayout({
+    board
+  }) {
+    const KB = window.AetherKeyboard || {};
+    const KeyboardPanel = KB.KeyboardPanel;
+    const info = BOARDS.find(b => b.slug === board) || BOARDS[0];
+    // Read-only preview: a frozen empty selection + no-op setter so nothing is
+    // editable and no device is needed. Only the Win60 HE layout is bundled in
+    // keyboard.jsx today; other boards show the layout note instead.
+    const emptySel = useMemo(() => new Set(), []);
+    const noop = useRef(() => {}).current;
+    const canRender = board === "aula-win60-he" && typeof KeyboardPanel === "function";
+    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
+      className: "font-title",
+      style: {
+        fontSize: 28,
+        letterSpacing: "0.04em",
+        marginBottom: 6
+      }
+    }, info.name.toUpperCase(), " \xB7 LAYOUT"), /*#__PURE__*/React.createElement("p", {
+      style: {
+        fontSize: 12.5,
+        opacity: 0.7,
+        marginBottom: 16
+      }
+    }, "This is your board's key layout. Later you'll click keys here to scope actuation, remaps and lighting \u2014 no device needed to look around."), canRender ? /*#__PURE__*/React.createElement("div", {
+      style: {
+        pointerEvents: "none"
+      }
+    }, React.createElement(KeyboardPanel, {
+      mode: "keymap",
+      layer: "default",
+      selectedKeys: emptySel,
+      setSelectedKeys: noop,
+      actuationPoint: 1.70,
+      rtPress: 0.05,
+      rtRelease: 0.05,
+      showPill: false,
+      compact: true
+    })) : /*#__PURE__*/React.createElement("div", {
+      className: "glass",
+      style: {
+        padding: 20,
+        borderRadius: 10,
+        textAlign: "center"
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "font-title",
+      style: {
+        fontSize: 16
+      }
+    }, "Layout preview coming soon"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 12,
+        opacity: 0.65,
+        marginTop: 6
+      }
+    }, "The interactive layout for ", info.name, " lands when its bring-up completes.")));
+  }
+
+  /* ============================================================
+     Step 3 — Animation how-to (static instructional content + small preview).
+     ============================================================ */
+  function StepAnimations({
+    ctx
+  }) {
+    const goLighting = () => {
+      if (ctx && typeof ctx.setSection === "function") ctx.setSection("lighting");
+    };
+    const steps = [["Open Lighting", "Jump to the Lighting workspace from the top bar."], ["Pick a pattern", "Choose an effect (Wave, Ripple, Aurora, Rain…) and set its colors."], ["Tune it", "Adjust brightness, speed and direction — changes stream live to the board."], ["Scope per-key", "Select keys on the board to paint per-key colors on top of the effect."]];
+    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
+      className: "font-title",
+      style: {
+        fontSize: 28,
+        letterSpacing: "0.04em",
+        marginBottom: 6
+      }
+    }, "SET UP LIGHTING"), /*#__PURE__*/React.createElement("p", {
+      style: {
+        fontSize: 12.5,
+        opacity: 0.7,
+        marginBottom: 16
+      }
+    }, "Aether streams multi-color animations from the host in real time. Here's the short version \u2014 the full controls live in the Lighting workspace."), /*#__PURE__*/React.createElement("div", {
+      className: "glass",
+      style: {
+        padding: 12,
+        borderRadius: 10,
+        marginBottom: 16,
+        overflow: "hidden"
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        gap: 4
+      }
+    }, Array.from({
+      length: 14
+    }).map((_, i) => /*#__PURE__*/React.createElement("span", {
+      key: i,
+      style: {
+        flex: 1,
+        height: 22,
+        borderRadius: 4,
+        background: `hsl(${i * 26 % 360} 85% 55%)`,
+        animation: "aetherWizPulse 1.6s ease-in-out infinite",
+        animationDelay: `${i * 0.08}s`
+      }
+    }))), /*#__PURE__*/React.createElement("style", null, `@keyframes aetherWizPulse{0%,100%{opacity:.35}50%{opacity:1}}`)), /*#__PURE__*/React.createElement("ol", {
+      style: {
+        display: "grid",
+        gap: 10,
+        margin: 0,
+        padding: 0,
+        listStyle: "none"
+      }
+    }, steps.map(([t, d], i) => /*#__PURE__*/React.createElement("li", {
+      key: i,
+      style: {
+        display: "flex",
+        gap: 12,
+        alignItems: "flex-start"
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "font-title",
+      style: {
+        width: 26,
+        height: 26,
+        borderRadius: 999,
+        flexShrink: 0,
+        display: "grid",
+        placeItems: "center",
+        fontSize: 13,
+        border: "1px solid var(--accent)",
+        color: "var(--accent)"
+      }
+    }, i + 1), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "font-title",
+      style: {
+        fontSize: 13.5,
+        letterSpacing: "0.02em"
+      }
+    }, t), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 12,
+        opacity: 0.68,
+        marginTop: 2
+      }
+    }, d))))), /*#__PURE__*/React.createElement("button", {
+      onClick: goLighting,
+      className: "glass font-title",
+      style: {
+        marginTop: 16,
+        padding: "8px 16px",
+        borderRadius: 8,
+        cursor: "pointer",
+        color: "var(--accent)",
+        outline: "1px solid var(--accent)",
+        fontSize: 12
+      }
+    }, "Open Lighting workspace"));
+  }
+
+  /* ============================================================
+     Step 4 — JSON import (returning users).
+     ============================================================ */
+  function StepImport({
+    ctx
+  }) {
+    const [status, setStatus] = useState({
+      kind: "idle",
+      msg: ""
+    });
+    const fileRef = useRef(null);
+    const applyImported = parsed => {
+      // Accept either a full settings blob {profiles:[...]} or a bare state object.
+      let state = parsed;
+      if (parsed && Array.isArray(parsed.profiles) && parsed.profiles.length) {
+        const aid = parsed.activeProfile;
+        const active = parsed.profiles.find(p => p.id === aid) || parsed.profiles[0];
+        state = active && active.state || {};
+      }
+      if (ctx && typeof ctx.applyState === "function") ctx.applyState(state);
+      // Persist through the same bridge the app uses (best-effort; the app's
+      // own save effect will also mirror the applied state after hydration).
+      try {
+        const api = window.pywebview && window.pywebview.api;
+        if (api && api.save_settings && parsed && Array.isArray(parsed.profiles)) {
+          Promise.resolve(api.save_settings(parsed)).catch(() => {});
+        }
+      } catch {}
+    };
+    const onFile = e => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const parsed = JSON.parse(String(reader.result));
+          applyImported(parsed);
+          setStatus({
+            kind: "ok",
+            msg: `Imported ${file.name} — settings applied.`
+          });
+        } catch (err) {
+          setStatus({
+            kind: "err",
+            msg: "Couldn't parse that file — is it a valid Aether JSON?"
+          });
+        }
+      };
+      reader.onerror = () => setStatus({
+        kind: "err",
+        msg: "Couldn't read that file."
+      });
+      reader.readAsText(file);
+    };
+    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
+      className: "font-title",
+      style: {
+        fontSize: 28,
+        letterSpacing: "0.04em",
+        marginBottom: 6
+      }
+    }, "IMPORT SETTINGS"), /*#__PURE__*/React.createElement("p", {
+      style: {
+        fontSize: 12.5,
+        opacity: 0.7,
+        marginBottom: 16
+      }
+    }, "Returning from another install? Import an exported Aether settings JSON to restore your profiles, lighting, actuation and SOCD in one shot. New here? Just skip this and hit Finish."), /*#__PURE__*/React.createElement("div", {
+      className: "glass",
+      style: {
+        padding: 20,
+        borderRadius: 10,
+        textAlign: "center"
+      }
+    }, /*#__PURE__*/React.createElement("input", {
+      ref: fileRef,
+      type: "file",
+      accept: "application/json,.json",
+      onChange: onFile,
+      style: {
+        display: "none"
+      }
+    }), /*#__PURE__*/React.createElement("button", {
+      onClick: () => fileRef.current && fileRef.current.click(),
+      className: "font-title",
+      style: {
+        padding: "10px 20px",
+        borderRadius: 8,
+        cursor: "pointer",
+        fontSize: 13,
+        color: "var(--accent)",
+        outline: "1px solid var(--accent)",
+        background: "transparent"
+      }
+    }, "Choose settings JSON\u2026"), status.kind !== "idle" && /*#__PURE__*/React.createElement("div", {
+      style: {
+        marginTop: 12,
+        fontSize: 12,
+        color: status.kind === "err" ? "#fca5a5" : "var(--accent)"
+      }
+    }, status.msg)));
+  }
+
+  /* ============================================================
+     SetupWizard — modal overlay orchestrating the 4 steps.
+     Props: { open, onClose, ctx }
+     ============================================================ */
+  function SetupWizard({
+    open,
+    onClose,
+    ctx
+  }) {
+    const [step, setStep] = useState(0);
+    const [board, setBoardState] = useState(loadBoard);
+
+    // Reset to first step each time the wizard is (re)opened.
+    useEffect(() => {
+      if (open) setStep(0);
+    }, [open]);
+    const setBoard = slug => {
+      setBoardState(slug);
+      saveBoard(slug);
+    };
+    const finish = () => {
+      saveBoard(board);
+      markDone();
+      // If the coordinator wired a board setter into ctx, tell it too.
+      if (ctx && typeof ctx.setBoard === "function") ctx.setBoard(board);
+      if (typeof onClose === "function") onClose();
+    };
+    const close = () => {
+      if (typeof onClose === "function") onClose();
+    };
+    if (!open) return null;
+    const last = step === STEPS.length - 1;
+    const c = ctx || {};
+    let body = null;
+    if (step === 0) body = /*#__PURE__*/React.createElement(StepBoard, {
+      board: board,
+      setBoard: setBoard
+    });else if (step === 1) body = /*#__PURE__*/React.createElement(StepLayout, {
+      board: board
+    });else if (step === 2) body = /*#__PURE__*/React.createElement(StepAnimations, {
+      ctx: c
+    });else body = /*#__PURE__*/React.createElement(StepImport, {
+      ctx: c
+    });
+    return /*#__PURE__*/React.createElement("div", {
+      role: "dialog",
+      "aria-modal": "true",
+      "aria-label": "Aether first-run setup",
+      style: {
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        background: "rgba(3,7,10,0.72)",
+        backdropFilter: "blur(6px)",
+        display: "grid",
+        placeItems: "center",
+        padding: 24
+      },
+      onClick: e => {
+        if (e.target === e.currentTarget) close();
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "glass",
+      style: {
+        width: "min(1060px, 96vw)",
+        maxHeight: "90vh",
+        overflow: "auto",
+        borderRadius: 16,
+        padding: 28,
+        position: "relative",
+        border: "1px solid var(--line)"
+      }
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: close,
+      title: "Close",
+      "aria-label": "Close setup",
+      style: {
+        position: "absolute",
+        top: 14,
+        right: 16,
+        background: "transparent",
+        border: "none",
+        color: "var(--text-dim)",
+        fontSize: 20,
+        cursor: "pointer",
+        lineHeight: 1
+      }
+    }, "\xD7"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        gap: 8,
+        marginBottom: 22
+      }
+    }, STEPS.map((label, i) => /*#__PURE__*/React.createElement("div", {
+      key: label,
+      style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 8
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "font-title",
+      style: {
+        fontSize: 10.5,
+        letterSpacing: "0.14em",
+        textTransform: "uppercase",
+        color: i === step ? "var(--accent)" : "var(--text-faint)"
+      }
+    }, label), i < STEPS.length - 1 && /*#__PURE__*/React.createElement("span", {
+      style: {
+        width: 18,
+        height: 1,
+        background: "var(--line)"
+      }
+    })))), /*#__PURE__*/React.createElement("div", {
+      style: {
+        minHeight: 320
+      }
+    }, body), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginTop: 24,
+        borderTop: "1px solid var(--line)",
+        paddingTop: 18
+      }
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: close,
+      className: "font-title",
+      style: {
+        background: "transparent",
+        border: "none",
+        color: "var(--text-dim)",
+        fontSize: 11.5,
+        letterSpacing: "0.1em",
+        cursor: "pointer",
+        textTransform: "uppercase"
+      }
+    }, "Skip setup"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        gap: 10
+      }
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => setStep(s => Math.max(0, s - 1)),
+      disabled: step === 0,
+      className: "glass font-title",
+      style: {
+        padding: "8px 18px",
+        borderRadius: 8,
+        fontSize: 12,
+        cursor: step === 0 ? "not-allowed" : "pointer",
+        opacity: step === 0 ? 0.4 : 1
+      }
+    }, "Back"), last ? /*#__PURE__*/React.createElement("button", {
+      onClick: finish,
+      className: "font-title",
+      style: {
+        padding: "8px 22px",
+        borderRadius: 8,
+        fontSize: 12,
+        cursor: "pointer",
+        color: "var(--accent)",
+        outline: "1px solid var(--accent)",
+        background: "var(--accent-glow, transparent)"
+      }
+    }, "Finish") : /*#__PURE__*/React.createElement("button", {
+      onClick: () => setStep(s => Math.min(STEPS.length - 1, s + 1)),
+      className: "font-title",
+      style: {
+        padding: "8px 22px",
+        borderRadius: 8,
+        fontSize: 12,
+        cursor: "pointer",
+        color: "var(--accent)",
+        outline: "1px solid var(--accent)",
+        background: "transparent"
+      }
+    }, "Next")))));
+  }
+  window.AetherWizard = {
+    SetupWizard
+  };
+})();
+</script>
 <script data-mod="app">
 (() => {
   const {
@@ -36996,6 +40982,54 @@
     ThemePopup,
     useTheme
   } = window.AetherTheme;
+
+  // Desktop-widget shell (foundation) + section widget registries.
+  const {
+    Workspace,
+    TopBar: DesktopTopBar,
+    SECTION_DEFS
+  } = window.AetherDesktop;
+  const SetupWizard = window.AetherWizard && window.AetherWizard.SetupWizard;
+
+  // Placeholder for sections not yet built by later waves — a single
+  // "coming soon" widget so the workspace surface isn't blank.
+  const comingSoon = label => [{
+    id: "soon",
+    title: label,
+    default: {
+      x: 60,
+      y: 48,
+      w: 420,
+      h: 220
+    },
+    min: {
+      w: 300,
+      h: 160
+    },
+    render: () => /*#__PURE__*/React.createElement("div", {
+      className: "grid place-items-center h-full text-center px-6"
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "font-title text-[22px] text-[var(--text)] mb-1"
+    }, label), /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[11px] uppercase tracking-[0.22em] text-[var(--text-faint)]"
+    }, "workspace coming soon")))
+  }];
+
+  // Registry: section id → widget array, sourced from each workspace file's
+  // window.AetherWorkspaces.<SECTION>_WIDGETS export; falls back to a placeholder
+  // if a workspace file failed to load.
+  const wsArr = (key, label) => {
+    const a = window.AetherWorkspaces && window.AetherWorkspaces[key] || [];
+    return a.length ? a : comingSoon(label);
+  };
+  const WIDGETS = {
+    actuation: wsArr("ACTUATION_WIDGETS", "Actuation"),
+    keymap: wsArr("KEYMAP_WIDGETS", "Keymap"),
+    lighting: wsArr("LIGHTING_WIDGETS", "Lighting"),
+    socd: wsArr("SOCD_WIDGETS", "SOCD"),
+    gamepad: wsArr("GAMEPAD_WIDGETS", "Gamepad"),
+    settings: wsArr("SETTINGS_WIDGETS", "Settings")
+  };
 
   /* ============================================================
      HID bridge — talks to the native Python Api (window.pywebview.api).
@@ -37584,6 +41618,65 @@
   function App() {
     const [theme, setTheme] = useTheme();
     const [themeOpen, setThemeOpen] = useState(false);
+    // First-run setup wizard: open until the user finishes/skips it once.
+    const [wizardOpen, setWizardOpen] = useState(() => {
+      try {
+        return localStorage.getItem("aether-setup-done") !== "1";
+      } catch {
+        return false;
+      }
+    });
+    const closeWizard = () => {
+      try {
+        localStorage.setItem("aether-setup-done", "1");
+      } catch {}
+      setWizardOpen(false);
+    };
+
+    // User zoom multiplier (top-bar − / % / + control), on top of the auto-fit.
+    const [uiZoom, setUiZoom] = useState(() => {
+      const v = parseFloat(localStorage.getItem("aether-zoom"));
+      return v > 0 ? v : 1;
+    });
+    useEffect(() => {
+      try {
+        localStorage.setItem("aether-zoom", String(uiZoom));
+      } catch {}
+    }, [uiZoom]);
+
+    // Scale only the WORKSPACE (widgets) to the window — the top bar stays fixed.
+    // CSS `zoom` (not transform) scales the coordinate system itself, so widget
+    // drag/resize pointer math stays correct. Fit the design canvas to the area
+    // below the top bar, then apply the user's zoom multiplier.
+    useEffect(() => {
+      const DESIGN_W = 1480,
+        DESIGN_H = 900,
+        TOPBAR = 64;
+      const fit = () => {
+        const base = Math.min(window.innerWidth / DESIGN_W, (window.innerHeight - TOPBAR) / DESIGN_H);
+        const el = document.getElementById("desktop-main");
+        if (el) el.style.setProperty("--ws-zoom", String(Math.max(0.4, Math.min(base * uiZoom, 2.4))));
+      };
+      fit();
+      window.addEventListener("resize", fit);
+      return () => window.removeEventListener("resize", fit);
+    }, [uiZoom]);
+
+    // Ctrl + mouse wheel over the workspace zooms in/out.
+    useEffect(() => {
+      const el = document.getElementById("desktop-main");
+      if (!el) return;
+      const onWheel = e => {
+        if (!e.ctrlKey) return;
+        e.preventDefault();
+        const step = e.deltaY < 0 ? 0.08 : -0.08;
+        setUiZoom(z => Math.max(0.5, Math.min(2, +(z + step).toFixed(2))));
+      };
+      el.addEventListener("wheel", onWheel, {
+        passive: false
+      });
+      return () => el.removeEventListener("wheel", onWheel);
+    }, []);
 
     // Connection is OFF until the user pairs (or auto-connect is enabled).
     const [connected, setConnected] = useState(false);
@@ -37790,7 +41883,7 @@
             const active = migrated.profiles.find(p => p.id === aid);
             if (active?.state) applyState(active.state);
             if (migrated.globals?.autoConnect !== undefined) setAutoConnect(!!migrated.globals.autoConnect);
-            if (migrated.globals?.section) setSection(migrated.globals.section);
+            if (migrated.globals?.section) setSection(migrated.globals.section === "other" ? "settings" : migrated.globals.section);
           }
         } catch {}
         setTimeout(() => {
@@ -38050,22 +42143,52 @@
       } catch {}
     }, [autoConnect]);
 
-    // One-shot auto-connect on launch, only if the user opted in. Waits for the
-    // pywebview bridge to be injected (it arrives asynchronously after load).
+    // One-shot auto-connect on launch, only if the user opted in. Fires once,
+    // after hydration resolves `autoConnect` from settings.json, so a persisted
+    // preference is honored. Guarded by a ref so it never fires twice.
     const didAuto = useRef(false);
     useEffect(() => {
-      const go = () => {
-        if (didAuto.current) return;
-        didAuto.current = true;
-        if (!autoConnect) return;
-        setConnecting(true);
-        apiCall("connect").then(r => setConnected(!!(r && r.ok))).finally(() => setConnecting(false));
+      if (!hydrated || didAuto.current) return;
+      didAuto.current = true;
+      if (autoConnect && !connected) togglePair();
+    }, [hydrated]);
+
+    // Auto-reconnect watchdog: while Auto is on, poll the real device state and
+    // (re)connect whenever the board appears — covers unplug/replug, not just
+    // launch. Uses refs so the long-lived interval never reads stale state.
+    const connectedRef = useRef(connected);
+    connectedRef.current = connected;
+    const connectingRef = useRef(connecting);
+    connectingRef.current = connecting;
+    useEffect(() => {
+      if (!hydrated || !autoConnect) return;
+      let alive = true,
+        busy = false;
+      const tick = async () => {
+        if (!alive || busy || connectingRef.current) return;
+        busy = true;
+        try {
+          const s = await apiCall("status");
+          const isOpen = !!(s && s.connected);
+          if (isOpen) {
+            if (!connectedRef.current) setConnected(true);
+          } else {
+            if (connectedRef.current) {
+              setConnected(false);
+              setLiveDepths(null);
+            }
+            const r = await apiCall("connect");
+            if (alive && r && r.ok) setConnected(true);
+          }
+        } catch {}
+        busy = false;
       };
-      if (getApi()) go();else window.addEventListener("pywebviewready", go, {
-        once: true
-      });
-      return () => window.removeEventListener("pywebviewready", go);
-    }, []);
+      const id = setInterval(tick, 2500);
+      return () => {
+        alive = false;
+        clearInterval(id);
+      };
+    }, [hydrated, autoConnect]);
 
     // Lighting. ALL animated effects run on the HOST per-key engine so their
     // behaviour is consistent and matches the names (auto Ripple/Cross/Fireworks,
@@ -38341,154 +42464,182 @@
         setRtRelease(0.05);
       }
     }) : null;
-    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(TopBar, {
-      profiles: profiles,
-      activeId: activeId,
-      onProfileChange: switchProfile,
-      onRenameProfile: renameProfile,
-      onAddProfile: addProfile,
-      onDuplicateProfile: duplicateProfile,
-      onDeleteProfile: deleteProfile,
+
+    // Selection helpers (were the ActuationToolbar / lighting select-all actions).
+    const selectAllKeys = () => {
+      const all = new Set(window.AetherKeyboard.KB_ROWS.flat().map(([_, __, c]) => c));
+      setSelectedKeys(all);
+    };
+    const selectInvertKeys = () => {
+      const all = window.AetherKeyboard.KB_ROWS.flat().map(([_, __, c]) => c);
+      setSelectedKeys(prev => new Set(all.filter(c => !prev.has(c))));
+    };
+    const deselectAllKeys = () => setSelectedKeys(new Set());
+    const resetTrigger = () => {
+      setActuation(1.70);
+      setRtPress(0.05);
+      setRtRelease(0.05);
+    };
+    const remapSelected = label => {
+      const hid = HID_BY_LABEL[label];
+      if (connected && hid != null && selectedKeys.size) apiCall("set_remap", Array.from(selectedKeys), hid);
+    };
+    const resetRemapSelected = () => {
+      if (connected && selectedKeys.size) apiCall("reset_remap", Array.from(selectedKeys));
+    };
+
+    /* ============================================================
+       ctx — the single object every workspace widget reads from. Carries ALL
+       existing state + handlers (no new backend). Section files (ACTUATION_WIDGETS
+       etc.) call only ctx.* — this is the LOCKED contract for parallel waves.
+       ============================================================ */
+    const ctx = {
+      // bridge + connection
+      apiCall,
+      connected,
+      connecting,
+      togglePair,
+      autoConnect,
+      setAutoConnect,
+      // profiles / persistence
+      profiles,
+      activeId,
+      switchProfile,
+      renameProfile,
+      addProfile,
+      duplicateProfile,
+      deleteProfile,
+      applyState,
+      activeProfileName: (profiles.find(p => p.id === activeId) || {}).name || "Profile",
+      // theme
+      theme,
+      setTheme,
+      themeOpen,
+      setThemeOpen,
+      setWizardOpen,
+      // section
+      section,
+      setSection,
+      // key selection (shared across workspaces)
+      selectedKeys,
+      setSelectedKeys,
+      selectedKey,
+      selectAllKeys,
+      selectInvertKeys,
+      deselectAllKeys,
+      // actuation / rapid trigger
+      actuation,
+      setActuation,
+      rtPress,
+      setRtPress,
+      rtRelease,
+      setRtRelease,
+      rtEnabled,
+      setRtEnabled,
+      resetTrigger,
+      applyActuation,
+      applyDeadband,
+      refreshPerKeyActuation,
+      perKeyActuation,
+      deadTop,
+      setDeadTop,
+      deadBottom,
+      setDeadBottom,
+      switchId,
+      handlePickSwitch,
+      polling,
+      handleSetPolling,
+      // travel test + calibration telemetry
+      travelTest,
+      setTravelTest,
+      liveDepths,
+      liveMax,
+      calibrating,
+      handleCalibrate,
+      calibratedKeys,
+      // keymap
+      layer,
+      setLayer,
+      HID_BY_LABEL,
+      remapSelected,
+      resetRemapSelected,
+      // lighting
+      colors,
+      setColors,
+      bgColor,
+      setBgColor,
+      perKeyColors,
+      setPerKeyColors,
+      pattern,
+      setPattern,
+      brightness,
+      setBrightness,
+      speed,
+      setSpeed,
+      power,
+      setPower,
+      fullColor,
+      setFullColor,
+      direction,
+      setDirection,
+      striOrient,
+      setStriOrient,
+      bgBright,
+      setBgBright,
+      zones,
+      addZone,
+      updateZone,
+      removeZone,
+      ledMap,
+      ledMapLive,
+      // socd
+      socdMode,
+      setSocdMode,
+      hotkey,
+      hotkeyEnabled,
+      setHotkeyEnabled,
+      handleSocdApply,
+      socdProfiles,
+      setSocdProfiles,
+      socdActive,
+      setSocdActive,
+      // gamepad
+      gamepadOn,
+      handleGamepadToggle,
+      gamepadMap,
+      handleGamepadMapApply,
+      DEFAULT_PAD_MAP,
+      gamepadError,
+      handleInstallVigem
+    };
+    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(DesktopTopBar, {
+      sections: SECTION_DEFS,
+      active: section,
+      onSelect: setSection,
       connected: connected,
       connecting: connecting,
       onTogglePair: togglePair,
       autoConnect: autoConnect,
       setAutoConnect: setAutoConnect,
-      onOpenTheme: () => setThemeOpen(true),
-      onOpenSettings: () => setSection("other"),
-      saveStatus: saveStatus
+      onOpenSettings: () => setSection("settings"),
+      zoom: uiZoom,
+      setZoom: setUiZoom
     }), /*#__PURE__*/React.createElement("main", {
-      className: "max-w-[1400px] mx-auto px-6 lg:px-10 py-7 flex flex-col gap-6"
-    }, /*#__PURE__*/React.createElement(SectionNav, {
+      id: "desktop-main",
+      className: "desktop-main"
+    }, /*#__PURE__*/React.createElement(Workspace, {
       section: section,
-      setSection: setSection
-    }), /*#__PURE__*/React.createElement(HeroCard, {
-      breadcrumb: breadcrumb,
-      badge: heroBadge
-    }, /*#__PURE__*/React.createElement(KeyboardPanel, {
-      mode: keyboardMode,
-      layer: layer,
-      selectedKeys: selectedKeys,
-      setSelectedKeys: setSelectedKeys,
-      actuationPoint: actuation,
-      rtPress: rtEnabled ? rtPress : 0,
-      rtRelease: rtEnabled ? rtRelease : 0,
-      ledMap: ledMapLive || ledMap,
-      accent: theme.accent,
-      showPill: false,
-      leftSlot: leftSlot,
-      liveDepths: liveDepths,
-      calibrating: calibrating,
-      calibratedCodes: calibratedKeys,
-      perKeyOverride: Object.fromEntries(Object.entries(perKeyActuation).map(([c, mm]) => [c, {
-        actuation: mm
-      }]))
-    })), /*#__PURE__*/React.createElement("section", {
-      key: section,
-      className: "surface rounded-3xl px-6 lg:px-10 py-7 section-anim"
-    }, section === "keymap" && /*#__PURE__*/React.createElement(KeymapSection, {
-      selectedKey: selectedKey,
-      selectedCount: selectedKeys.size,
-      selectedKeys: selectedKeys,
-      connected: connected,
-      onRemap: label => {
-        const hid = HID_BY_LABEL[label];
-        if (connected && hid != null && selectedKeys.size) apiCall("set_remap", Array.from(selectedKeys), hid);
-      },
-      onResetKey: () => {
-        if (connected && selectedKeys.size) apiCall("reset_remap", Array.from(selectedKeys));
-      }
-    }), section === "actuation" && /*#__PURE__*/React.createElement(ActuationSection, {
-      actuation: actuation,
-      setActuation: setActuation,
-      rtPress: rtPress,
-      setRtPress: setRtPress,
-      rtRelease: rtRelease,
-      setRtRelease: setRtRelease,
-      rtEnabled: rtEnabled,
-      setRtEnabled: setRtEnabled,
-      polling: polling,
-      setPolling: handleSetPolling,
-      travelTest: travelTest,
-      setTravelTest: setTravelTest,
-      calibrating: calibrating,
-      onCalibrate: handleCalibrate,
-      deadTop: deadTop,
-      setDeadTop: setDeadTop,
-      deadBottom: deadBottom,
-      setDeadBottom: setDeadBottom,
-      switchId: switchId,
-      onPickSwitch: handlePickSwitch,
-      liveDepth: liveMax,
-      selectedCount: selectedKeys.size,
-      selectedKeys: selectedKeys,
-      connected: connected,
-      onApplyActuation: applyActuation,
-      onApplyDeadband: applyDeadband
-    }), section === "lighting" && /*#__PURE__*/React.createElement(LightingSection, {
-      colors: colors,
-      setColors: setColors,
-      bgColor: bgColor,
-      setBgColor: setBgColor,
-      perKeyColors: perKeyColors,
-      setPerKeyColors: setPerKeyColors,
-      pattern: pattern,
-      setPattern: setPattern,
-      brightness: brightness,
-      setBrightness: setBrightness,
-      speed: speed,
-      setSpeed: setSpeed,
-      power: power,
-      setPower: setPower,
-      fullColor: fullColor,
-      setFullColor: setFullColor,
-      direction: direction,
-      setDirection: setDirection,
-      striOrient: striOrient,
-      setStriOrient: setStriOrient,
-      bgBright: bgBright,
-      setBgBright: setBgBright,
-      zones: zones,
-      onAddZone: addZone,
-      onUpdateZone: updateZone,
-      onRemoveZone: removeZone,
-      selectedKeys: selectedKeys,
-      onSelectAll: () => {
-        const all = new Set(window.AetherKeyboard.KB_ROWS.flat().map(([_, __, c]) => c));
-        setSelectedKeys(all);
-      },
-      onClearSelection: () => setSelectedKeys(new Set())
-    }), section === "socd" && /*#__PURE__*/React.createElement(SOCDSection, {
-      socdMode: socdMode,
-      setSocdMode: setSocdMode,
-      hotkey: hotkey,
-      hotkeyEnabled: hotkeyEnabled,
-      setHotkeyEnabled: setHotkeyEnabled,
-      onApply: handleSocdApply,
-      profiles: socdProfiles,
-      setProfiles: setSocdProfiles,
-      active: socdActive,
-      setActive: setSocdActive
-    }), section === "gamepad" && /*#__PURE__*/React.createElement(GamepadSection, {
-      connected: connected,
-      enabled: gamepadOn,
-      onToggle: handleGamepadToggle,
-      map: gamepadMap,
-      onApplyMap: handleGamepadMapApply,
-      defaultMap: DEFAULT_PAD_MAP,
-      error: gamepadError,
-      onInstallDriver: handleInstallVigem
-    }), section === "other" && /*#__PURE__*/React.createElement(OtherSection, {
-      activeProfileName: (profiles.find(p => p.id === activeId) || {}).name || "Profile",
-      onResetProfile: () => {
-        if (!window.confirm("Reset this profile to defaults? This can't be undone.")) return;
-        applyState({});
-      }
-    }))), /*#__PURE__*/React.createElement(ThemePopup, {
+      widgets: WIDGETS[section] || [],
+      ctx: ctx
+    })), /*#__PURE__*/React.createElement(ThemePopup, {
       open: themeOpen,
       onClose: () => setThemeOpen(false),
       theme: theme,
       setTheme: setTheme
+    }), SetupWizard && /*#__PURE__*/React.createElement(SetupWizard, {
+      open: wizardOpen,
+      onClose: closeWizard,
+      ctx: ctx
     }));
   }
   const Stat = ({

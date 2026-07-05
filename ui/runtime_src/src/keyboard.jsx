@@ -277,7 +277,7 @@ const KeyboardPanel = ({
         </div>
 
         {/* Keyboard board */}
-        <div className="relative w-full max-w-[720px] rounded-2xl border border-[var(--line)] bg-gradient-to-b from-white/[0.025] to-black/30 p-3.5 shadow-[0_24px_60px_-24px_rgba(0,0,0,0.8)]">
+        <div className="relative w-full max-w-[960px] rounded-2xl border border-[var(--line)] bg-gradient-to-b from-white/[0.025] to-black/30 p-3.5 shadow-[0_24px_60px_-24px_rgba(0,0,0,0.8)]">
           <span className="pointer-events-none absolute -top-px left-12 right-12 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent" />
           <div className="flex flex-col gap-[3px]">
             {KB_ROWS.map((row, ri) => (
