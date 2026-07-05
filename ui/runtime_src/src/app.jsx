@@ -384,20 +384,28 @@ function App() {
     setWizardOpen(false);
   };
 
+  // User zoom multiplier (top-bar − / % / + control), on top of the auto-fit.
+  const [uiZoom, setUiZoom] = useState(() => {
+    const v = parseFloat(localStorage.getItem("aether-zoom"));
+    return v > 0 ? v : 1;
+  });
+  useEffect(() => { try { localStorage.setItem("aether-zoom", String(uiZoom)); } catch {} }, [uiZoom]);
+
   // Scale the whole app to the window. CSS `zoom` (not transform) scales the
   // coordinate system itself, so widget drag/resize pointer math stays correct.
-  // Fit the design canvas to the window (width- and height-bounded), clamped.
+  // Fit the design canvas (sized to the widest workspace) to the window, then
+  // apply the user's zoom multiplier.
   useEffect(() => {
-    const DESIGN_W = 1400, DESIGN_H = 860;
+    const DESIGN_W = 1480, DESIGN_H = 940;
     const fit = () => {
-      const z = Math.min(window.innerWidth / DESIGN_W, window.innerHeight / DESIGN_H);
+      const base = Math.min(window.innerWidth / DESIGN_W, window.innerHeight / DESIGN_H);
       const root = document.getElementById("root");
-      if (root) root.style.zoom = Math.max(0.55, Math.min(z, 1.8));
+      if (root) root.style.zoom = Math.max(0.4, Math.min(base * uiZoom, 2.2));
     };
     fit();
     window.addEventListener("resize", fit);
     return () => window.removeEventListener("resize", fit);
-  }, []);
+  }, [uiZoom]);
 
   // Connection is OFF until the user pairs (or auto-connect is enabled).
   const [connected, setConnected] = useState(false);
@@ -739,6 +747,34 @@ function App() {
     if (autoConnect && !connected) togglePair();
   }, [hydrated]);
 
+  // Auto-reconnect watchdog: while Auto is on, poll the real device state and
+  // (re)connect whenever the board appears — covers unplug/replug, not just
+  // launch. Uses refs so the long-lived interval never reads stale state.
+  const connectedRef = useRef(connected); connectedRef.current = connected;
+  const connectingRef = useRef(connecting); connectingRef.current = connecting;
+  useEffect(() => {
+    if (!hydrated || !autoConnect) return;
+    let alive = true, busy = false;
+    const tick = async () => {
+      if (!alive || busy || connectingRef.current) return;
+      busy = true;
+      try {
+        const s = await apiCall("status");
+        const isOpen = !!(s && s.connected);
+        if (isOpen) {
+          if (!connectedRef.current) setConnected(true);
+        } else {
+          if (connectedRef.current) { setConnected(false); setLiveDepths(null); }
+          const r = await apiCall("connect");
+          if (alive && r && r.ok) setConnected(true);
+        }
+      } catch {}
+      busy = false;
+    };
+    const id = setInterval(tick, 2500);
+    return () => { alive = false; clearInterval(id); };
+  }, [hydrated, autoConnect]);
+
   // Lighting. ALL animated effects run on the HOST per-key engine so their
   // behaviour is consistent and matches the names (auto Ripple/Cross/Fireworks,
   // distinct Striation, directional flow, etc.) regardless of color count.
@@ -1057,6 +1093,7 @@ function App() {
         connected={connected} connecting={connecting} onTogglePair={togglePair}
         autoConnect={autoConnect} setAutoConnect={setAutoConnect}
         onOpenSettings={() => setSection("settings")}
+        zoom={uiZoom} setZoom={setUiZoom}
       />
 
       <main className="desktop-main">

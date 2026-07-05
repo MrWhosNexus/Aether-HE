@@ -57,6 +57,8 @@
     defaultSize,
     minSize,
     onMinimize,
+    z,
+    onFocus,
     children
   }) {
     const min = minSize || {
@@ -141,8 +143,10 @@
         left: pos.x,
         top: pos.y,
         width: size.w,
-        height: size.h
-      }
+        height: size.h,
+        zIndex: z || 1
+      },
+      onPointerDownCapture: () => onFocus && onFocus(id)
     }, /*#__PURE__*/React.createElement("header", {
       className: "widget-head",
       onPointerDown: onTitleDown,
@@ -241,6 +245,31 @@
       setNonce(n => n + 1);
     }, [section]);
     const [nonce, setNonce] = useState(0);
+
+    // Stacking order: clicking a widget raises it above the others and it stays
+    // there until another is clicked. Seeded so array order is the initial stack.
+    const zTop = useRef(10 + list.length);
+    const [zmap, setZmap] = useState(() => {
+      const m = {};
+      list.forEach((w, i) => {
+        m[w.id] = 10 + i;
+      });
+      return m;
+    });
+    useEffect(() => {
+      const m = {};
+      list.forEach((w, i) => {
+        m[w.id] = 10 + i;
+      });
+      zTop.current = 10 + list.length;
+      setZmap(m);
+    }, [section]);
+    const raise = useCallback(id => {
+      setZmap(prev => prev[id] === zTop.current ? prev : {
+        ...prev,
+        [id]: ++zTop.current
+      });
+    }, []);
     const dockItems = list.filter(w => minimized[w.id]);
     return /*#__PURE__*/React.createElement("div", {
       className: "workspace",
@@ -259,7 +288,9 @@
         h: w.default.h
       },
       minSize: w.min,
-      onMinimize: handleMinimize
+      onMinimize: handleMinimize,
+      z: zmap[w.id],
+      onFocus: raise
     }, React.createElement(w.render, ctx))), /*#__PURE__*/React.createElement(Dock, {
       items: dockItems,
       onRestore: restore
@@ -304,7 +335,9 @@
     onTogglePair,
     autoConnect,
     setAutoConnect,
-    onOpenSettings
+    onOpenSettings,
+    zoom,
+    setZoom
   }) {
     const defs = sections || SECTION_DEFS;
     return /*#__PURE__*/React.createElement("header", {
@@ -361,7 +394,20 @@
       size: 13
     }), /*#__PURE__*/React.createElement("span", {
       className: "font-title"
-    }, connecting ? "…" : connected ? "Connected" : "Pair")), /*#__PURE__*/React.createElement("button", {
+    }, connecting ? "…" : connected ? "Connected" : "Pair")), setZoom && /*#__PURE__*/React.createElement("div", {
+      className: "topbar-zoom",
+      title: "Zoom the workspace"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => setZoom(z => Math.max(0.5, +(z - 0.1).toFixed(2))),
+      "aria-label": "Zoom out"
+    }, "\u2013"), /*#__PURE__*/React.createElement("span", {
+      className: "font-title",
+      onClick: () => setZoom(1),
+      title: "Reset zoom"
+    }, Math.round((zoom || 1) * 100), "%"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setZoom(z => Math.min(2, +(z + 0.1).toFixed(2))),
+      "aria-label": "Zoom in"
+    }, "+")), /*#__PURE__*/React.createElement("button", {
       title: "Settings",
       onClick: onOpenSettings,
       className: "topbar-gear"

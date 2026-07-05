@@ -462,6 +462,24 @@
     transition: color 0.15s, border-color 0.15s;
   }
   .topbar-gear:hover { color: var(--text); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+
+  .topbar-zoom {
+    display: flex; align-items: center; gap: 2px;
+    border: 1px solid var(--line); border-radius: 10px; padding: 2px;
+    background: rgba(234, 244, 240, 0.03);
+  }
+  .topbar-zoom button {
+    width: 24px; height: 24px; border: 0; background: transparent;
+    color: var(--text-dim); font-size: 15px; line-height: 1; cursor: pointer;
+    border-radius: 7px; display: grid; place-items: center;
+    transition: background 0.15s, color 0.15s;
+  }
+  .topbar-zoom button:hover { background: rgba(234, 244, 240, 0.08); color: var(--text); }
+  .topbar-zoom span {
+    min-width: 42px; text-align: center; cursor: pointer;
+    font-size: 12px; letter-spacing: 0.04em; color: var(--text-dim);
+  }
+  .topbar-zoom span:hover { color: var(--text); }
 </style>
 </head>
 <body class="min-h-screen" style="overflow: hidden;">
@@ -37210,6 +37228,8 @@
     defaultSize,
     minSize,
     onMinimize,
+    z,
+    onFocus,
     children
   }) {
     const min = minSize || {
@@ -37294,8 +37314,10 @@
         left: pos.x,
         top: pos.y,
         width: size.w,
-        height: size.h
-      }
+        height: size.h,
+        zIndex: z || 1
+      },
+      onPointerDownCapture: () => onFocus && onFocus(id)
     }, /*#__PURE__*/React.createElement("header", {
       className: "widget-head",
       onPointerDown: onTitleDown,
@@ -37394,6 +37416,31 @@
       setNonce(n => n + 1);
     }, [section]);
     const [nonce, setNonce] = useState(0);
+
+    // Stacking order: clicking a widget raises it above the others and it stays
+    // there until another is clicked. Seeded so array order is the initial stack.
+    const zTop = useRef(10 + list.length);
+    const [zmap, setZmap] = useState(() => {
+      const m = {};
+      list.forEach((w, i) => {
+        m[w.id] = 10 + i;
+      });
+      return m;
+    });
+    useEffect(() => {
+      const m = {};
+      list.forEach((w, i) => {
+        m[w.id] = 10 + i;
+      });
+      zTop.current = 10 + list.length;
+      setZmap(m);
+    }, [section]);
+    const raise = useCallback(id => {
+      setZmap(prev => prev[id] === zTop.current ? prev : {
+        ...prev,
+        [id]: ++zTop.current
+      });
+    }, []);
     const dockItems = list.filter(w => minimized[w.id]);
     return /*#__PURE__*/React.createElement("div", {
       className: "workspace",
@@ -37412,7 +37459,9 @@
         h: w.default.h
       },
       minSize: w.min,
-      onMinimize: handleMinimize
+      onMinimize: handleMinimize,
+      z: zmap[w.id],
+      onFocus: raise
     }, React.createElement(w.render, ctx))), /*#__PURE__*/React.createElement(Dock, {
       items: dockItems,
       onRestore: restore
@@ -37457,7 +37506,9 @@
     onTogglePair,
     autoConnect,
     setAutoConnect,
-    onOpenSettings
+    onOpenSettings,
+    zoom,
+    setZoom
   }) {
     const defs = sections || SECTION_DEFS;
     return /*#__PURE__*/React.createElement("header", {
@@ -37514,7 +37565,20 @@
       size: 13
     }), /*#__PURE__*/React.createElement("span", {
       className: "font-title"
-    }, connecting ? "…" : connected ? "Connected" : "Pair")), /*#__PURE__*/React.createElement("button", {
+    }, connecting ? "…" : connected ? "Connected" : "Pair")), setZoom && /*#__PURE__*/React.createElement("div", {
+      className: "topbar-zoom",
+      title: "Zoom the workspace"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => setZoom(z => Math.max(0.5, +(z - 0.1).toFixed(2))),
+      "aria-label": "Zoom out"
+    }, "\u2013"), /*#__PURE__*/React.createElement("span", {
+      className: "font-title",
+      onClick: () => setZoom(1),
+      title: "Reset zoom"
+    }, Math.round((zoom || 1) * 100), "%"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setZoom(z => Math.min(2, +(z + 0.1).toFixed(2))),
+      "aria-label": "Zoom in"
+    }, "+")), /*#__PURE__*/React.createElement("button", {
       title: "Settings",
       onClick: onOpenSettings,
       className: "topbar-gear"
@@ -41465,21 +41529,33 @@
       setWizardOpen(false);
     };
 
+    // User zoom multiplier (top-bar − / % / + control), on top of the auto-fit.
+    const [uiZoom, setUiZoom] = useState(() => {
+      const v = parseFloat(localStorage.getItem("aether-zoom"));
+      return v > 0 ? v : 1;
+    });
+    useEffect(() => {
+      try {
+        localStorage.setItem("aether-zoom", String(uiZoom));
+      } catch {}
+    }, [uiZoom]);
+
     // Scale the whole app to the window. CSS `zoom` (not transform) scales the
     // coordinate system itself, so widget drag/resize pointer math stays correct.
-    // Fit the design canvas to the window (width- and height-bounded), clamped.
+    // Fit the design canvas (sized to the widest workspace) to the window, then
+    // apply the user's zoom multiplier.
     useEffect(() => {
-      const DESIGN_W = 1400,
-        DESIGN_H = 860;
+      const DESIGN_W = 1480,
+        DESIGN_H = 940;
       const fit = () => {
-        const z = Math.min(window.innerWidth / DESIGN_W, window.innerHeight / DESIGN_H);
+        const base = Math.min(window.innerWidth / DESIGN_W, window.innerHeight / DESIGN_H);
         const root = document.getElementById("root");
-        if (root) root.style.zoom = Math.max(0.55, Math.min(z, 1.8));
+        if (root) root.style.zoom = Math.max(0.4, Math.min(base * uiZoom, 2.2));
       };
       fit();
       window.addEventListener("resize", fit);
       return () => window.removeEventListener("resize", fit);
-    }, []);
+    }, [uiZoom]);
 
     // Connection is OFF until the user pairs (or auto-connect is enabled).
     const [connected, setConnected] = useState(false);
@@ -41956,6 +42032,43 @@
       if (autoConnect && !connected) togglePair();
     }, [hydrated]);
 
+    // Auto-reconnect watchdog: while Auto is on, poll the real device state and
+    // (re)connect whenever the board appears — covers unplug/replug, not just
+    // launch. Uses refs so the long-lived interval never reads stale state.
+    const connectedRef = useRef(connected);
+    connectedRef.current = connected;
+    const connectingRef = useRef(connecting);
+    connectingRef.current = connecting;
+    useEffect(() => {
+      if (!hydrated || !autoConnect) return;
+      let alive = true,
+        busy = false;
+      const tick = async () => {
+        if (!alive || busy || connectingRef.current) return;
+        busy = true;
+        try {
+          const s = await apiCall("status");
+          const isOpen = !!(s && s.connected);
+          if (isOpen) {
+            if (!connectedRef.current) setConnected(true);
+          } else {
+            if (connectedRef.current) {
+              setConnected(false);
+              setLiveDepths(null);
+            }
+            const r = await apiCall("connect");
+            if (alive && r && r.ok) setConnected(true);
+          }
+        } catch {}
+        busy = false;
+      };
+      const id = setInterval(tick, 2500);
+      return () => {
+        alive = false;
+        clearInterval(id);
+      };
+    }, [hydrated, autoConnect]);
+
     // Lighting. ALL animated effects run on the HOST per-key engine so their
     // behaviour is consistent and matches the names (auto Ripple/Cross/Fireworks,
     // distinct Striation, directional flow, etc.) regardless of color count.
@@ -42387,7 +42500,9 @@
       onTogglePair: togglePair,
       autoConnect: autoConnect,
       setAutoConnect: setAutoConnect,
-      onOpenSettings: () => setSection("settings")
+      onOpenSettings: () => setSection("settings"),
+      zoom: uiZoom,
+      setZoom: setUiZoom
     }), /*#__PURE__*/React.createElement("main", {
       className: "desktop-main"
     }, /*#__PURE__*/React.createElement(Workspace, {

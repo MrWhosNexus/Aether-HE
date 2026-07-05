@@ -34,7 +34,7 @@ const saveGeo = (workspace, id, geo) => {
    WidgetFrame — a draggable + resizable window with an Impact title bar.
    Drag by the title bar, resize by the bottom-right handle, minimize button.
    ============================================================ */
-function WidgetFrame({ id, workspace, title, defaultPos, defaultSize, minSize, onMinimize, children }) {
+function WidgetFrame({ id, workspace, title, defaultPos, defaultSize, minSize, onMinimize, z, onFocus, children }) {
   const min = minSize || { w: 220, h: 140 };
   const init = loadGeo(workspace, id);
   const [pos, setPos] = useState(() => (init && init.pos) || defaultPos || { x: 40, y: 40 });
@@ -84,7 +84,8 @@ function WidgetFrame({ id, workspace, title, defaultPos, defaultSize, minSize, o
   return (
     <section
       className={`widget glass${drag ? " dragging" : ""}${resizing ? " resizing" : ""}`}
-      style={{ left: pos.x, top: pos.y, width: size.w, height: size.h }}
+      style={{ left: pos.x, top: pos.y, width: size.w, height: size.h, zIndex: z || 1 }}
+      onPointerDownCapture={() => onFocus && onFocus(id)}
     >
       <header className="widget-head"
         onPointerDown={onTitleDown} onPointerMove={onMove} onPointerUp={endGesture} onPointerCancel={endGesture}>
@@ -148,6 +149,20 @@ function Workspace({ section, widgets, ctx }) {
   }, [section]);
   const [nonce, setNonce] = useState(0);
 
+  // Stacking order: clicking a widget raises it above the others and it stays
+  // there until another is clicked. Seeded so array order is the initial stack.
+  const zTop = useRef(10 + list.length);
+  const [zmap, setZmap] = useState(() => {
+    const m = {}; list.forEach((w, i) => { m[w.id] = 10 + i; }); return m;
+  });
+  useEffect(() => {
+    const m = {}; list.forEach((w, i) => { m[w.id] = 10 + i; });
+    zTop.current = 10 + list.length; setZmap(m);
+  }, [section]);
+  const raise = useCallback((id) => {
+    setZmap(prev => (prev[id] === zTop.current ? prev : { ...prev, [id]: ++zTop.current }));
+  }, []);
+
   const dockItems = list.filter(w => minimized[w.id]);
 
   return (
@@ -160,6 +175,7 @@ function Workspace({ section, widgets, ctx }) {
           defaultSize={{ w: w.default.w, h: w.default.h }}
           minSize={w.min}
           onMinimize={handleMinimize}
+          z={zmap[w.id]} onFocus={raise}
         >
           {/* Render the widget body as a real component so its own hooks
               (useState/useEffect) get an isolated, stable hook scope. render's
@@ -186,7 +202,7 @@ const SECTION_DEFS = [
 ];
 
 function TopBar({ sections, active, onSelect, connected, connecting, onTogglePair,
-                  autoConnect, setAutoConnect, onOpenSettings }) {
+                  autoConnect, setAutoConnect, onOpenSettings, zoom, setZoom }) {
   const defs = sections || SECTION_DEFS;
   return (
     <header className="topbar">
@@ -231,6 +247,14 @@ function TopBar({ sections, active, onSelect, connected, connecting, onTogglePai
             {connected ? (IPower && <IPower size={13} />) : (IPlug && <IPlug size={13} />)}
             <span className="font-title">{connecting ? "…" : connected ? "Connected" : "Pair"}</span>
           </button>
+
+          {setZoom && (
+            <div className="topbar-zoom" title="Zoom the workspace">
+              <button onClick={() => setZoom(z => Math.max(0.5, +(z - 0.1).toFixed(2)))} aria-label="Zoom out">–</button>
+              <span className="font-title" onClick={() => setZoom(1)} title="Reset zoom">{Math.round((zoom || 1) * 100)}%</span>
+              <button onClick={() => setZoom(z => Math.min(2, +(z + 0.1).toFixed(2)))} aria-label="Zoom in">+</button>
+            </div>
+          )}
 
           <button title="Settings" onClick={onOpenSettings} className="topbar-gear">
             {ISettings && <ISettings size={14} />}
