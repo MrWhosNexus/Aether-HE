@@ -112,8 +112,8 @@ const Key = React.memo(({
                     : actuated
                       ? "border-[var(--accent)]/60 shadow-[0_0_14px_var(--accent-glow)]"
                       : highlighted
-                        ? "border-white/15"
-                        : "border-[var(--line)] hover:border-white/20"
+                        ? "border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"
+                        : "border-[var(--line)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"
                   }`}>
 
       {/* Travel fill from bottom */}
@@ -277,7 +277,7 @@ const KeyboardPanel = ({
         </div>
 
         {/* Keyboard board */}
-        <div className="relative w-full max-w-[720px] rounded-2xl border border-white/[0.06] bg-gradient-to-b from-white/[0.025] to-black/30 p-3.5 shadow-[0_24px_60px_-24px_rgba(0,0,0,0.8)]">
+        <div className="relative w-full max-w-[720px] rounded-2xl border border-[var(--line)] bg-gradient-to-b from-white/[0.025] to-black/30 p-3.5 shadow-[0_24px_60px_-24px_rgba(0,0,0,0.8)]">
           <span className="pointer-events-none absolute -top-px left-12 right-12 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent" />
           <div className="flex flex-col gap-[3px]">
             {KB_ROWS.map((row, ri) => (
@@ -316,7 +316,7 @@ const KeyboardPanel = ({
           {/* During Travel Test show the live deepest press; otherwise nothing
               here (the actuation point is already in the hero badge + per key). */}
           {mode === "actuation" && liveDepths && (
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500 whitespace-nowrap">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-faint)] whitespace-nowrap">
               Live · <span className="text-[var(--accent)]">{(liveMax < 0.05 ? 0 : liveMax).toFixed(2)}mm</span>
             </span>
           )}
@@ -326,12 +326,12 @@ const KeyboardPanel = ({
 
       {/* Below-keyboard refresh */}
       <div className="flex flex-col items-center mt-3 gap-1">
-        <button className="grid place-items-center w-7 h-7 rounded-full border border-white/[0.06] bg-white/[0.02] text-slate-400 hover:text-slate-100 hover:border-white/20 transition-colors"
+        <button className="grid place-items-center w-7 h-7 rounded-full border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:text-[var(--text)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] transition-colors"
                 title="Refresh device state">
           <window.AetherIcons.IRefresh size={13}/>
         </button>
         {mode === "socd" && (
-          <span className="font-mono text-[10px] text-slate-500 uppercase tracking-[0.18em]">
+          <span className="font-mono text-[10px] text-[var(--text-faint)] uppercase tracking-[0.18em]">
             Right-click to uncheck all keys
           </span>
         )}
