@@ -12,6 +12,7 @@ import sys
 import threading
 import time
 
+import hid
 import webview
 
 from aula_device import AulaDevice
@@ -39,6 +40,26 @@ INDEX = _RUNTIME if os.path.exists(_RUNTIME) else _BUNDLE
 
 
 class Api:
+    # ---- board submission (in-app) ----
+    def list_hid_devices(self):
+        """All HID devices for the submit-a-board picker. Read-only enumeration."""
+        try:
+            out = []
+            for d in hid.enumerate():
+                path = d.get("path")
+                out.append({
+                    "path": path.decode("utf-8", "replace") if isinstance(path, bytes) else str(path),
+                    "vid": f"0x{d.get('vendor_id', 0):04x}",
+                    "pid": f"0x{d.get('product_id', 0):04x}",
+                    "manufacturer": d.get("manufacturer_string") or "",
+                    "product": d.get("product_string") or "",
+                    "usage_page": f"0x{d.get('usage_page', 0):04x}",
+                    "interface_number": d.get("interface_number", -1),
+                })
+            return {"ok": True, "devices": out}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     def __init__(self):
         # Detect which registered board is connected (by VID/PID); fall back to
         # the registry default (Aula Win60 HE) so behaviour is unchanged when no
