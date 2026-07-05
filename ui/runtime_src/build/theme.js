@@ -17,64 +17,36 @@
 
   /* ===== Curated palettes (each up to 4 colors) ===== */
   const PALETTE_PRESETS = [{
-    name: "Violet",
-    colors: ["#9d4edd"]
+    name: "Lagoon",
+    colors: ["#6fe8c0"]
   }, {
-    name: "Azure",
-    colors: ["#3b82f6"]
+    name: "Ember",
+    colors: ["#f4b268"]
   }, {
-    name: "Cyan",
-    colors: ["#00f5ff"]
+    name: "Tide",
+    colors: ["#6fe8c0", "#8ae0ff"]
+  }, {
+    name: "Moss",
+    colors: ["#7be3b0", "#c9e07a"]
   }, {
     name: "Aurora",
-    colors: ["#00f5ff", "#66ff8a"]
-  }, {
-    name: "Aether",
-    colors: ["#9d4edd", "#00f5ff"]
-  }, {
-    name: "Nebula",
-    colors: ["#9d4edd", "#ff3d6e"]
-  }, {
-    name: "Sunset",
-    colors: ["#ff7a59", "#ffaa1f"]
-  }, {
-    name: "Vapor",
-    colors: ["#5b8cff", "#ff35d1"]
-  }, {
-    name: "Pulse",
-    colors: ["#ff3d6e", "#ffaa1f", "#39ff8a"]
-  }, {
-    name: "Rainbow",
-    colors: ["#ff3d6e", "#ffaa1f", "#39ff8a", "#3b82f6"]
-  }, {
-    name: "Cosmic",
-    colors: ["#9d4edd", "#00f5ff", "#66ff8a", "#ffaa1f"]
+    colors: ["#6fe8c0", "#f4b268"]
   }, {
     name: "Mono Slate",
     colors: ["#94a3b8"]
   }];
   const IMAGE_PRESETS = [{
-    name: "Obsidian",
-    url: "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500'><defs><radialGradient id='g' cx='30%' cy='20%' r='80%'><stop offset='0' stop-color='%239d4edd' stop-opacity='0.55'/><stop offset='0.55' stop-color='%23020308' stop-opacity='0.95'/><stop offset='1' stop-color='%23000000'/></radialGradient></defs><rect width='800' height='500' fill='url(%23g)'/></svg>`)
+    name: "Ember",
+    url: "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500'><defs><radialGradient id='g' cx='70%' cy='110%' r='120%'><stop offset='0' stop-color='%230c1a17'/><stop offset='0.55' stop-color='%23050b0e'/><stop offset='1' stop-color='%23000000'/></radialGradient><radialGradient id='b1' cx='40%' cy='40%' r='65%'><stop offset='0' stop-color='%23f5a952' stop-opacity='0.35'/><stop offset='1' stop-color='%23f5a952' stop-opacity='0'/></radialGradient><radialGradient id='b2' cx='60%' cy='60%' r='65%'><stop offset='0' stop-color='%231d5c52' stop-opacity='0.35'/><stop offset='1' stop-color='%231d5c52' stop-opacity='0'/></radialGradient></defs><rect width='800' height='500' fill='url(%23g)'/><rect width='800' height='500' fill='url(%23b1)'/><rect width='800' height='500' fill='url(%23b2)'/></svg>`)
   }, {
-    name: "Aurora",
-    url: "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500'><defs><linearGradient id='g' x1='0' x2='1' y1='0' y2='1'><stop offset='0' stop-color='%2300f5ff' stop-opacity='0.45'/><stop offset='0.5' stop-color='%23030712' stop-opacity='0.9'/><stop offset='1' stop-color='%239d4edd' stop-opacity='0.45'/></linearGradient></defs><rect width='800' height='500' fill='url(%23g)'/></svg>`)
+    name: "Tide",
+    url: "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500'><defs><radialGradient id='g' cx='30%' cy='110%' r='120%'><stop offset='0' stop-color='%2308131f'/><stop offset='0.55' stop-color='%2304080e'/><stop offset='1' stop-color='%23000000'/></radialGradient><radialGradient id='b1' cx='40%' cy='40%' r='65%'><stop offset='0' stop-color='%233aa6c9' stop-opacity='0.3'/><stop offset='1' stop-color='%233aa6c9' stop-opacity='0'/></radialGradient><radialGradient id='b2' cx='60%' cy='60%' r='65%'><stop offset='0' stop-color='%2314456e' stop-opacity='0.35'/><stop offset='1' stop-color='%2314456e' stop-opacity='0'/></radialGradient></defs><rect width='800' height='500' fill='url(%23g)'/><rect width='800' height='500' fill='url(%23b1)'/><rect width='800' height='500' fill='url(%23b2)'/></svg>`)
   }, {
-    name: "Crimson",
-    url: "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500'><defs><radialGradient id='g' cx='70%' cy='80%' r='90%'><stop offset='0' stop-color='%23ff3d6e' stop-opacity='0.55'/><stop offset='0.6' stop-color='%23090106' stop-opacity='0.95'/><stop offset='1' stop-color='%23000000'/></radialGradient></defs><rect width='800' height='500' fill='url(%23g)'/></svg>`)
+    name: "Moss",
+    url: "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500'><defs><radialGradient id='g' cx='50%' cy='120%' r='120%'><stop offset='0' stop-color='%230b1510'/><stop offset='0.55' stop-color='%2305090a'/><stop offset='1' stop-color='%23000000'/></radialGradient><radialGradient id='b1' cx='40%' cy='40%' r='65%'><stop offset='0' stop-color='%236f9a3e' stop-opacity='0.3'/><stop offset='1' stop-color='%236f9a3e' stop-opacity='0'/></radialGradient><radialGradient id='b2' cx='60%' cy='60%' r='65%'><stop offset='0' stop-color='%231e4d36' stop-opacity='0.35'/><stop offset='1' stop-color='%231e4d36' stop-opacity='0'/></radialGradient></defs><rect width='800' height='500' fill='url(%23g)'/><rect width='800' height='500' fill='url(%23b1)'/><rect width='800' height='500' fill='url(%23b2)'/></svg>`)
   }, {
-    name: "Mint",
-    url: "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500'><defs><linearGradient id='g' x1='0' x2='1' y1='1' y2='0'><stop offset='0' stop-color='%2366ff8a' stop-opacity='0.35'/><stop offset='0.5' stop-color='%23040b09' stop-opacity='0.95'/><stop offset='1' stop-color='%2322d3ee' stop-opacity='0.45'/></linearGradient></defs><rect width='800' height='500' fill='url(%23g)'/></svg>`)
-  }, {
-    name: "Solar",
-    url: "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500'><defs><radialGradient id='g' cx='50%' cy='50%' r='70%'><stop offset='0' stop-color='%23ffaa1f' stop-opacity='0.55'/><stop offset='0.4' stop-color='%23200a02' stop-opacity='0.95'/><stop offset='1' stop-color='%23000000'/></radialGradient></defs><rect width='800' height='500' fill='url(%23g)'/></svg>`)
-  }, {
-    name: "Carbon",
-    url: "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500'><rect width='800' height='500' fill='%23070a14'/><g stroke='%231a2235' stroke-width='1'>${Array.from({
-      length: 40
-    }).map((_, i) => `<line x1='${i * 20}' y1='0' x2='${i * 20}' y2='500'/>`).join('')}${Array.from({
-      length: 25
-    }).map((_, i) => `<line x1='0' y1='${i * 20}' x2='800' y2='${i * 20}'/>`).join('')}</g></svg>`)
+    name: "Violet Hour",
+    url: "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500'><defs><radialGradient id='g' cx='80%' cy='120%' r='120%'><stop offset='0' stop-color='%23150f1d'/><stop offset='0.55' stop-color='%23070510'/><stop offset='1' stop-color='%23000000'/></radialGradient><radialGradient id='b1' cx='40%' cy='40%' r='65%'><stop offset='0' stop-color='%238a5cf6' stop-opacity='0.3'/><stop offset='1' stop-color='%238a5cf6' stop-opacity='0'/></radialGradient><radialGradient id='b2' cx='60%' cy='60%' r='65%'><stop offset='0' stop-color='%23d4638a' stop-opacity='0.3'/><stop offset='1' stop-color='%23d4638a' stop-opacity='0'/></radialGradient></defs><rect width='800' height='500' fill='url(%23g)'/><rect width='800' height='500' fill='url(%23b1)'/><rect width='800' height='500' fill='url(%23b2)'/></svg>`)
   }];
 
   /* ===== Helpers ===== */
@@ -98,7 +70,7 @@
     return `rgba(${r.r},${r.g},${r.b},${alpha})`;
   }
   const DEFAULT_THEME = {
-    palette: ["#9d4edd"],
+    palette: ["#6fe8c0"],
     // 1-4 colors
     gradientAngle: 135,
     useImage: false,
@@ -107,7 +79,7 @@
   };
   function applyTheme(theme) {
     const root = document.documentElement;
-    const colors = theme.palette && theme.palette.length ? theme.palette : ["#9d4edd"];
+    const colors = theme.palette && theme.palette.length ? theme.palette : ["#6fe8c0"];
     const c1 = colors[0];
     root.style.setProperty("--accent", c1);
     root.style.setProperty("--accent-2", colors[1] || c1);
@@ -138,7 +110,7 @@
     } else if (t.accent) {
       palette.push(t.accent);
     } else {
-      palette.push("#9d4edd");
+      palette.push("#6fe8c0");
     }
     return {
       palette,
@@ -249,7 +221,7 @@
     const handleReset = () => {
       setDraft(DEFAULT_THEME);
     };
-    const palette = draft.palette || ["#9d4edd"];
+    const palette = draft.palette || ["#6fe8c0"];
     const setSlot = (i, value) => {
       const p = [...palette];
       p[i] = value;
@@ -260,7 +232,7 @@
     };
     const addSlot = () => {
       if (palette.length >= 4) return;
-      const next = ["#00f5ff", "#ff3d6e", "#39ff8a"][palette.length - 1] || "#ffffff";
+      const next = ["#f4b268", "#8ae0ff", "#c9e07a"][palette.length - 1] || "#ffffff";
       setDraft(d => ({
         ...d,
         palette: [...palette, next]
@@ -541,7 +513,7 @@
     };
     const add = () => {
       if (colors.length >= max) return;
-      const seeds = ["#9d4edd", "#00f5ff", "#ff3d6e", "#ffaa1f"];
+      const seeds = ["#6fe8c0", "#f4b268", "#8ae0ff", "#c9e07a"];
       onChange([...colors, seeds[colors.length] || "#ffffff"]);
     };
     const remove = i => {
