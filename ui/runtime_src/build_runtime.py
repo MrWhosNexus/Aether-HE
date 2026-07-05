@@ -118,6 +118,13 @@ def main():
 {head}
 </head>
 <body class="min-h-screen overflow-x-auto" style="min-width: 1200px;">
+<div class="bg-layer" aria-hidden="true">
+  <div class="aurora-blob" style="background: radial-gradient(circle, var(--accent), transparent 70%); top: -10%; left: -5%;"></div>
+  <div class="aurora-blob b2" style="background: radial-gradient(circle, var(--accent-2), transparent 70%); top: 20%; right: -10%;"></div>
+  <div class="aurora-blob b3" style="background: radial-gradient(circle, var(--good), transparent 70%); bottom: -15%; left: 20%;"></div>
+  <div class="grain"></div>
+  <div class="vignette"></div>
+</div>
 <div id="__bg-image-layer"></div>
 <div id="root" class="relative z-10"></div>
 {script_html}

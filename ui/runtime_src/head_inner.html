@@ -530,17 +530,27 @@
   .font-display { font-family: 'Rajdhani', sans-serif; letter-spacing: 0.02em; }
   .font-mono { font-family: 'JetBrains Mono', monospace; }
 
-  /* Soft atmospheric backdrop — less grid noise, more Notion-y warmth */
-  body::before {
-    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
-    background:
-      radial-gradient(1200px 700px at 18% -10%, color-mix(in oklab, var(--accent) 22%, transparent), transparent 60%),
-      radial-gradient(900px 600px at 110% 30%, color-mix(in oklab, var(--accent-2) 14%, transparent), transparent 60%),
-      radial-gradient(1100px 500px at 50% 130%, rgba(255,255,255,0.025), transparent 60%);
+  .bg-layer { position: fixed; inset: 0; overflow: hidden; z-index: 0; pointer-events: none; }
+  .aurora-blob {
+    position: absolute; width: 62vw; height: 62vw; border-radius: 50%;
+    filter: blur(90px); opacity: 0.85; mix-blend-mode: screen;
+    animation: drift 36s ease-in-out infinite alternate;
+  }
+  .aurora-blob.b2 { animation-duration: 47s; animation-delay: -12s; }
+  .aurora-blob.b3 { animation-duration: 58s; animation-delay: -29s; opacity: 0.6; }
+  @keyframes drift {
+    0%   { transform: translate(-8%, -6%) scale(1) rotate(0deg); }
+    50%  { transform: translate(10%, 8%) scale(1.18) rotate(24deg); }
+    100% { transform: translate(-4%, 12%) scale(0.94) rotate(-18deg); }
+  }
+  .grain { position: absolute; inset: 0; pointer-events: none; opacity: 0.07; mix-blend-mode: overlay; }
+  .vignette {
+    position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(120% 90% at 50% 20%, transparent 60%, rgba(3, 7, 9, 0.55) 100%);
   }
 
   #__bg-image-layer {
-    position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    position: fixed; inset: 0; pointer-events: none; z-index: 1;
     background-size: cover; background-position: center;
     display: none;
   }
