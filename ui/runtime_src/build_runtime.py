@@ -103,6 +103,7 @@ def compile_jsx(manifest):
         ("vendor/theme.jsx", "theme.js"),
         ("src/desktop.jsx", "desktop.js"),
         *ws_jobs,
+        ("src/wizard.jsx", "wizard.js"),
         ("src/app.jsx", "app.js"),
     ]
     pairs = [[os.path.join(HERE, i), os.path.join(BUILD, o)] for i, o in jobs]

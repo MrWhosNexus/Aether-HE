@@ -13,7 +13,7 @@ const { ThemePopup, useTheme } = window.AetherTheme;
 
 // Desktop-widget shell (foundation) + section widget registries.
 const { Workspace, TopBar: DesktopTopBar, SECTION_DEFS } = window.AetherDesktop;
-const ACTUATION_WIDGETS = (window.AetherWorkspaces && window.AetherWorkspaces.ACTUATION_WIDGETS) || [];
+const SetupWizard = window.AetherWizard && window.AetherWizard.SetupWizard;
 
 // Placeholder for sections not yet built by later waves — a single
 // "coming soon" widget so the workspace surface isn't blank.
@@ -29,14 +29,20 @@ const comingSoon = (label) => [{
   ),
 }];
 
-// Registry: section id → widget array. Later waves replace the placeholders.
+// Registry: section id → widget array, sourced from each workspace file's
+// window.AetherWorkspaces.<SECTION>_WIDGETS export; falls back to a placeholder
+// if a workspace file failed to load.
+const wsArr = (key, label) => {
+  const a = (window.AetherWorkspaces && window.AetherWorkspaces[key]) || [];
+  return a.length ? a : comingSoon(label);
+};
 const WIDGETS = {
-  actuation: ACTUATION_WIDGETS,
-  keymap:    comingSoon("Keymap"),
-  lighting:  comingSoon("Lighting"),
-  socd:      comingSoon("SOCD"),
-  gamepad:   comingSoon("Gamepad"),
-  settings:  comingSoon("Settings"),
+  actuation: wsArr("ACTUATION_WIDGETS", "Actuation"),
+  keymap:    wsArr("KEYMAP_WIDGETS", "Keymap"),
+  lighting:  wsArr("LIGHTING_WIDGETS", "Lighting"),
+  socd:      wsArr("SOCD_WIDGETS", "SOCD"),
+  gamepad:   wsArr("GAMEPAD_WIDGETS", "Gamepad"),
+  settings:  wsArr("SETTINGS_WIDGETS", "Settings"),
 };
 
 /* ============================================================
@@ -369,6 +375,14 @@ const HeroCard = ({ children, badge, breadcrumb }) => (
 function App() {
   const [theme, setTheme] = useTheme();
   const [themeOpen, setThemeOpen] = useState(false);
+  // First-run setup wizard: open until the user finishes/skips it once.
+  const [wizardOpen, setWizardOpen] = useState(() => {
+    try { return localStorage.getItem("aether-setup-done") !== "1"; } catch { return false; }
+  });
+  const closeWizard = () => {
+    try { localStorage.setItem("aether-setup-done", "1"); } catch {}
+    setWizardOpen(false);
+  };
 
   // Connection is OFF until the user pairs (or auto-connect is enabled).
   const [connected, setConnected] = useState(false);
@@ -986,6 +1000,7 @@ function App() {
     activeProfileName: (profiles.find(p => p.id === activeId) || {}).name || "Profile",
     // theme
     theme, setTheme, themeOpen, setThemeOpen,
+    setWizardOpen,
     // section
     section, setSection,
     // key selection (shared across workspaces)
@@ -1035,6 +1050,9 @@ function App() {
 
       {/* Theme Customizer popup (preserved; surfaced by the Settings workspace) */}
       <ThemePopup open={themeOpen} onClose={() => setThemeOpen(false)} theme={theme} setTheme={setTheme}/>
+
+      {/* First-run setup wizard (reopenable from Settings via ctx.setWizardOpen). */}
+      {SetupWizard && <SetupWizard open={wizardOpen} onClose={closeWizard} ctx={ctx}/>}
     </>
   );
 }
