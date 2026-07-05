@@ -1,14 +1,17 @@
 """Board-draft bot: validate a submission, have MiniMax draft board support, open
 a PR. NEVER merges; NEVER logs the API key. Pure helpers here are unit-tested;
 main() shells out to `gh`."""
+import argparse
 import ast
 import json
 import os
 import re
+import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # tools/ on path
 from validate_keymap import validate_keymap  # noqa: E402
+from board_submission import validate_submission  # noqa: E402
 
 _JSON_BLOCK = re.compile(r"```json\s*(\{.*?\})\s*```", re.S)
 _JSON_URL = re.compile(r"https://[^\s)\"']+\.json")
@@ -91,3 +94,96 @@ def sanity_check(artifacts, existing_slugs):
         except SyntaxError as ex:
             e.append(f"adapter has a python syntax error (non-fatal, flag in PR): {ex}")
     return e
+
+
+def _run(cmd, cwd=None):
+    return subprocess.run(cmd, check=True, capture_output=True, text=True, cwd=cwd).stdout
+
+
+def _gh(args):
+    return _run(["gh"] + args)
+
+
+def _read_prompt():
+    here = os.path.dirname(os.path.abspath(__file__))
+    return open(os.path.join(here, "prompts", "board_draft.md"), encoding="utf-8").read()
+
+
+def run(issue_number, *, gh, complete, repo_root):
+    """Testable core. gh(args)->stdout, complete(prompt)->text are injected.
+    NEVER merges, force-pushes, or touches main directly — only creates
+    branch board/<slug> and opens a PR via `gh pr create`."""
+    issue = json.loads(gh(["issue", "view", str(issue_number), "--json", "number,title,body"]))
+    body = issue.get("body", "")
+    sub = extract_json_block(body)
+    if sub is None:
+        url = extract_attachment_url(body)
+        if url:
+            import urllib.request
+            sub = json.loads(urllib.request.urlopen(url, timeout=60).read().decode("utf-8"))
+    if not isinstance(sub, dict):
+        gh(["issue", "comment", str(issue_number), "--body",
+            "Automated draft: no submission JSON found. Please attach the file the app generated."])
+        return {"ok": False, "pr_url": None, "reason": "no submission found"}
+    errs = validate_submission(sub)
+    if errs:
+        gh(["issue", "comment", str(issue_number), "--body",
+            "Automated draft: submission is invalid:\n- " + "\n- ".join(errs)])
+        return {"ok": False, "pr_url": None, "reason": "invalid submission"}
+
+    artifacts = parse_model_output(complete(build_prompt(sub, _read_prompt())))
+    reg_path = os.path.join(repo_root, "data", "board_registry.json")
+    existing = set()
+    try:
+        existing = {b.get("slug") for b in json.load(open(reg_path)).get("boards", [])}
+    except Exception:
+        pass
+    problems = sanity_check(artifacts, existing)
+    hard = [p for p in problems if "syntax error" not in p]   # adapter syntax = non-fatal
+    if hard:
+        gh(["issue", "comment", str(issue_number), "--body",
+            "Automated draft could not produce a clean board:\n- " + "\n- ".join(hard)])
+        return {"ok": False, "pr_url": None, "reason": "sanity failed"}
+
+    slug = artifacts["registry"]["slug"]
+    # write files
+    reg = json.load(open(reg_path))
+    reg["boards"].append(artifacts["registry"])
+    json.dump(reg, open(reg_path, "w"), indent=2)
+    lay_path = os.path.join(repo_root, "ui", "layouts", f"{slug}.json")
+    os.makedirs(os.path.dirname(lay_path), exist_ok=True)
+    json.dump(artifacts["layout"], open(lay_path, "w"), indent=2)
+    open(os.path.join(repo_root, f"protocol_{slug.replace('-', '_')}.py"), "w",
+         encoding="utf-8").write(artifacts["adapter"])
+    notes = artifacts["notes"] + ("\n\n> NOTE: adapter has a syntax error — needs a human fix."
+                                  if any("syntax error" in p for p in problems) else "")
+    open(os.path.join(repo_root, "DECODE_NOTES.md"), "w", encoding="utf-8").write(notes)
+
+    branch = f"board/{slug}"
+    # Only do real git ops when repo_root is an actual git checkout (production).
+    # In tests repo_root is a bare tmp_path with no .git, so this is skipped —
+    # keeps tests hermetic and never risks running git against the real repo cwd.
+    if os.path.isdir(os.path.join(repo_root, ".git")):
+        _run(["git", "checkout", "-b", branch], cwd=repo_root)
+        _run(["git", "add", "-A"], cwd=repo_root)
+        _run(["git", "commit", "-m",
+              f"draft(board): {slug} (AI-DRAFTED, experimental) — closes #{issue_number}"], cwd=repo_root)
+        _run(["git", "push", "-u", "origin", branch], cwd=repo_root)
+    pr_url = gh(["pr", "create", "--title", f"Draft board: {slug} (experimental)",
+                 "--body", f"AI-drafted from #{issue_number}. UNVERIFIED — verify on hardware before promoting to supported. See DECODE_NOTES.md.",
+                 "--label", "experimental", "--head", branch]).strip()
+    gh(["issue", "comment", str(issue_number), "--body", f"Automated draft opened: {pr_url}"])
+    return {"ok": True, "pr_url": pr_url, "reason": "ok"}
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--issue", type=int, required=True)
+    args = ap.parse_args()
+    from minimax_client import complete as mm_complete   # env key; raises if absent
+    res = run(args.issue, gh=_gh, complete=mm_complete, repo_root=os.getcwd())
+    print("result:", res["reason"])   # never prints the key
+
+
+if __name__ == "__main__":
+    main()

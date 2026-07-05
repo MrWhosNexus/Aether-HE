@@ -63,3 +63,37 @@ def test_sanity_check_unparseable_adapter_not_fatal():
     a["adapter"] = "def (:::"   # invalid python
     errs = bot.sanity_check(a, set())
     assert any("adapter" in e.lower() for e in errs)  # reported, but caller treats as non-fatal
+
+
+def test_run_happy_path(tmp_path, monkeypatch):
+    # existing registry with no boards
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "board_registry.json").write_text('{"boards": []}')
+    (tmp_path / "ui" / "layouts").mkdir(parents=True)
+    calls = {"pr": None, "comment": None}
+    def fake_gh(args):
+        if args[:2] == ["issue", "view"]:
+            return '{"number": 9, "title": "t", "body": "```json\\n' + \
+                   '{\\"schema\\":\\"aether-board-submission/1\\",\\"device\\":{\\"vid\\":\\"0x1\\",\\"pid\\":\\"0x2\\"},' + \
+                   '\\"meta\\":{\\"brand\\":\\"Acme\\",\\"model\\":\\"60\\",\\"size\\":\\"60\\"},\\"input_capture\\":{\\"reports\\":[]}}\\n```"}'
+        if args[0] == "pr":
+            calls["pr"] = args; return "https://github.com/x/pull/3"
+        if args[:2] == ["issue", "comment"]:
+            calls["comment"] = args; return ""
+        return ""
+    monkeypatch.setattr(bot, "_read_prompt", lambda: "T {submission}")
+    res = bot.run(9, gh=fake_gh, complete=lambda p: _MODEL_OUT, repo_root=str(tmp_path))
+    assert res["ok"] is True and res["pr_url"] == "https://github.com/x/pull/3"
+    assert (tmp_path / "ui" / "layouts" / "acme-60.json").exists()
+    assert (tmp_path / "protocol_acme_60.py").exists()
+    assert calls["comment"] is not None   # commented the PR link on the issue
+
+def test_run_invalid_submission_comments_no_pr(tmp_path, monkeypatch):
+    def fake_gh(args):
+        if args[:2] == ["issue", "view"]:
+            return '{"number": 9, "title": "t", "body": "```json\\n{\\"schema\\":\\"wrong\\"}\\n```"}'
+        return ""
+    monkeypatch.setattr(bot, "_read_prompt", lambda: "T {submission}")
+    res = bot.run(9, gh=fake_gh, complete=lambda p: "", repo_root=str(tmp_path))
+    assert res["ok"] is False and res["pr_url"] is None
+    assert "invalid" in res["reason"].lower()
