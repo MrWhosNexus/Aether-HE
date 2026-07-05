@@ -39803,7 +39803,8 @@
   /* ===== About/Update widget ===== */
   function AboutWidget(ctx) {
     const {
-      setWizardOpen
+      setWizardOpen,
+      setSubmitOpen
     } = ctx;
     const [version, setVersion] = useState("—");
     const [updateState, setUpdateState] = useState({
@@ -39906,7 +39907,10 @@
     }, updateState.phase === "installing" ? "Installing…" : "Install Update"), /*#__PURE__*/React.createElement("button", {
       onClick: openWizard,
       className: "h-9 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] font-display text-[11px] uppercase tracking-[0.16em] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] transition-all"
-    }, "Setup Wizard")), updateState.msg && /*#__PURE__*/React.createElement("div", {
+    }, "Setup Wizard"), /*#__PURE__*/React.createElement("button", {
+      className: "btn",
+      onClick: () => setSubmitOpen && setSubmitOpen(true)
+    }, "Submit a board")), updateState.msg && /*#__PURE__*/React.createElement("div", {
       className: `text-[11px] font-mono uppercase tracking-[0.16em] ${updateState.phase === "error" ? "text-rose-300" : "text-[var(--text-faint)]"}`
     }, updateState.msg));
   }
@@ -40347,6 +40351,11 @@
       if (pollRef.current) clearInterval(pollRef.current);
       api().stop_capture?.();
     }, []);
+    useEffect(() => {
+      if (!open && capturing) {
+        stopCapture();
+      }
+    }, [open]);
     if (!open) return null;
     const startCapture = async () => {
       setReports([]);
@@ -40630,7 +40639,9 @@
      ============================================================ */
   function StepBoard({
     board,
-    setBoard
+    setBoard,
+    ctx,
+    onClose
   }) {
     return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
       className: "font-title",
@@ -40703,7 +40714,16 @@
           border: "1px solid var(--line)"
         }
       }, STATUS_LABEL[b.status] || b.status)));
-    })));
+    })), /*#__PURE__*/React.createElement("button", {
+      className: "btn",
+      onClick: () => {
+        onClose();
+        ctx && ctx.setSubmitOpen && ctx.setSubmitOpen(true);
+      },
+      style: {
+        marginTop: 14
+      }
+    }, "My board isn\u2019t listed \u2192 Submit it"));
   }
 
   /* ============================================================
@@ -41011,7 +41031,9 @@
     let body = null;
     if (step === 0) body = /*#__PURE__*/React.createElement(StepBoard, {
       board: board,
-      setBoard: setBoard
+      setBoard: setBoard,
+      ctx: c,
+      onClose: close
     });else if (step === 1) body = /*#__PURE__*/React.createElement(StepLayout, {
       board: board
     });else if (step === 2) body = /*#__PURE__*/React.createElement(StepAnimations, {
@@ -41222,6 +41244,7 @@
     SECTION_DEFS
   } = window.AetherDesktop;
   const SetupWizard = window.AetherWizard && window.AetherWizard.SetupWizard;
+  const BoardSubmit = window.AetherBoardSubmit && window.AetherBoardSubmit.BoardSubmit;
 
   // Placeholder for sections not yet built by later waves — a single
   // "coming soon" widget so the workspace surface isn't blank.
@@ -41864,6 +41887,7 @@
       } catch {}
       setWizardOpen(false);
     };
+    const [submitOpen, setSubmitOpen] = useState(false);
 
     // User zoom multiplier (top-bar − / % / + control), on top of the auto-fit.
     const [uiZoom, setUiZoom] = useState(() => {
@@ -42749,6 +42773,7 @@
       themeOpen,
       setThemeOpen,
       setWizardOpen,
+      setSubmitOpen,
       // section
       section,
       setSection,
@@ -42872,6 +42897,9 @@
       open: wizardOpen,
       onClose: closeWizard,
       ctx: ctx
+    }), BoardSubmit && /*#__PURE__*/React.createElement(BoardSubmit, {
+      open: submitOpen,
+      onClose: () => setSubmitOpen(false)
     }));
   }
   const Stat = ({

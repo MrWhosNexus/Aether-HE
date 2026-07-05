@@ -47,6 +47,11 @@
       if (pollRef.current) clearInterval(pollRef.current);
       api().stop_capture?.();
     }, []);
+    useEffect(() => {
+      if (!open && capturing) {
+        stopCapture();
+      }
+    }, [open]);
     if (!open) return null;
     const startCapture = async () => {
       setReports([]);

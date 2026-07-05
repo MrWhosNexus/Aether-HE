@@ -29,6 +29,7 @@ function BoardSubmit({ open, onClose }) {
 
   useEffect(() => { if (open) { setStep(0); api().list_hid_devices?.().then(r => r && r.ok && setDevices(r.devices)); } }, [open]);
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); api().stop_capture?.(); }, []);
+  useEffect(() => { if (!open && capturing) { stopCapture(); } }, [open]);
   if (!open) return null;
 
   const startCapture = async () => {

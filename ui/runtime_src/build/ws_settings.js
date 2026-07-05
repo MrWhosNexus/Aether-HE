@@ -256,7 +256,8 @@
   /* ===== About/Update widget ===== */
   function AboutWidget(ctx) {
     const {
-      setWizardOpen
+      setWizardOpen,
+      setSubmitOpen
     } = ctx;
     const [version, setVersion] = useState("—");
     const [updateState, setUpdateState] = useState({
@@ -359,7 +360,10 @@
     }, updateState.phase === "installing" ? "Installing…" : "Install Update"), /*#__PURE__*/React.createElement("button", {
       onClick: openWizard,
       className: "h-9 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] font-display text-[11px] uppercase tracking-[0.16em] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] transition-all"
-    }, "Setup Wizard")), updateState.msg && /*#__PURE__*/React.createElement("div", {
+    }, "Setup Wizard"), /*#__PURE__*/React.createElement("button", {
+      className: "btn",
+      onClick: () => setSubmitOpen && setSubmitOpen(true)
+    }, "Submit a board")), updateState.msg && /*#__PURE__*/React.createElement("div", {
       className: `text-[11px] font-mono uppercase tracking-[0.16em] ${updateState.phase === "error" ? "text-rose-300" : "text-[var(--text-faint)]"}`
     }, updateState.msg));
   }

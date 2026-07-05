@@ -62,7 +62,7 @@ const markDone = () => {
 /* ============================================================
    Step 1 — Board selection.
    ============================================================ */
-function StepBoard({ board, setBoard }) {
+function StepBoard({ board, setBoard, ctx, onClose }) {
   return (
     <div>
       <h2 className="font-title" style={{ fontSize: 28, letterSpacing: "0.04em", marginBottom: 6 }}>
@@ -116,6 +116,11 @@ function StepBoard({ board, setBoard }) {
           );
         })}
       </div>
+
+      <button className="btn" onClick={() => { onClose(); ctx && ctx.setSubmitOpen && ctx.setSubmitOpen(true); }}
+        style={{ marginTop: 14 }}>
+        My board isn&rsquo;t listed → Submit it
+      </button>
     </div>
   );
 }
@@ -336,7 +341,7 @@ function SetupWizard({ open, onClose, ctx }) {
   const c = ctx || {};
 
   let body = null;
-  if (step === 0) body = <StepBoard board={board} setBoard={setBoard} />;
+  if (step === 0) body = <StepBoard board={board} setBoard={setBoard} ctx={c} onClose={close} />;
   else if (step === 1) body = <StepLayout board={board} />;
   else if (step === 2) body = <StepAnimations ctx={c} />;
   else body = <StepImport ctx={c} />;
