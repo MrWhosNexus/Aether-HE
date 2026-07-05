@@ -870,26 +870,26 @@ const LightingSection = ({
     <div>
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-3">
-          <span className="font-display text-[15px] text-slate-100 tracking-[0.02em] font-semibold">Lighting</span>
-          <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500">RGB engine · per-key</span>
+          <span className="font-display text-[15px] text-[var(--text)] tracking-[0.02em] font-semibold">Lighting</span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-faint)]">RGB engine · per-key</span>
         </div>
         <div className="flex items-center gap-4">
           {fullColorOk && (
             <div className="flex items-center gap-2" title="Cycle the full RGB spectrum (rainbow) instead of the chosen colors">
-              <span className="font-display text-[11px] uppercase tracking-[0.18em] text-slate-300">Full RGB</span>
+              <span className="font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)]">Full RGB</span>
               <button onClick={() => setFullColor(!fullColor)}
                 className={`relative w-10 h-5 rounded-full border transition-colors
-                            ${fullColor ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-white/[0.08]"}`}>
+                            ${fullColor ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-[var(--line)]"}`}>
                 <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full transition-all
                                   ${fullColor ? "left-[20px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-slate-400"}`}/>
               </button>
             </div>
           )}
           <div className="flex items-center gap-2">
-            <span className="font-display text-[11px] uppercase tracking-[0.18em] text-slate-300">Power</span>
+            <span className="font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)]">Power</span>
             <button onClick={() => setPower(!power)}
               className={`relative w-10 h-5 rounded-full border transition-colors
-                          ${power ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-white/[0.08]"}`}>
+                          ${power ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-[var(--line)]"}`}>
               <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full transition-all
                                 ${power ? "left-[20px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-slate-400"}`}/>
             </button>
@@ -901,7 +901,7 @@ const LightingSection = ({
         {/* LEFT: Light Mode grid + sliders */}
         <div className="flex flex-col gap-5">
           <div>
-            <div className="font-display text-[11px] uppercase tracking-[0.22em] text-slate-400 mb-2">Light Mode</div>
+            <div className="font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)] mb-2">Light Mode</div>
             <div className="grid grid-cols-3 gap-1.5">
               {LIGHT_MODES.map(m => {
                 const active = pattern === m.id;
@@ -910,7 +910,7 @@ const LightingSection = ({
                     className={`h-9 rounded-lg border font-display text-[11px] tracking-[0.06em] flex items-center justify-center gap-1.5 transition-all
                                 ${active
                                   ? "border-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_14px_var(--accent-glow)]"
-                                  : "border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20"}`}
+                                  : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`}
                     style={ active ? { background: "var(--accent-gradient, var(--accent))" } : {} }>
                     <span className="text-[12px]">{m.icon}</span> {m.label}
                   </button>
@@ -922,7 +922,7 @@ const LightingSection = ({
           <div className="grid grid-cols-2 gap-5">
             <div>
               <div className="flex items-baseline justify-between mb-1.5">
-                <span className="font-display text-[11px] uppercase tracking-[0.22em] text-slate-400">Brightness</span>
+                <span className="font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)]">Brightness</span>
                 <span className="font-mono text-[12px] text-[var(--accent)]">{Math.round(brightness)}%</span>
               </div>
               <input type="range" className="aether w-full"
@@ -932,7 +932,7 @@ const LightingSection = ({
             </div>
             <div>
               <div className="flex items-baseline justify-between mb-1.5">
-                <span className="font-display text-[11px] uppercase tracking-[0.22em] text-slate-400">Speed</span>
+                <span className="font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)]">Speed</span>
                 <span className="font-mono text-[12px] text-[var(--accent)]">{Math.round(speed)}%</span>
               </div>
               <input type="range" className="aether w-full"
@@ -944,7 +944,7 @@ const LightingSection = ({
 
           {/* Direction / angle of flow (Wave, Striation, Radar, etc.) */}
           <div>
-            <div className="font-display text-[11px] uppercase tracking-[0.22em] text-slate-400 mb-2">Direction</div>
+            <div className="font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)] mb-2">Direction</div>
             <div className="grid grid-cols-4 gap-1.5 max-w-[220px]">
               {[["→", 0], ["←", 1], ["↑", 2], ["↓", 3]].map(([arrow, val]) => {
                 const active = direction === val;
@@ -953,7 +953,7 @@ const LightingSection = ({
                     className={`h-9 rounded-lg border text-[15px] transition-all
                                 ${active
                                   ? "border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)] shadow-[0_0_12px_var(--accent-glow)]"
-                                  : "border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20"}`}>
+                                  : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`}>
                     {arrow}
                   </button>
                 );
@@ -964,7 +964,7 @@ const LightingSection = ({
           {/* Striation orientation — only relevant for the Striation effect */}
           {pattern === "striation" && (
             <div>
-              <div className="font-display text-[11px] uppercase tracking-[0.22em] text-slate-400 mb-2">Stripe Orientation</div>
+              <div className="font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)] mb-2">Stripe Orientation</div>
               <div className="grid grid-cols-3 gap-1.5 max-w-[260px]">
                 {[["Vertical", "v", "▥"], ["Horizontal", "h", "▤"], ["Both", "both", "▦"]].map(([lbl, val, ic]) => {
                   const active = (striOrient || "v") === val;
@@ -973,7 +973,7 @@ const LightingSection = ({
                       className={`h-9 rounded-lg border text-[11px] uppercase tracking-[0.12em] flex items-center justify-center gap-1.5 transition-all
                                   ${active
                                     ? "border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)] shadow-[0_0_12px_var(--accent-glow)]"
-                                    : "border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20"}`}>
+                                    : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`}>
                       <span className="text-[14px]">{ic}</span>{lbl}
                     </button>
                   );
@@ -983,10 +983,10 @@ const LightingSection = ({
           )}
 
           {/* Background color */}
-          <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4">
+          <div className="glass p-4">
             <div className="flex items-baseline justify-between mb-2.5">
-              <span className="font-display text-[11px] uppercase tracking-[0.22em] text-slate-300">Background color</span>
-              <span className="font-mono text-[10px] text-slate-500">underlies the effect</span>
+              <span className="font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)]">Background color</span>
+              <span className="font-mono text-[10px] text-[var(--text-faint)]">underlies the effect</span>
             </div>
             <div className="flex items-center gap-3">
               <div className="relative w-14 h-12 rounded-xl overflow-hidden ring-1 ring-white/10"
@@ -996,9 +996,9 @@ const LightingSection = ({
               </div>
               <input type="text" value={bgColor.toUpperCase()}
                      onChange={(e) => { const v = e.target.value; if (/^#[0-9a-fA-F]{6}$/.test(v)) setBgColor(v); else setBgColor(v); }}
-                     className="flex-1 h-10 px-3 rounded-lg bg-black/30 border border-white/[0.06] font-mono text-[12px] text-slate-100 outline-none focus:border-white/20"/>
+                     className="flex-1 h-10 px-3 rounded-lg bg-[rgba(5,11,14,0.5)] border border-[var(--line)] font-mono text-[12px] text-[var(--text)] outline-none focus:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"/>
               <button onClick={() => setBgColor("#000000")}
-                className="px-2.5 h-10 rounded-lg border border-white/[0.06] bg-white/[0.02] text-slate-300 hover:text-white hover:border-white/20 font-display text-[10.5px] uppercase tracking-[0.16em]">
+                className="px-2.5 h-10 rounded-lg border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:text-white hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] font-display text-[10.5px] uppercase tracking-[0.16em]">
                 Off
               </button>
             </div>
@@ -1023,15 +1023,15 @@ const LightingSection = ({
           {pattern !== "custom" && (
           <div>
             <div className="flex items-baseline justify-between mb-2">
-              <span className="font-display text-[11px] uppercase tracking-[0.22em] text-slate-300">Effect colors · {palette.length}/4</span>
+              <span className="font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)]">Effect colors · {palette.length}/4</span>
               <div className="flex items-center gap-3">
                 {palette.length > 0 && (
                   <button onClick={() => setColors([])}
-                    className="font-mono text-[10px] uppercase tracking-[0.16em] text-slate-400 hover:text-rose-300">
+                    className="font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--text-dim)] hover:text-rose-300">
                     Clear all
                   </button>
                 )}
-                <span className="font-mono text-[10px] text-slate-500">click slot to recolor</span>
+                <span className="font-mono text-[10px] text-[var(--text-faint)]">click slot to recolor</span>
               </div>
             </div>
             <div className="flex items-stretch gap-2 mb-3">
@@ -1063,7 +1063,7 @@ const LightingSection = ({
               })}
               {palette.length < 4 && (
                 <button onClick={addSlot}
-                  className="flex-1 min-w-0 h-16 rounded-2xl border-2 border-dashed border-white/15 bg-white/[0.02] text-slate-400 hover:border-white/30 hover:bg-white/[0.04] hover:text-white grid place-items-center transition-all">
+                  className="flex-1 min-w-0 h-16 rounded-2xl border-2 border-dashed border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] hover:bg-white/[0.04] hover:text-white grid place-items-center transition-all">
                   <span className="flex items-center gap-1.5 font-display text-[11px] uppercase tracking-[0.18em]">
                     <IPlus size={13}/> Add
                   </span>
@@ -1095,21 +1095,21 @@ const LightingSection = ({
           )}
 
           {/* Per-key assignment */}
-          <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4">
+          <div className="glass p-4">
             <div className="flex items-center justify-between mb-3">
               <div>
-                <div className="font-display text-[12px] uppercase tracking-[0.18em] text-slate-200">Per-key colors</div>
-                <div className="font-mono text-[10px] text-slate-500 mt-0.5">
+                <div className="font-display text-[12px] uppercase tracking-[0.18em] text-[var(--text)]">Per-key colors</div>
+                <div className="font-mono text-[10px] text-[var(--text-faint)] mt-0.5">
                   {selectedKeys?.size ?? 0} key{(selectedKeys?.size ?? 0) === 1 ? "" : "s"} selected · Ctrl/⌘-click to toggle
                 </div>
               </div>
               <div className="flex items-center gap-1.5">
                 <button onClick={onSelectAll}
-                  className="px-2.5 h-8 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-300 hover:text-white hover:border-white/20 font-display text-[10.5px] uppercase tracking-[0.16em]">
+                  className="px-2.5 h-8 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:text-white hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] font-display text-[10.5px] uppercase tracking-[0.16em]">
                   Select all
                 </button>
                 <button onClick={onClearSelection}
-                  className="px-2.5 h-8 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-300 hover:text-white hover:border-white/20 font-display text-[10.5px] uppercase tracking-[0.16em]">
+                  className="px-2.5 h-8 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:text-white hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] font-display text-[10.5px] uppercase tracking-[0.16em]">
                   Clear
                 </button>
               </div>
@@ -1126,7 +1126,7 @@ const LightingSection = ({
               </button>
               <button onClick={clearPerKeyForSelection}
                 disabled={!selectedKeys || selectedKeys.size === 0}
-                className="px-3 h-10 rounded-lg border border-white/[0.06] bg-white/[0.02] text-slate-300 hover:text-white hover:border-white/20 disabled:opacity-40 font-display text-[11.5px] uppercase tracking-[0.18em]">
+                className="px-3 h-10 rounded-lg border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:text-white hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] disabled:opacity-40 font-display text-[11.5px] uppercase tracking-[0.18em]">
                 Reset
               </button>
             </div>

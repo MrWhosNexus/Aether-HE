@@ -35400,31 +35400,31 @@
     }, /*#__PURE__*/React.createElement("div", {
       className: "flex items-center gap-3"
     }, /*#__PURE__*/React.createElement("span", {
-      className: "font-display text-[15px] text-slate-100 tracking-[0.02em] font-semibold"
+      className: "font-display text-[15px] text-[var(--text)] tracking-[0.02em] font-semibold"
     }, "Lighting"), /*#__PURE__*/React.createElement("span", {
-      className: "font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500"
+      className: "font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-faint)]"
     }, "RGB engine \xB7 per-key")), /*#__PURE__*/React.createElement("div", {
       className: "flex items-center gap-4"
     }, fullColorOk && /*#__PURE__*/React.createElement("div", {
       className: "flex items-center gap-2",
       title: "Cycle the full RGB spectrum (rainbow) instead of the chosen colors"
     }, /*#__PURE__*/React.createElement("span", {
-      className: "font-display text-[11px] uppercase tracking-[0.18em] text-slate-300"
+      className: "font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)]"
     }, "Full RGB"), /*#__PURE__*/React.createElement("button", {
       onClick: () => setFullColor(!fullColor),
       className: `relative w-10 h-5 rounded-full border transition-colors
-                            ${fullColor ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-white/[0.08]"}`
+                            ${fullColor ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-[var(--line)]"}`
     }, /*#__PURE__*/React.createElement("span", {
       className: `absolute top-0.5 w-3.5 h-3.5 rounded-full transition-all
                                   ${fullColor ? "left-[20px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-slate-400"}`
     }))), /*#__PURE__*/React.createElement("div", {
       className: "flex items-center gap-2"
     }, /*#__PURE__*/React.createElement("span", {
-      className: "font-display text-[11px] uppercase tracking-[0.18em] text-slate-300"
+      className: "font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)]"
     }, "Power"), /*#__PURE__*/React.createElement("button", {
       onClick: () => setPower(!power),
       className: `relative w-10 h-5 rounded-full border transition-colors
-                          ${power ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-white/[0.08]"}`
+                          ${power ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-[var(--line)]"}`
     }, /*#__PURE__*/React.createElement("span", {
       className: `absolute top-0.5 w-3.5 h-3.5 rounded-full transition-all
                                 ${power ? "left-[20px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-slate-400"}`
@@ -35433,7 +35433,7 @@
     }, /*#__PURE__*/React.createElement("div", {
       className: "flex flex-col gap-5"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-      className: "font-display text-[11px] uppercase tracking-[0.22em] text-slate-400 mb-2"
+      className: "font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)] mb-2"
     }, "Light Mode"), /*#__PURE__*/React.createElement("div", {
       className: "grid grid-cols-3 gap-1.5"
     }, LIGHT_MODES.map(m => {
@@ -35442,7 +35442,7 @@
         key: m.id,
         onClick: () => setPattern(m.id),
         className: `h-9 rounded-lg border font-display text-[11px] tracking-[0.06em] flex items-center justify-center gap-1.5 transition-all
-                                ${active ? "border-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_14px_var(--accent-glow)]" : "border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20"}`,
+                                ${active ? "border-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_14px_var(--accent-glow)]" : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`,
         style: active ? {
           background: "var(--accent-gradient, var(--accent))"
         } : {}
@@ -35454,7 +35454,7 @@
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
       className: "flex items-baseline justify-between mb-1.5"
     }, /*#__PURE__*/React.createElement("span", {
-      className: "font-display text-[11px] uppercase tracking-[0.22em] text-slate-400"
+      className: "font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)]"
     }, "Brightness"), /*#__PURE__*/React.createElement("span", {
       className: "font-mono text-[12px] text-[var(--accent)]"
     }, Math.round(brightness), "%")), /*#__PURE__*/React.createElement("input", {
@@ -35471,7 +35471,7 @@
     })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
       className: "flex items-baseline justify-between mb-1.5"
     }, /*#__PURE__*/React.createElement("span", {
-      className: "font-display text-[11px] uppercase tracking-[0.22em] text-slate-400"
+      className: "font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)]"
     }, "Speed"), /*#__PURE__*/React.createElement("span", {
       className: "font-mono text-[12px] text-[var(--accent)]"
     }, Math.round(speed), "%")), /*#__PURE__*/React.createElement("input", {
@@ -35486,7 +35486,7 @@
       },
       onChange: e => setSpeed(parseFloat(e.target.value))
     }))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-      className: "font-display text-[11px] uppercase tracking-[0.22em] text-slate-400 mb-2"
+      className: "font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)] mb-2"
     }, "Direction"), /*#__PURE__*/React.createElement("div", {
       className: "grid grid-cols-4 gap-1.5 max-w-[220px]"
     }, [["→", 0], ["←", 1], ["↑", 2], ["↓", 3]].map(([arrow, val]) => {
@@ -35495,10 +35495,10 @@
         key: val,
         onClick: () => setDirection(val),
         className: `h-9 rounded-lg border text-[15px] transition-all
-                                ${active ? "border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)] shadow-[0_0_12px_var(--accent-glow)]" : "border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20"}`
+                                ${active ? "border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)] shadow-[0_0_12px_var(--accent-glow)]" : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`
       }, arrow);
     }))), pattern === "striation" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-      className: "font-display text-[11px] uppercase tracking-[0.22em] text-slate-400 mb-2"
+      className: "font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)] mb-2"
     }, "Stripe Orientation"), /*#__PURE__*/React.createElement("div", {
       className: "grid grid-cols-3 gap-1.5 max-w-[260px]"
     }, [["Vertical", "v", "▥"], ["Horizontal", "h", "▤"], ["Both", "both", "▦"]].map(([lbl, val, ic]) => {
@@ -35507,18 +35507,18 @@
         key: val,
         onClick: () => setStriOrient && setStriOrient(val),
         className: `h-9 rounded-lg border text-[11px] uppercase tracking-[0.12em] flex items-center justify-center gap-1.5 transition-all
-                                  ${active ? "border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)] shadow-[0_0_12px_var(--accent-glow)]" : "border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20"}`
+                                  ${active ? "border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)] shadow-[0_0_12px_var(--accent-glow)]" : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`
       }, /*#__PURE__*/React.createElement("span", {
         className: "text-[14px]"
       }, ic), lbl);
     }))), /*#__PURE__*/React.createElement("div", {
-      className: "rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4"
+      className: "glass p-4"
     }, /*#__PURE__*/React.createElement("div", {
       className: "flex items-baseline justify-between mb-2.5"
     }, /*#__PURE__*/React.createElement("span", {
-      className: "font-display text-[11px] uppercase tracking-[0.22em] text-slate-300"
+      className: "font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)]"
     }, "Background color"), /*#__PURE__*/React.createElement("span", {
-      className: "font-mono text-[10px] text-slate-500"
+      className: "font-mono text-[10px] text-[var(--text-faint)]"
     }, "underlies the effect")), /*#__PURE__*/React.createElement("div", {
       className: "flex items-center gap-3"
     }, /*#__PURE__*/React.createElement("div", {
@@ -35539,10 +35539,10 @@
         const v = e.target.value;
         if (/^#[0-9a-fA-F]{6}$/.test(v)) setBgColor(v);else setBgColor(v);
       },
-      className: "flex-1 h-10 px-3 rounded-lg bg-black/30 border border-white/[0.06] font-mono text-[12px] text-slate-100 outline-none focus:border-white/20"
+      className: "flex-1 h-10 px-3 rounded-lg bg-[rgba(5,11,14,0.5)] border border-[var(--line)] font-mono text-[12px] text-[var(--text)] outline-none focus:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"
     }), /*#__PURE__*/React.createElement("button", {
       onClick: () => setBgColor("#000000"),
-      className: "px-2.5 h-10 rounded-lg border border-white/[0.06] bg-white/[0.02] text-slate-300 hover:text-white hover:border-white/20 font-display text-[10.5px] uppercase tracking-[0.16em]"
+      className: "px-2.5 h-10 rounded-lg border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:text-white hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] font-display text-[10.5px] uppercase tracking-[0.16em]"
     }, "Off")), /*#__PURE__*/React.createElement("div", {
       className: "flex items-center gap-1.5 mt-2.5"
     }, ["#000000", "#0b0f19", "#1a0833", "#001318", "#0a1f10", "#241400", "#2a0814", "#ffffff"].map(c => /*#__PURE__*/React.createElement("button", {
@@ -35558,14 +35558,14 @@
     }, pattern !== "custom" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
       className: "flex items-baseline justify-between mb-2"
     }, /*#__PURE__*/React.createElement("span", {
-      className: "font-display text-[11px] uppercase tracking-[0.22em] text-slate-300"
+      className: "font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)]"
     }, "Effect colors \xB7 ", palette.length, "/4"), /*#__PURE__*/React.createElement("div", {
       className: "flex items-center gap-3"
     }, palette.length > 0 && /*#__PURE__*/React.createElement("button", {
       onClick: () => setColors([]),
-      className: "font-mono text-[10px] uppercase tracking-[0.16em] text-slate-400 hover:text-rose-300"
+      className: "font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--text-dim)] hover:text-rose-300"
     }, "Clear all"), /*#__PURE__*/React.createElement("span", {
-      className: "font-mono text-[10px] text-slate-500"
+      className: "font-mono text-[10px] text-[var(--text-faint)]"
     }, "click slot to recolor"))), /*#__PURE__*/React.createElement("div", {
       className: "flex items-stretch gap-2 mb-3"
     }, palette.map((c, i) => {
@@ -35602,7 +35602,7 @@
       }, "\u2715"));
     }), palette.length < 4 && /*#__PURE__*/React.createElement("button", {
       onClick: addSlot,
-      className: "flex-1 min-w-0 h-16 rounded-2xl border-2 border-dashed border-white/15 bg-white/[0.02] text-slate-400 hover:border-white/30 hover:bg-white/[0.04] hover:text-white grid place-items-center transition-all"
+      className: "flex-1 min-w-0 h-16 rounded-2xl border-2 border-dashed border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] hover:bg-white/[0.04] hover:text-white grid place-items-center transition-all"
     }, /*#__PURE__*/React.createElement("span", {
       className: "flex items-center gap-1.5 font-display text-[11px] uppercase tracking-[0.18em]"
     }, /*#__PURE__*/React.createElement(IPlus, {
@@ -35626,21 +35626,21 @@
         background: c
       }
     }))))))), /*#__PURE__*/React.createElement("div", {
-      className: "rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4"
+      className: "glass p-4"
     }, /*#__PURE__*/React.createElement("div", {
       className: "flex items-center justify-between mb-3"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-      className: "font-display text-[12px] uppercase tracking-[0.18em] text-slate-200"
+      className: "font-display text-[12px] uppercase tracking-[0.18em] text-[var(--text)]"
     }, "Per-key colors"), /*#__PURE__*/React.createElement("div", {
-      className: "font-mono text-[10px] text-slate-500 mt-0.5"
+      className: "font-mono text-[10px] text-[var(--text-faint)] mt-0.5"
     }, selectedKeys?.size ?? 0, " key", (selectedKeys?.size ?? 0) === 1 ? "" : "s", " selected \xB7 Ctrl/\u2318-click to toggle")), /*#__PURE__*/React.createElement("div", {
       className: "flex items-center gap-1.5"
     }, /*#__PURE__*/React.createElement("button", {
       onClick: onSelectAll,
-      className: "px-2.5 h-8 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-300 hover:text-white hover:border-white/20 font-display text-[10.5px] uppercase tracking-[0.16em]"
+      className: "px-2.5 h-8 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:text-white hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] font-display text-[10.5px] uppercase tracking-[0.16em]"
     }, "Select all"), /*#__PURE__*/React.createElement("button", {
       onClick: onClearSelection,
-      className: "px-2.5 h-8 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-300 hover:text-white hover:border-white/20 font-display text-[10.5px] uppercase tracking-[0.16em]"
+      className: "px-2.5 h-8 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:text-white hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] font-display text-[10.5px] uppercase tracking-[0.16em]"
     }, "Clear"))), /*#__PURE__*/React.createElement("div", {
       className: "flex items-center gap-2"
     }, /*#__PURE__*/React.createElement("button", {
@@ -35654,7 +35654,7 @@
     }, "Paint selected with slot ", activeSlot + 1), /*#__PURE__*/React.createElement("button", {
       onClick: clearPerKeyForSelection,
       disabled: !selectedKeys || selectedKeys.size === 0,
-      className: "px-3 h-10 rounded-lg border border-white/[0.06] bg-white/[0.02] text-slate-300 hover:text-white hover:border-white/20 disabled:opacity-40 font-display text-[11.5px] uppercase tracking-[0.18em]"
+      className: "px-3 h-10 rounded-lg border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:text-white hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] disabled:opacity-40 font-display text-[11.5px] uppercase tracking-[0.18em]"
     }, "Reset"))), pattern === "custom" && /*#__PURE__*/React.createElement(ZonesPanel, {
       zones: zones,
       selectedKeys: selectedKeys,
