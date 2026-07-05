@@ -31,6 +31,8 @@
     --font-display: 'Instrument Serif', georgia, serif;
     --font-ui: 'Schibsted Grotesk', system-ui, sans-serif;
     --font-mono: 'Fragment Mono', ui-monospace, monospace;
+    /* Titles only (top bar, section tabs, widget title bars). Impact, weight 400 — never bold. */
+    --font-title: Impact, 'Haettenschweiler', 'Arial Narrow Bold', sans-serif;
 
     /* applyTheme() writes these at runtime — names preserved, defaults changed */
     --accent: #6fe8c0;
@@ -48,6 +50,7 @@
   }
   .font-display { font-family: var(--font-display); letter-spacing: 0.02em; }
   .font-mono { font-family: var(--font-mono); }
+  .font-title { font-family: var(--font-title); font-weight: 400; letter-spacing: 0.03em; }
 
   .bg-layer { position: fixed; inset: 0; overflow: hidden; z-index: 0; pointer-events: none; }
   .aurora-blob {
@@ -264,4 +267,196 @@
     border: 1px solid rgba(234,244,240,0.06);
     box-shadow: 0 20px 60px -16px rgba(0,0,0,0.7);
   }
+
+  /* ============================================================
+     Desktop-widget shell — ported from Nexus styles.css (.widget/.dock)
+     + a top bar of Impact section tabs. Reuses --ink/--accent/--line/--radius.
+     ============================================================ */
+  .desktop-main { position: relative; }
+  .workspace {
+    position: relative;
+    width: 100%;
+    min-height: calc(100vh - 60px);
+    padding-bottom: 90px;   /* room for the dock */
+  }
+
+  /* --- widget window --- */
+  .widget {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    min-width: 220px;
+    min-height: 120px;
+    border-radius: var(--radius);
+    transition: box-shadow 0.25s ease;
+    overflow: hidden;
+  }
+  .widget:hover {
+    box-shadow:
+      0 28px 70px -18px rgba(0,0,0,0.68),
+      inset 0 1px 0 rgba(234,244,240,0.18);
+  }
+  .widget.dragging, .widget.resizing {
+    transition: none;
+    z-index: 60;
+    box-shadow:
+      0 40px 90px -20px rgba(0,0,0,0.75),
+      inset 0 1px 0 rgba(234,244,240,0.18);
+  }
+
+  .widget-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 12px 10px 15px;
+    cursor: grab;
+    user-select: none;
+    flex: 0 0 auto;
+    position: relative;
+    border-bottom: 1px solid var(--line);
+  }
+  .widget.dragging .widget-head { cursor: grabbing; }
+  .widget-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: color-mix(in srgb, var(--accent) 85%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
+    flex: 0 0 auto;
+  }
+  .widget-title {
+    font-family: var(--font-title); font-weight: 400;
+    font-size: 18px; letter-spacing: 0.04em;
+    color: var(--text); text-transform: uppercase;
+  }
+  .widget-min {
+    margin-left: auto;
+    width: 24px; height: 24px; border-radius: 8px;
+    border: 1px solid var(--line); background: rgba(234,244,240,0.03);
+    color: var(--text-dim); cursor: pointer; line-height: 1;
+    font-size: 16px; display: grid; place-items: center;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .widget-min:hover { background: rgba(234,244,240,0.08); color: var(--text);
+    border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+  .widget-body {
+    flex: 1 1 auto; min-height: 0;
+    padding: 14px 16px 16px;
+    overflow: auto;
+  }
+  .widget-resize {
+    position: absolute; right: 0; bottom: 0;
+    width: 18px; height: 18px; cursor: nwse-resize; z-index: 2;
+    background:
+      linear-gradient(135deg, transparent 50%, color-mix(in srgb, var(--accent) 45%, transparent) 50%);
+    border-bottom-right-radius: var(--radius);
+  }
+
+  /* --- dock (minimized widgets) --- */
+  .dock {
+    position: fixed;
+    bottom: 18px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 6px; padding: 8px 10px;
+    z-index: 4000; border-radius: 16px;
+  }
+  .dock button {
+    height: 34px; padding: 0 14px;
+    display: grid; place-items: center;
+    border: 1px solid var(--line); background: rgba(234,244,240,0.03);
+    border-radius: 11px; color: var(--text-dim); cursor: pointer;
+    font-family: var(--font-title); font-weight: 400;
+    font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase;
+    transition: background 0.15s, color 0.15s, transform 0.18s var(--ease-out);
+  }
+  .dock button:hover {
+    background: rgba(234,244,240,0.08); color: var(--text);
+    transform: translateY(-3px) scale(1.04);
+    border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+
+  /* --- top bar --- */
+  .topbar {
+    position: sticky; top: 0; z-index: 40;
+    background: color-mix(in srgb, var(--ink) 70%, transparent);
+    backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+    border-bottom: 1px solid var(--line);
+  }
+  .topbar-inner {
+    max-width: 1600px; margin: 0 auto;
+    height: 54px; padding: 0 20px;
+    display: flex; align-items: center; gap: 16px;
+  }
+  .topbar-brand { display: flex; align-items: center; gap: 10px; }
+  .topbar-logo { width: 28px; height: 28px;
+    filter: drop-shadow(0 4px 14px var(--accent-glow)); }
+  .topbar-name {
+    font-family: var(--font-title); font-weight: 400;
+    font-size: 20px; letter-spacing: 0.12em; color: var(--text);
+  }
+  .topbar-tabs { display: flex; align-items: center; gap: 2px; }
+  .topbar-tab {
+    display: flex; align-items: center; gap: 7px;
+    height: 34px; padding: 0 14px; border-radius: 10px;
+    border: 1px solid transparent; background: transparent;
+    color: var(--text-dim); cursor: pointer;
+    font-family: var(--font-title); font-weight: 400;
+    font-size: 14px; letter-spacing: 0.08em; text-transform: uppercase;
+    transition: color 0.15s, background 0.15s, border-color 0.15s;
+  }
+  .topbar-tab:hover { color: var(--text); background: rgba(234,244,240,0.03); }
+  .topbar-tab.on {
+    color: var(--text);
+    background: linear-gradient(180deg,
+      color-mix(in oklab, var(--accent) 22%, transparent),
+      color-mix(in oklab, var(--accent) 12%, transparent));
+    box-shadow: 0 1px 0 rgba(234,244,240,0.12) inset, 0 8px 24px -10px var(--accent-glow);
+  }
+  .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .topbar-status {
+    display: flex; align-items: center; gap: 8px;
+    height: 34px; padding: 0 12px; border-radius: 11px;
+    border: 1px solid var(--line);
+    font-family: var(--font-title); font-size: 13px;
+    letter-spacing: 0.04em; color: var(--text); text-transform: uppercase;
+  }
+  .topbar-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-faint); }
+  .topbar-status.linked .topbar-dot { background: var(--good); box-shadow: 0 0 8px var(--good); }
+  .topbar-state {
+    font-family: var(--font-mono); font-size: 9.5px;
+    letter-spacing: 0.2em; text-transform: uppercase; color: var(--text-faint);
+  }
+  .topbar-status.linked .topbar-state { color: color-mix(in srgb, var(--good) 85%, transparent); }
+  .topbar-auto {
+    display: flex; align-items: center; gap: 6px;
+    height: 34px; padding: 0 10px; border-radius: 11px;
+    border: 1px solid var(--line); cursor: pointer; user-select: none;
+    font-family: var(--font-title); font-size: 12px;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim);
+  }
+  .topbar-check {
+    width: 14px; height: 14px; border-radius: 4px; display: grid; place-items: center;
+    border: 1px solid var(--line); background: rgba(234,244,240,0.02); color: var(--accent);
+  }
+  .topbar-check.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 20%, transparent); }
+  .topbar-pair {
+    display: flex; align-items: center; gap: 8px;
+    height: 34px; padding: 0 13px; border-radius: 11px;
+    border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent); cursor: pointer;
+    font-family: var(--font-title); font-size: 13px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    transition: background 0.15s;
+  }
+  .topbar-pair:hover { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+  .topbar-pair:disabled { opacity: 0.6; cursor: default; }
+  .topbar-pair.on {
+    border-color: color-mix(in srgb, var(--good) 40%, transparent);
+    background: color-mix(in srgb, var(--good) 12%, transparent);
+    color: var(--good);
+  }
+  .topbar-gear {
+    width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center;
+    border: 1px solid var(--line); background: transparent; color: var(--text-dim); cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .topbar-gear:hover { color: var(--text); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
 </style>

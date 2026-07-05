@@ -1620,6 +1620,9 @@ const GamepadSection = ({ connected, enabled, onToggle, map, onApplyMap, default
 };
 
 window.AetherSections = {
+  // Shared primitives + telemetry parts, exported so workspace files (desktop
+  // widget bodies) can reuse them byte-identically instead of re-implementing.
+  Slider, Chip, SubTabs, SwitchRender, ToolbarButton,
   KeymapSection: React.memo(KeymapSection, (prev, next) => (
     prev.selectedKey === next.selectedKey &&
     prev.selectedCount === next.selectedCount &&
