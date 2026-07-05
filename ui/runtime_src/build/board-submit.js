@@ -75,11 +75,24 @@
       await api().stop_capture?.();
     };
     const submit = async () => {
+      const interfaces = (devices || []).filter(d => d.vid === dev.vid && d.pid === dev.pid).map(d => ({
+        interface_number: d.interface_number,
+        usage_page: d.usage_page
+      }));
+      const {
+        path,
+        ...devNoPath
+      } = dev; // drop raw HID path (public issue)
+      const deviceObj = {
+        ...devNoPath,
+        hid_descriptor_b64: "",
+        interfaces
+      };
       const obj = {
         schema: "aether-board-submission/1",
         submitted_at: new Date().toISOString(),
         app_version: window.__resources && window.__resources.version || "0.2.0",
-        device: dev,
+        device: deviceObj,
         meta,
         size_template: `generic-${meta.size}`,
         input_capture: {
