@@ -9,7 +9,7 @@ const {
 
 /* ===== Shared bits ===== */
 const SubTabs = ({ tabs, active, onChange }) => (
-  <nav className="flex items-center gap-1 border-b border-white/[0.06] mb-4">
+  <nav className="flex items-center gap-1 border-b border-[var(--line)] mb-4">
     {tabs.map(t => {
       const isActive = active === t.id;
       return (
@@ -18,7 +18,7 @@ const SubTabs = ({ tabs, active, onChange }) => (
                       transition-colors
                       ${isActive
                         ? "text-[var(--accent)]"
-                        : "text-slate-400 hover:text-slate-200"}`}>
+                        : "text-[var(--text-dim)] hover:text-[var(--text)]"}`}>
           {t.icon}
           {t.label}
           {isActive && (
@@ -36,12 +36,12 @@ const Slider = ({ label, value, min, max, step, onChange, unit = "", color = "ac
     <div>
       {label && (
         <div className="flex items-baseline justify-between mb-2">
-          <span className="font-display text-[12px] uppercase tracking-[0.18em] text-slate-300">{label}</span>
+          <span className="font-display text-[12px] uppercase tracking-[0.18em] text-[var(--text-dim)]">{label}</span>
           <div className="flex items-baseline gap-1.5">
             <span className="font-mono text-[14px] text-[var(--accent)]">
               {Number(value).toFixed(step < 1 ? 2 : 0)}
             </span>
-            <span className="font-mono text-[10px] text-slate-500 uppercase tracking-[0.18em]">{unit}</span>
+            <span className="font-mono text-[10px] text-[var(--text-faint)] uppercase tracking-[0.18em]">{unit}</span>
           </div>
         </div>
       )}
@@ -59,15 +59,15 @@ const ToolbarButton = ({ children, onClick, variant = "ghost", active, glow }) =
                 ${variant === "primary"
                   ? "bg-[var(--accent)]/15 border-[var(--accent)]/50 text-[var(--accent)] hover:bg-[var(--accent)]/25 shadow-[0_0_10px_var(--accent-glow)]"
                   : active
-                    ? "border-white/15 bg-white/[0.04] text-slate-100"
-                    : "border-white/[0.06] bg-white/[0.015] text-slate-300 hover:border-white/15 hover:text-slate-100"}`}>
+                    ? "border-[var(--line)] bg-white/[0.04] text-[var(--text)]"
+                    : "border-[var(--line)] bg-white/[0.015] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] hover:text-[var(--text)]"}`}>
     {children}
   </button>
 );
 
 const Chip = ({ children, color = "slate" }) => {
   const tones = {
-    slate: "border-white/[0.06] bg-white/[0.02] text-slate-300",
+    slate: "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)]",
     accent: "border-[var(--accent)]/30 bg-[var(--accent)]/10 text-[var(--accent)]",
     danger: "border-rose-400/30 bg-rose-500/10 text-rose-300",
     ok: "border-emerald-400/30 bg-emerald-500/10 text-emerald-300",
@@ -87,7 +87,7 @@ const LayerPicker = ({ layer, setLayer }) => (
         className={`px-3.5 h-9 rounded-md font-display text-[11.5px] uppercase tracking-[0.14em] border transition-all
                     ${layer === l
                       ? "bg-[var(--accent)] border-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_18px_var(--accent-glow)]"
-                      : "bg-white/[0.02] border-white/[0.06] text-slate-300 hover:border-white/20"}`}>
+                      : "bg-white/[0.02] border-[var(--line)] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`}>
         {l === "default" ? "Default Layer" : "Fn Layer"}
       </button>
     ))}
@@ -126,27 +126,27 @@ const KeymapSection = ({ selectedKey, selectedCount = 0, onRemap, onResetKey }) 
       <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6">
         {/* Instructions / picker */}
         <div>
-          <ol className="text-[12px] text-slate-400 leading-relaxed space-y-2 mb-4 font-mono">
+          <ol className="text-[12px] text-[var(--text-dim)] leading-relaxed space-y-2 mb-4 font-mono">
             <li><span className="text-[var(--accent)]">01.</span> Click a key on the keyboard above.</li>
             <li><span className="text-[var(--accent)]">02.</span> Pick the new mapping at right.</li>
             <li><span className="text-[var(--accent)]">03.</span> Or type it into the input below.</li>
-            <li><span className="text-[var(--accent)]">04.</span> Hit <span className="text-slate-200">Apply</span> to flash.</li>
+            <li><span className="text-[var(--accent)]">04.</span> Hit <span className="text-[var(--text)]">Apply</span> to flash.</li>
           </ol>
 
           <div className="flex items-stretch gap-2 mb-3">
-            <div className="grid place-items-center w-14 rounded-md border border-white/[0.06] bg-white/[0.02] font-mono text-[11px] text-slate-300">
+            <div className="grid place-items-center w-14 rounded-md border border-[var(--line)] bg-white/[0.02] font-mono text-[11px] text-[var(--text-dim)]">
               {selectedKey || "None"}
             </div>
-            <div className="grid place-items-center text-slate-500"><IChevron size={14}/></div>
-            <div className="flex-1 rounded-md border border-white/[0.06] bg-white/[0.02] px-3 grid place-items-start py-2">
-              <span className="font-mono text-[12px] text-slate-100">{picked || "—"}</span>
-              <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-slate-500">remap target</span>
+            <div className="grid place-items-center text-[var(--text-faint)]"><IChevron size={14}/></div>
+            <div className="flex-1 rounded-md border border-[var(--line)] bg-white/[0.02] px-3 grid place-items-start py-2">
+              <span className="font-mono text-[12px] text-[var(--text)]">{picked || "—"}</span>
+              <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--text-faint)]">remap target</span>
             </div>
           </div>
           <div className="flex gap-2">
             <button
               onClick={() => { onResetKey && onResetKey(); setPicked(null); showFlash("reset"); }}
-              className="flex-1 h-9 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-300 font-display text-[11px] uppercase tracking-[0.18em] hover:border-white/20">
+              className="flex-1 h-9 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] font-display text-[11px] uppercase tracking-[0.18em] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]">
               Default
             </button>
             <button
@@ -154,7 +154,7 @@ const KeymapSection = ({ selectedKey, selectedCount = 0, onRemap, onResetKey }) 
               onClick={() => { onRemap && onRemap(picked); showFlash("applied"); }}
               className={`flex-1 h-9 rounded-md border font-display text-[11px] uppercase tracking-[0.18em] transition-all
                           ${(!picked || !selectedCount)
-                            ? "border-white/[0.06] bg-white/[0.02] text-slate-600 cursor-not-allowed"
+                            ? "border-[var(--line)] bg-white/[0.02] text-[var(--text-faint)] cursor-not-allowed"
                             : "border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] hover:bg-[var(--accent)]/25 shadow-[0_0_12px_var(--accent-glow)]"}`}>
               Apply
             </button>
@@ -162,7 +162,7 @@ const KeymapSection = ({ selectedKey, selectedCount = 0, onRemap, onResetKey }) 
           <div className="h-5 mt-2 text-[11px] font-mono tracking-[0.14em]">
             {!selectedCount && <span className="text-amber-400/80">Select a key on the board first.</span>}
             {flash === "applied" && <span className="text-[var(--accent)]">✓ Remapped {selectedCount} key{selectedCount > 1 ? "s" : ""} → {picked}</span>}
-            {flash === "reset" && <span className="text-slate-400">↩ Restored default mapping</span>}
+            {flash === "reset" && <span className="text-[var(--text-dim)]">↩ Restored default mapping</span>}
           </div>
         </div>
 
@@ -189,7 +189,7 @@ const AdvancedKeyPanel = ({ selectedKey }) => {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
-      <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5">
+      <div className="glass p-5">
         <div className="flex items-center gap-2 mb-5">
           {[
             { id: "dks", label: "DKS" },
@@ -200,7 +200,7 @@ const AdvancedKeyPanel = ({ selectedKey }) => {
               className={`flex-1 max-w-[120px] h-9 rounded-md border font-display text-[11.5px] uppercase tracking-[0.18em] transition-all
                           ${mode === b.id
                             ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_14px_var(--accent-glow)]"
-                            : "border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20"}`}>
+                            : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`}>
               {b.label}
             </button>
           ))}
@@ -208,8 +208,8 @@ const AdvancedKeyPanel = ({ selectedKey }) => {
 
         {mode === "dks" && (
           <div>
-            <p className="text-[11.5px] text-slate-400 mb-4">
-              <span className="text-slate-200">DKS</span> · Dynamic Key Stroke. Bind up to 4 different actions to a single key at different actuation depths.
+            <p className="text-[11.5px] text-[var(--text-dim)] mb-4">
+              <span className="text-[var(--text)]">DKS</span> · Dynamic Key Stroke. Bind up to 4 different actions to a single key at different actuation depths.
             </p>
             <DKSDiagram points={dksPoints} setPoints={setDksPoints}/>
             <button className="mt-4 px-4 h-9 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-fg)] font-display text-[11.5px] uppercase tracking-[0.18em] shadow-[0_0_12px_var(--accent-glow)]">
@@ -220,28 +220,28 @@ const AdvancedKeyPanel = ({ selectedKey }) => {
 
         {mode === "mt" && (
           <div>
-            <p className="text-[11.5px] text-slate-400 mb-5">
-              <span className="text-slate-200">MT</span> · Mod-Tap. Send one keycode on a quick tap, another when held past the threshold.
+            <p className="text-[11.5px] text-[var(--text-dim)] mb-5">
+              <span className="text-[var(--text)]">MT</span> · Mod-Tap. Send one keycode on a quick tap, another when held past the threshold.
             </p>
             <div className="grid grid-cols-2 gap-4 mb-5">
               <div>
-                <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500 mb-1.5">Tap</div>
+                <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-faint)] mb-1.5">Tap</div>
                 <div className={`h-10 rounded-md border grid place-items-center font-mono text-[14px]
-                                 ${tapKey ? "border-[var(--accent)]/50 text-[var(--accent)] bg-[var(--accent)]/10" : "border-white/[0.06] text-slate-500 bg-white/[0.02]"}`}>
+                                 ${tapKey ? "border-[var(--accent)]/50 text-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--line)] text-[var(--text-faint)] bg-white/[0.02]"}`}>
                   {tapKey || "—"}
                 </div>
               </div>
               <div>
-                <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500 mb-1.5">Hold</div>
+                <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-faint)] mb-1.5">Hold</div>
                 <div className={`h-10 rounded-md border grid place-items-center font-mono text-[14px]
-                                 ${holdKey ? "border-[var(--accent)]/50 text-[var(--accent)] bg-[var(--accent)]/10" : "border-white/[0.06] text-slate-500 bg-white/[0.02]"}`}>
+                                 ${holdKey ? "border-[var(--accent)]/50 text-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--line)] text-[var(--text-faint)] bg-white/[0.02]"}`}>
                   {holdKey || "—"}
                 </div>
               </div>
             </div>
             <div className="mb-2">
               <div className="flex items-baseline justify-between mb-1">
-                <span className="font-display text-[11.5px] uppercase tracking-[0.18em] text-slate-300">Hold Duration</span>
+                <span className="font-display text-[11.5px] uppercase tracking-[0.18em] text-[var(--text-dim)]">Hold Duration</span>
                 <span className="font-mono text-[12px] text-[var(--accent)]">{holdDuration}ms</span>
               </div>
               <input type="range" className="aether w-full"
@@ -254,13 +254,13 @@ const AdvancedKeyPanel = ({ selectedKey }) => {
 
         {mode === "tgl" && (
           <div>
-            <p className="text-[11.5px] text-slate-400 mb-5">
-              <span className="text-slate-200">TGL</span> · Toggle. One tap latches the key down until tapped again — perfect for auto-walk or capslock-style behavior.
+            <p className="text-[11.5px] text-[var(--text-dim)] mb-5">
+              <span className="text-[var(--text)]">TGL</span> · Toggle. One tap latches the key down until tapped again — perfect for auto-walk or capslock-style behavior.
             </p>
             <div className="max-w-[180px]">
-              <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500 mb-1.5">Toggle key</div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-faint)] mb-1.5">Toggle key</div>
               <div className={`h-10 rounded-md border grid place-items-center font-mono text-[14px]
-                               ${tglKey ? "border-[var(--accent)]/50 text-[var(--accent)] bg-[var(--accent)]/10" : "border-white/[0.06] text-slate-500 bg-white/[0.02]"}`}>
+                               ${tglKey ? "border-[var(--accent)]/50 text-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--line)] text-[var(--text-faint)] bg-white/[0.02]"}`}>
                 {tglKey || "—"}
               </div>
             </div>
@@ -286,12 +286,12 @@ const AdvancedKeyPanel = ({ selectedKey }) => {
 const DKSDiagram = ({ points, setPoints }) => {
   // 4 columns, 4 row tracks. Up/down arrow indicators with depth labels.
   return (
-    <div className="rounded-lg border border-white/[0.06] bg-black/30 p-4">
+    <div className="rounded-lg border border-[var(--line)] bg-[rgba(5,11,14,0.5)] p-4">
       <div className="flex items-end gap-4 mb-3">
         <div className="flex flex-col gap-2 w-10">
           {[1,2,3,4].map(i => (
             <div key={i} className={`h-7 rounded border text-center font-mono text-[10px] grid place-items-center
-                                    ${i === 1 ? "border-[var(--accent)]/40 bg-[var(--accent)]/10 text-[var(--accent)]" : "border-white/[0.06] bg-white/[0.02] text-slate-500"}`}>
+                                    ${i === 1 ? "border-[var(--accent)]/40 bg-[var(--accent)]/10 text-[var(--accent)]" : "border-[var(--line)] bg-white/[0.02] text-[var(--text-faint)]"}`}>
               K{i}
             </div>
           ))}
@@ -299,8 +299,8 @@ const DKSDiagram = ({ points, setPoints }) => {
         <div className="flex-1 grid grid-cols-4 gap-3">
           {points.map((p, idx) => (
             <div key={idx} className="flex flex-col items-center">
-              <span className={`font-mono text-[11px] mb-1 ${idx % 3 === 0 ? "text-amber-300" : "text-slate-200"}`}>{p.toFixed(1)}mm</span>
-              <span className="text-slate-400 mb-1">{idx < 2 ? "↓" : "↑"}</span>
+              <span className={`font-mono text-[11px] mb-1 ${idx % 3 === 0 ? "text-amber-300" : "text-[var(--text)]"}`}>{p.toFixed(1)}mm</span>
+              <span className="text-[var(--text-dim)] mb-1">{idx < 2 ? "↓" : "↑"}</span>
               <div className="flex flex-col gap-2 w-full">
                 {[0,1,2,3].map(row => {
                   const filled = row === idx;
@@ -309,7 +309,7 @@ const DKSDiagram = ({ points, setPoints }) => {
                       className={`h-7 rounded-full border grid place-items-center transition-colors
                                   ${filled
                                     ? "border-[var(--accent)] bg-[var(--accent)]/20 text-[var(--accent)]"
-                                    : "border-white/[0.06] bg-white/[0.02] text-slate-500 hover:border-white/20"}`}>
+                                    : "border-[var(--line)] bg-white/[0.02] text-[var(--text-faint)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`}>
                       <span className="text-[10px]">{filled ? "●" : "+"}</span>
                     </button>
                   );
@@ -319,7 +319,7 @@ const DKSDiagram = ({ points, setPoints }) => {
           ))}
         </div>
       </div>
-      <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 mt-2">
+      <div className="flex items-center justify-between text-[10px] font-mono text-[var(--text-faint)] mt-2">
         <span>Press →</span>
         <span>← Release</span>
       </div>
@@ -332,7 +332,7 @@ const KeyGrid = ({ title, keys, picked, onPick }) => {
   return (
     <div>
       <button onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-2 mb-2 text-slate-300 hover:text-slate-100">
+        className="flex items-center gap-2 mb-2 text-[var(--text-dim)] hover:text-[var(--text)]">
         <IChevronD size={12} className={open ? "" : "-rotate-90"}/>
         <span className="font-display text-[12px] uppercase tracking-[0.18em]">{title}</span>
       </button>
@@ -345,7 +345,7 @@ const KeyGrid = ({ title, keys, picked, onPick }) => {
                 className={`h-9 rounded-md border font-mono text-[11px] transition-all
                             ${active
                               ? "border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)] shadow-[0_0_12px_var(--accent-glow)]"
-                              : "border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20 hover:text-slate-100"}`}>
+                              : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] hover:text-[var(--text)]"}`}>
                 {k}
               </button>
             );
