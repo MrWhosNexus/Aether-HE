@@ -99,6 +99,33 @@ def test_run_invalid_submission_comments_no_pr(tmp_path, monkeypatch):
     assert "invalid" in res["reason"].lower()
 
 
+def test_run_minimax_error_comments_no_pr(tmp_path, monkeypatch):
+    calls = {"pr": None, "comment": None}
+    def fake_gh(args):
+        if args[:2] == ["issue", "view"]:
+            return '{"number": 9, "title": "t", "body": "```json\\n' + \
+                   '{\\"schema\\":\\"aether-board-submission/1\\",\\"device\\":{\\"vid\\":\\"0x1\\",\\"pid\\":\\"0x2\\"},' + \
+                   '\\"meta\\":{\\"brand\\":\\"Acme\\",\\"model\\":\\"60\\",\\"size\\":\\"60\\"},\\"input_capture\\":{\\"reports\\":[]}}\\n```"}'
+        if args[0] == "pr":
+            calls["pr"] = args; return "https://github.com/x/pull/3"
+        if args[:2] == ["issue", "comment"]:
+            calls["comment"] = args; return ""
+        return ""
+    monkeypatch.setattr(bot, "_read_prompt", lambda: "T {submission}")
+    def broken_complete(prompt):
+        raise RuntimeError("api down: secret-key-xyz")
+    res = bot.run(9, gh=fake_gh, complete=broken_complete, repo_root=str(tmp_path))
+    assert res["ok"] is False
+    assert res["pr_url"] is None
+    assert "minimax" in res["reason"].lower() or "error" in res["reason"].lower()
+    assert calls["pr"] is None   # never created a PR
+    assert calls["comment"] is not None
+    comment_body = calls["comment"][calls["comment"].index("--body") + 1]
+    assert "secret-key-xyz" not in comment_body
+    assert "api down" not in comment_body
+    assert comment_body == "Automated draft failed — a maintainer will follow up."
+
+
 # --- SSRF hardening for _safe_fetch_json ---
 
 def test_safe_fetch_json_rejects_http_scheme():

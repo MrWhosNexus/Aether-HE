@@ -203,7 +203,12 @@ def run(issue_number, *, gh, complete, repo_root):
             "Automated draft: submission is invalid:\n- " + "\n- ".join(errs)])
         return {"ok": False, "pr_url": None, "reason": "invalid submission"}
 
-    artifacts = parse_model_output(complete(build_prompt(sub, _read_prompt())))
+    try:
+        artifacts = parse_model_output(complete(build_prompt(sub, _read_prompt())))
+    except Exception:
+        gh(["issue", "comment", str(issue_number), "--body",
+            "Automated draft failed — a maintainer will follow up."])
+        return {"ok": False, "pr_url": None, "reason": "minimax error"}
     reg_path = os.path.join(repo_root, "data", "board_registry.json")
     existing = set()
     try:
