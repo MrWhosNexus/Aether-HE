@@ -251,9 +251,9 @@ const TopBar = ({ profiles, activeId, onProfileChange, onRenameProfile, onAddPro
       <div className="ml-auto flex items-center gap-2">
         {/* Device status */}
         <div className="flex items-center gap-2 pl-2.5 pr-3 h-9 rounded-xl border border-[var(--line)]">
-          <span className={`relative inline-block w-1.5 h-1.5 rounded-full pulse-ring ${connected ? "bg-emerald-400 text-emerald-400" : "bg-[var(--text-faint)] text-[var(--text-faint)]"}`}/>
+          <span className={`relative inline-block w-1.5 h-1.5 rounded-full pulse-ring ${connected ? "bg-[var(--good)] text-[var(--good)]" : "bg-[var(--text-faint)] text-[var(--text-faint)]"}`}/>
           <span className="font-display text-[12.5px] tracking-[0.04em] text-[var(--text)]">WIN 60 HE</span>
-          <span className={`font-mono text-[9.5px] uppercase tracking-[0.2em] ml-1 ${connected ? "text-emerald-300/85" : "text-[var(--text-faint)]"}`}>{connected ? "Linked" : "Offline"}</span>
+          <span className={`font-mono text-[9.5px] uppercase tracking-[0.2em] ml-1 ${connected ? "text-[var(--good)]/85" : "text-[var(--text-faint)]"}`}>{connected ? "Linked" : "Offline"}</span>
         </div>
 
         {/* Auto-connect on launch */}
