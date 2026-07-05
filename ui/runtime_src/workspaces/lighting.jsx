@@ -522,13 +522,49 @@ function PerKeyPaintWidget(ctx) {
 }
 
 /* ============================================================
-   Layout — two columns on an ~1400px desktop, no overlap.
+   Widget 5 — Live Keyboard: the real board painted with the live animated
+   effect frame (ctx.ledMapLive, polled from get_light_frame on the Lighting
+   tab). Click keys to build a selection for Per-key Paint. This is the
+   animated keyboard preview from the previous UI.
+   ============================================================ */
+function LiveKeyboardWidget(ctx) {
+  const KB = window.AetherKeyboard || {};
+  const KeyboardPanel = KB.KeyboardPanel;
+  const { ledMap, ledMapLive, perKeyColors, selectedKeys, setSelectedKeys, connected } = ctx;
+  if (typeof KeyboardPanel !== "function") {
+    return <div className="font-mono text-[11px] text-[var(--text-faint)] p-2">keyboard layout unavailable</div>;
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      {!connected && (
+        <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-faint)]">
+          connect the board to see the live effect
+        </div>
+      )}
+      <div className="flex justify-center">
+        {React.createElement(KeyboardPanel, {
+          mode: "lighting",
+          layer: "default",
+          ledMap: ledMapLive || ledMap,
+          perKeyOverride: perKeyColors,
+          selectedKeys: selectedKeys || new Set(),
+          setSelectedKeys: setSelectedKeys || (() => {}),
+          showPill: false,
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   Layout — Live Keyboard is the hero (wide, top); controls below/around.
    ============================================================ */
 const LIGHTING_WIDGETS = [
-  { id: "mode",     title: "Mode Picker",    default: { x: 40,  y: 32,  w: 460, h: 560 }, min: { w: 340, h: 420 }, render: ModePickerWidget },
-  { id: "palette",  title: "Color Palette",  default: { x: 520, y: 32,  w: 460, h: 460 }, min: { w: 340, h: 340 }, render: ColorPaletteWidget },
-  { id: "preview",  title: "Effect Preview", default: { x: 1000,y: 32,  w: 380, h: 460 }, min: { w: 300, h: 300 }, render: EffectPreviewWidget },
-  { id: "perkey",   title: "Per-key Paint",  default: { x: 520, y: 512, w: 460, h: 320 }, min: { w: 340, h: 260 }, render: PerKeyPaintWidget },
+  { id: "live",     title: "Live Keyboard",  default: { x: 40,  y: 32,  w: 1000, h: 330 }, min: { w: 560, h: 240 }, render: LiveKeyboardWidget },
+  { id: "mode",     title: "Mode Picker",    default: { x: 40,  y: 382, w: 460, h: 520 }, min: { w: 340, h: 420 }, render: ModePickerWidget },
+  { id: "palette",  title: "Color Palette",  default: { x: 520, y: 382, w: 460, h: 460 }, min: { w: 340, h: 340 }, render: ColorPaletteWidget },
+  { id: "preview",  title: "Effect Preview", default: { x: 1000,y: 382, w: 380, h: 460 }, min: { w: 300, h: 300 }, render: EffectPreviewWidget },
+  { id: "perkey",   title: "Per-key Paint",  default: { x: 1060,y: 32,  w: 380, h: 330 }, min: { w: 340, h: 260 }, render: PerKeyPaintWidget },
 ];
 
 window.AetherWorkspaces = window.AetherWorkspaces || {};

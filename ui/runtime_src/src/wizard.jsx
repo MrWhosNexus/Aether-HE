@@ -145,7 +145,7 @@ function StepLayout({ board }) {
       </p>
 
       {canRender ? (
-        <div style={{ pointerEvents: "none", transform: "scale(0.92)", transformOrigin: "top center" }}>
+        <div style={{ pointerEvents: "none" }}>
           {React.createElement(KeyboardPanel, {
             mode: "keymap",
             layer: "default",
@@ -351,7 +351,7 @@ function SetupWizard({ open, onClose, ctx }) {
       }}
       onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
       <div className="glass" style={{
-        width: "min(720px, 96vw)", maxHeight: "90vh", overflow: "auto",
+        width: "min(1060px, 96vw)", maxHeight: "90vh", overflow: "auto",
         borderRadius: 16, padding: 28, position: "relative",
         border: "1px solid var(--line)",
       }}>

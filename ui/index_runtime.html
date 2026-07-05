@@ -34293,7 +34293,7 @@
     }, /*#__PURE__*/React.createElement("div", {
       className: "shrink-0 w-[110px] pt-2 flex flex-col gap-1.5"
     }, leftSlot), /*#__PURE__*/React.createElement("div", {
-      className: "relative w-full max-w-[720px] rounded-2xl border border-[var(--line)] bg-gradient-to-b from-white/[0.025] to-black/30 p-3.5 shadow-[0_24px_60px_-24px_rgba(0,0,0,0.8)]"
+      className: "relative w-full max-w-[960px] rounded-2xl border border-[var(--line)] bg-gradient-to-b from-white/[0.025] to-black/30 p-3.5 shadow-[0_24px_60px_-24px_rgba(0,0,0,0.8)]"
     }, /*#__PURE__*/React.createElement("span", {
       className: "pointer-events-none absolute -top-px left-12 right-12 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent"
     }), /*#__PURE__*/React.createElement("div", {
@@ -39260,16 +39260,69 @@
   }
 
   /* ============================================================
-     Layout — two columns on an ~1400px desktop, no overlap.
+     Widget 5 — Live Keyboard: the real board painted with the live animated
+     effect frame (ctx.ledMapLive, polled from get_light_frame on the Lighting
+     tab). Click keys to build a selection for Per-key Paint. This is the
+     animated keyboard preview from the previous UI.
+     ============================================================ */
+  function LiveKeyboardWidget(ctx) {
+    const KB = window.AetherKeyboard || {};
+    const KeyboardPanel = KB.KeyboardPanel;
+    const {
+      ledMap,
+      ledMapLive,
+      perKeyColors,
+      selectedKeys,
+      setSelectedKeys,
+      connected
+    } = ctx;
+    if (typeof KeyboardPanel !== "function") {
+      return /*#__PURE__*/React.createElement("div", {
+        className: "font-mono text-[11px] text-[var(--text-faint)] p-2"
+      }, "keyboard layout unavailable");
+    }
+    return /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-col gap-2"
+    }, !connected && /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-faint)]"
+    }, "connect the board to see the live effect"), /*#__PURE__*/React.createElement("div", {
+      className: "flex justify-center"
+    }, React.createElement(KeyboardPanel, {
+      mode: "lighting",
+      layer: "default",
+      ledMap: ledMapLive || ledMap,
+      perKeyOverride: perKeyColors,
+      selectedKeys: selectedKeys || new Set(),
+      setSelectedKeys: setSelectedKeys || (() => {}),
+      showPill: false
+    })));
+  }
+
+  /* ============================================================
+     Layout — Live Keyboard is the hero (wide, top); controls below/around.
      ============================================================ */
   const LIGHTING_WIDGETS = [{
+    id: "live",
+    title: "Live Keyboard",
+    default: {
+      x: 40,
+      y: 32,
+      w: 1000,
+      h: 330
+    },
+    min: {
+      w: 560,
+      h: 240
+    },
+    render: LiveKeyboardWidget
+  }, {
     id: "mode",
     title: "Mode Picker",
     default: {
       x: 40,
-      y: 32,
+      y: 382,
       w: 460,
-      h: 560
+      h: 520
     },
     min: {
       w: 340,
@@ -39281,7 +39334,7 @@
     title: "Color Palette",
     default: {
       x: 520,
-      y: 32,
+      y: 382,
       w: 460,
       h: 460
     },
@@ -39295,7 +39348,7 @@
     title: "Effect Preview",
     default: {
       x: 1000,
-      y: 32,
+      y: 382,
       w: 380,
       h: 460
     },
@@ -39308,10 +39361,10 @@
     id: "perkey",
     title: "Per-key Paint",
     default: {
-      x: 520,
-      y: 512,
-      w: 460,
-      h: 320
+      x: 1060,
+      y: 32,
+      w: 380,
+      h: 330
     },
     min: {
       w: 340,
@@ -40283,9 +40336,7 @@
       }
     }, "This is your board's key layout. Later you'll click keys here to scope actuation, remaps and lighting \u2014 no device needed to look around."), canRender ? /*#__PURE__*/React.createElement("div", {
       style: {
-        pointerEvents: "none",
-        transform: "scale(0.92)",
-        transformOrigin: "top center"
+        pointerEvents: "none"
       }
     }, React.createElement(KeyboardPanel, {
       mode: "keymap",
@@ -40588,7 +40639,7 @@
     }, /*#__PURE__*/React.createElement("div", {
       className: "glass",
       style: {
-        width: "min(720px, 96vw)",
+        width: "min(1060px, 96vw)",
         maxHeight: "90vh",
         overflow: "auto",
         borderRadius: 16,

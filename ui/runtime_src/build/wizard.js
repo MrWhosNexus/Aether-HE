@@ -204,9 +204,7 @@
       }
     }, "This is your board's key layout. Later you'll click keys here to scope actuation, remaps and lighting \u2014 no device needed to look around."), canRender ? /*#__PURE__*/React.createElement("div", {
       style: {
-        pointerEvents: "none",
-        transform: "scale(0.92)",
-        transformOrigin: "top center"
+        pointerEvents: "none"
       }
     }, React.createElement(KeyboardPanel, {
       mode: "keymap",
@@ -509,7 +507,7 @@
     }, /*#__PURE__*/React.createElement("div", {
       className: "glass",
       style: {
-        width: "min(720px, 96vw)",
+        width: "min(1060px, 96vw)",
         maxHeight: "90vh",
         overflow: "auto",
         borderRadius: 16,

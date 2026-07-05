@@ -222,7 +222,7 @@
     }, /*#__PURE__*/React.createElement("div", {
       className: "shrink-0 w-[110px] pt-2 flex flex-col gap-1.5"
     }, leftSlot), /*#__PURE__*/React.createElement("div", {
-      className: "relative w-full max-w-[720px] rounded-2xl border border-[var(--line)] bg-gradient-to-b from-white/[0.025] to-black/30 p-3.5 shadow-[0_24px_60px_-24px_rgba(0,0,0,0.8)]"
+      className: "relative w-full max-w-[960px] rounded-2xl border border-[var(--line)] bg-gradient-to-b from-white/[0.025] to-black/30 p-3.5 shadow-[0_24px_60px_-24px_rgba(0,0,0,0.8)]"
     }, /*#__PURE__*/React.createElement("span", {
       className: "pointer-events-none absolute -top-px left-12 right-12 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent"
     }), /*#__PURE__*/React.createElement("div", {
