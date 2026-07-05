@@ -327,7 +327,7 @@ const HeroCard = ({ children, badge, breadcrumb }) => (
          style={{ background: "var(--accent-gradient, var(--accent))" }}/>
     <div className="relative">
       <div className="flex items-center justify-between mb-5">
-        <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-slate-500">{breadcrumb}</div>
+        <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-[var(--text-faint)]">{breadcrumb}</div>
         {badge}
       </div>
       {children}
@@ -903,13 +903,13 @@ function App() {
       <Stat label="Hotkey" value={hotkey}/>
     </div>
   ) : section === "keymap" ? (
-    <div className="flex items-center gap-2 p-1 rounded-xl border border-white/[0.06] bg-white/[0.02]">
+    <div className="flex items-center gap-2 p-1 rounded-xl border border-[var(--line)] bg-white/[0.02]">
       {["default","fn"].map(l => (
         <button key={l} onClick={() => setLayer(l)}
           className={`px-3 h-7 rounded-lg font-display text-[11px] uppercase tracking-[0.16em] transition-all
                       ${layer === l
                         ? "bg-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_14px_var(--accent-glow)]"
-                        : "text-slate-400 hover:text-slate-100"}`}>
+                        : "text-[var(--text-dim)] hover:text-[var(--text)]"}`}>
           {l === "default" ? "Default Layer" : "Fn Layer"}
         </button>
       ))}
@@ -1070,9 +1070,9 @@ function App() {
 }
 
 const Stat = ({ label, value }) => (
-  <div className="flex items-baseline gap-1.5 px-3 py-1.5 rounded-xl border border-white/[0.05] bg-white/[0.02]">
-    <span className="font-mono text-[9px] uppercase tracking-[0.22em] text-slate-500">{label}</span>
-    <span className="font-mono text-[12px] text-slate-100">{value}</span>
+  <div className="flex items-baseline gap-1.5 px-3 py-1.5 rounded-xl border border-[var(--line)] bg-white/[0.02]">
+    <span className="font-mono text-[9px] uppercase tracking-[0.22em] text-[var(--text-faint)]">{label}</span>
+    <span className="font-mono text-[12px] text-[var(--text)]">{value}</span>
   </div>
 );
 
