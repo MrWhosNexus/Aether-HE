@@ -406,16 +406,16 @@
       onClick: () => setOpen(o => !o),
       className: "flex items-center gap-2.5 pl-2 pr-3 h-9 rounded-xl hover:bg-white/[0.04] transition-colors"
     }, /*#__PURE__*/React.createElement("span", {
-      className: "grid place-items-center w-6 h-6 rounded-md bg-white/[0.04] text-slate-400"
+      className: "grid place-items-center w-6 h-6 rounded-md bg-white/[0.04] text-[var(--text-dim)]"
     }, /*#__PURE__*/React.createElement(IFolder, {
       size: 12
     })), /*#__PURE__*/React.createElement("span", {
-      className: "font-display text-[14px] font-medium text-slate-100"
+      className: "font-display text-[14px] font-medium text-[var(--text)]"
     }, current.name), /*#__PURE__*/React.createElement(IChevronD, {
       size: 13,
-      className: `text-slate-500 transition-transform ${open ? "rotate-180" : ""}`
+      className: `text-[var(--text-faint)] transition-transform ${open ? "rotate-180" : ""}`
     })), open && /*#__PURE__*/React.createElement("div", {
-      className: "absolute top-full left-0 mt-1.5 w-[280px] rounded-xl p-1.5 menu-pop z-50 animate-[fadeIn_140ms_ease-out]"
+      className: "absolute top-full left-0 mt-1.5 w-[280px] p-1.5 menu-pop z-50 animate-[fadeIn_140ms_ease-out]"
     }, profiles.map(p => {
       const active = p.id === activeId;
       if (editing === p.id) {
@@ -431,13 +431,13 @@
             if (e.key === "Escape") setEditing(null);
           },
           onBlur: commit,
-          className: "w-full h-7 px-2 rounded bg-black/40 border border-white/20 text-slate-100 font-display text-[13px] outline-none"
+          className: "input w-full h-7 px-2 text-[var(--text)] font-display text-[13px] outline-none"
         }));
       }
       return /*#__PURE__*/React.createElement("div", {
         key: p.id,
         className: `w-full flex items-center gap-1 pl-2.5 pr-1 h-9 rounded-lg transition-colors
-                            ${active ? "bg-[var(--accent)]/15 text-slate-100" : "text-slate-300 hover:bg-white/[0.04] hover:text-slate-100"}`
+                            ${active ? "bg-[var(--accent)]/15 text-[var(--text)]" : "text-[var(--text-dim)] hover:bg-white/[0.04] hover:text-[var(--text)]"}`
       }, /*#__PURE__*/React.createElement("button", {
         onClick: () => {
           onChange(p.id);
@@ -455,7 +455,7 @@
           startEdit(p);
         },
         title: "Rename",
-        className: "text-slate-500 hover:text-slate-200 px-1.5 h-7 grid place-items-center"
+        className: "text-[var(--text-faint)] hover:text-[var(--text)] px-1.5 h-7 grid place-items-center"
       }, /*#__PURE__*/React.createElement(IEdit, {
         size: 11
       })), /*#__PURE__*/React.createElement("button", {
@@ -464,7 +464,7 @@
           onDuplicate(p.id);
         },
         title: "Duplicate",
-        className: "text-slate-500 hover:text-slate-200 px-1.5 h-7 grid place-items-center"
+        className: "text-[var(--text-faint)] hover:text-[var(--text)] px-1.5 h-7 grid place-items-center"
       }, /*#__PURE__*/React.createElement(ILink, {
         size: 11
       })), /*#__PURE__*/React.createElement("button", {
@@ -474,12 +474,12 @@
         },
         title: "Delete",
         disabled: profiles.length <= 1,
-        className: "text-slate-500 hover:text-rose-300 disabled:text-slate-700 disabled:cursor-not-allowed px-1.5 h-7 grid place-items-center"
+        className: "text-[var(--text-faint)] hover:text-rose-300 disabled:text-[var(--text-faint)] disabled:cursor-not-allowed px-1.5 h-7 grid place-items-center"
       }, /*#__PURE__*/React.createElement(ITrash, {
         size: 11
       })));
     }), /*#__PURE__*/React.createElement("div", {
-      className: "h-px bg-white/[0.06] my-1.5"
+      className: "h-px bg-[var(--line)] my-1.5"
     }), /*#__PURE__*/React.createElement("button", {
       onClick: handleAdd,
       className: "w-full flex items-center gap-2 pl-2.5 pr-1.5 h-9 rounded-lg text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
@@ -510,7 +510,7 @@
     onOpenSettings,
     saveStatus
   }) => /*#__PURE__*/React.createElement("header", {
-    className: "sticky top-0 z-40 bg-[var(--bg-0)]/70 backdrop-blur-xl border-b border-white/[0.04]"
+    className: "sticky top-0 z-40 bg-[var(--ink)]/70 backdrop-blur-xl border-b border-[var(--line)]"
   }, /*#__PURE__*/React.createElement("div", {
     className: "max-w-[1400px] mx-auto px-6 lg:px-10 h-14 flex items-center gap-3"
   }, /*#__PURE__*/React.createElement("div", {
@@ -522,9 +522,9 @@
   }), /*#__PURE__*/React.createElement("div", {
     className: "hidden md:block leading-tight"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "font-display text-[16px] font-bold tracking-[0.14em] text-white"
+    className: "font-display text-[16px] font-bold tracking-[0.14em] text-[var(--text)]"
   }, "Aether"))), /*#__PURE__*/React.createElement("span", {
-    className: "mx-3 h-5 w-px bg-white/[0.06]"
+    className: "mx-3 h-5 w-px bg-[var(--line)]"
   }), /*#__PURE__*/React.createElement(ProfileDropdown, {
     profiles: profiles,
     activeId: activeId,
@@ -535,32 +535,32 @@
     onDelete: onDeleteProfile
   }), saveStatus && /*#__PURE__*/React.createElement("span", {
     className: `ml-2 font-mono text-[10px] uppercase tracking-[0.18em] transition-opacity
-                          ${saveStatus === "saving" ? "text-slate-500" : saveStatus === "saved" ? "text-emerald-400/80" : "text-rose-400/80"}`
+                          ${saveStatus === "saving" ? "text-[var(--text-faint)]" : saveStatus === "saved" ? "text-emerald-400/80" : "text-rose-400/80"}`
   }, saveStatus === "saving" ? "saving…" : saveStatus === "saved" ? "✓ saved" : "save failed"), /*#__PURE__*/React.createElement("div", {
     className: "ml-auto flex items-center gap-2"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-2 pl-2.5 pr-3 h-9 rounded-xl border border-white/[0.05] bg-white/[0.025]"
+    className: "flex items-center gap-2 pl-2.5 pr-3 h-9 rounded-xl border border-[var(--line)]"
   }, /*#__PURE__*/React.createElement("span", {
-    className: `relative inline-block w-1.5 h-1.5 rounded-full pulse-ring ${connected ? "bg-emerald-400 text-emerald-400" : "bg-slate-500 text-slate-500"}`
+    className: `relative inline-block w-1.5 h-1.5 rounded-full pulse-ring ${connected ? "bg-[var(--good)] text-[var(--good)]" : "bg-[var(--text-faint)] text-[var(--text-faint)]"}`
   }), /*#__PURE__*/React.createElement("span", {
-    className: "font-display text-[12.5px] tracking-[0.04em] text-slate-100"
+    className: "font-display text-[12.5px] tracking-[0.04em] text-[var(--text)]"
   }, "WIN 60 HE"), /*#__PURE__*/React.createElement("span", {
-    className: `font-mono text-[9.5px] uppercase tracking-[0.2em] ml-1 ${connected ? "text-emerald-300/85" : "text-slate-500"}`
+    className: `font-mono text-[9.5px] uppercase tracking-[0.2em] ml-1 ${connected ? "text-[var(--good)]/85" : "text-[var(--text-faint)]"}`
   }, connected ? "Linked" : "Offline")), /*#__PURE__*/React.createElement("label", {
-    className: "flex items-center gap-1.5 pl-2 pr-2.5 h-9 rounded-xl border border-white/[0.05] bg-white/[0.025] cursor-pointer select-none",
+    className: "flex items-center gap-1.5 pl-2 pr-2.5 h-9 rounded-xl border border-[var(--line)] cursor-pointer select-none",
     title: "Connect to the keyboard automatically when the app opens"
   }, /*#__PURE__*/React.createElement("span", {
     onClick: () => setAutoConnect(!autoConnect),
     className: `w-3.5 h-3.5 rounded border grid place-items-center transition
-                            ${autoConnect ? "border-[var(--accent)] bg-[var(--accent)]/20" : "border-white/15 bg-white/[0.02]"}`
+                            ${autoConnect ? "border-[var(--accent)] bg-[var(--accent)]/20" : "border-[var(--line)] bg-white/[0.02]"}`
   }, autoConnect && /*#__PURE__*/React.createElement(ICheck, {
     size: 9,
     className: "text-[var(--accent)]"
   })), /*#__PURE__*/React.createElement("span", {
-    className: "font-display text-[10px] uppercase tracking-[0.16em] text-slate-400"
+    className: "font-display text-[10px] uppercase tracking-[0.16em] text-[var(--text-dim)]"
   }, "Auto")), /*#__PURE__*/React.createElement("button", {
     onClick: onOpenTheme,
-    className: "flex items-center gap-2 pl-2.5 pr-3 h-9 rounded-xl border border-white/[0.05] bg-white/[0.025] text-slate-300 hover:text-white hover:border-white/15 transition-colors"
+    className: "flex items-center gap-2 pl-2.5 pr-3 h-9 rounded-xl border border-[var(--line)] text-[var(--text-dim)] hover:text-[var(--text)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] transition-colors"
   }, /*#__PURE__*/React.createElement("span", {
     className: "w-3.5 h-3.5 rounded-full ring-1 ring-white/15",
     style: {
@@ -582,7 +582,7 @@
   }, connecting ? "…" : connected ? "Connected" : "Pair")), /*#__PURE__*/React.createElement("button", {
     title: "Settings",
     onClick: onOpenSettings,
-    className: "w-9 h-9 rounded-xl border border-white/[0.05] bg-white/[0.025] text-slate-400 hover:text-white hover:border-white/15 grid place-items-center transition-colors"
+    className: "w-9 h-9 rounded-xl border border-[var(--line)] text-[var(--text-dim)] hover:text-[var(--text)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] grid place-items-center transition-colors"
   }, /*#__PURE__*/React.createElement(ISettings, {
     size: 14
   })))));
@@ -596,14 +596,14 @@
   }) => /*#__PURE__*/React.createElement("div", {
     className: "flex justify-center"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "inline-flex gap-1 p-1 rounded-2xl border border-white/[0.05] bg-white/[0.02] backdrop-blur-md"
+    className: "inline-flex gap-1 p-1 rounded-2xl border border-[var(--line)] backdrop-blur-md"
   }, NAV.map(n => {
     const active = section === n.id;
     return /*#__PURE__*/React.createElement("button", {
       key: n.id,
       onClick: () => setSection(n.id),
       className: `relative flex items-center gap-2 px-4 h-9 rounded-xl font-display text-[12px] uppercase tracking-[0.18em] transition-all
-                        ${active ? "pill-active" : "text-slate-400 hover:text-slate-100 hover:bg-white/[0.03]"}`
+                        ${active ? "pill-active" : "text-[var(--text-dim)] hover:text-[var(--text)] hover:bg-white/[0.03]"}`
     }, /*#__PURE__*/React.createElement("span", {
       className: active ? "text-[var(--accent)]" : ""
     }, n.icon), n.label);
@@ -629,7 +629,7 @@
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-between mb-5"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "font-mono text-[10px] uppercase tracking-[0.28em] text-slate-500"
+    className: "font-mono text-[10px] uppercase tracking-[0.28em] text-[var(--text-faint)]"
   }, breadcrumb), badge), children));
 
   /* ============================================================
@@ -1247,7 +1247,9 @@
       let alive = true;
       const id = setInterval(() => {
         apiCall("read_live").then(d => {
-          if (alive && d && typeof d === "object" && !(d.ok === false)) setLiveDepths(d);
+          if (alive && d && typeof d === "object" && !(d.ok === false)) {
+            setLiveDepths(prev => JSON.stringify(prev) === JSON.stringify(d) ? prev : d);
+          }
         });
       }, 33); // ~30fps — smooth enough for visual depth, doesn't starve the lighting stream
       return () => {
@@ -1307,7 +1309,8 @@
       const id = setInterval(() => {
         apiCall("get_light_frame").then(f => {
           if (!alive) return;
-          setLightFrame(f && typeof f === "object" && !(f.ok === false) && Object.keys(f).length ? f : null);
+          const valid = f && typeof f === "object" && !(f.ok === false) && Object.keys(f).length ? f : null;
+          setLightFrame(prev => JSON.stringify(prev) === JSON.stringify(valid) ? prev : valid);
         });
       }, 50);
       return () => {
@@ -1369,12 +1372,12 @@
       label: "Hotkey",
       value: hotkey
     })) : section === "keymap" ? /*#__PURE__*/React.createElement("div", {
-      className: "flex items-center gap-2 p-1 rounded-xl border border-white/[0.06] bg-white/[0.02]"
+      className: "flex items-center gap-2 p-1 rounded-xl border border-[var(--line)] bg-white/[0.02]"
     }, ["default", "fn"].map(l => /*#__PURE__*/React.createElement("button", {
       key: l,
       onClick: () => setLayer(l),
       className: `px-3 h-7 rounded-lg font-display text-[11px] uppercase tracking-[0.16em] transition-all
-                      ${layer === l ? "bg-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_14px_var(--accent-glow)]" : "text-slate-400 hover:text-slate-100"}`
+                      ${layer === l ? "bg-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_14px_var(--accent-glow)]" : "text-[var(--text-dim)] hover:text-[var(--text)]"}`
     }, l === "default" ? "Default Layer" : "Fn Layer"))) : null;
     const leftSlot = section === "actuation" ? /*#__PURE__*/React.createElement(ActuationToolbar, {
       onSelectAll: () => {
@@ -1440,6 +1443,8 @@
     }, section === "keymap" && /*#__PURE__*/React.createElement(KeymapSection, {
       selectedKey: selectedKey,
       selectedCount: selectedKeys.size,
+      selectedKeys: selectedKeys,
+      connected: connected,
       onRemap: label => {
         const hid = HID_BY_LABEL[label];
         if (connected && hid != null && selectedKeys.size) apiCall("set_remap", Array.from(selectedKeys), hid);
@@ -1470,6 +1475,8 @@
       onPickSwitch: handlePickSwitch,
       liveDepth: liveMax,
       selectedCount: selectedKeys.size,
+      selectedKeys: selectedKeys,
+      connected: connected,
       onApplyActuation: applyActuation,
       onApplyDeadband: applyDeadband
     }), section === "lighting" && /*#__PURE__*/React.createElement(LightingSection, {
@@ -1542,11 +1549,11 @@
     label,
     value
   }) => /*#__PURE__*/React.createElement("div", {
-    className: "flex items-baseline gap-1.5 px-3 py-1.5 rounded-xl border border-white/[0.05] bg-white/[0.02]"
+    className: "flex items-baseline gap-1.5 px-3 py-1.5 rounded-xl border border-[var(--line)] bg-white/[0.02]"
   }, /*#__PURE__*/React.createElement("span", {
-    className: "font-mono text-[9px] uppercase tracking-[0.22em] text-slate-500"
+    className: "font-mono text-[9px] uppercase tracking-[0.22em] text-[var(--text-faint)]"
   }, label), /*#__PURE__*/React.createElement("span", {
-    className: "font-mono text-[12px] text-slate-100"
+    className: "font-mono text-[12px] text-[var(--text)]"
   }, value));
   ReactDOM.createRoot(document.getElementById("root")).render(/*#__PURE__*/React.createElement(App, null));
 })();

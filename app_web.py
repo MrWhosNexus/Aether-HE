@@ -15,6 +15,7 @@ import time
 import webview
 
 from aula_device import AulaDevice
+import boards
 import protocol
 import effects
 import device_state
@@ -39,13 +40,25 @@ INDEX = _RUNTIME if os.path.exists(_RUNTIME) else _BUNDLE
 
 class Api:
     def __init__(self):
-        self.dev = AulaDevice()
+        # Detect which registered board is connected (by VID/PID); fall back to
+        # the registry default (Aula Win60 HE) so behaviour is unchanged when no
+        # board is plugged in or the registry can't be read. UI wiring comes later;
+        # for now this picks the right vendor interface + the right layout.
+        self.board = None
+        try:
+            reg = boards.load_registry()
+            self.board = reg.detect() or reg.default
+            log.info("Active board: %s (%s)", self.board.name, self.board.vid_pid)
+        except Exception as e:
+            log.warning("board registry unavailable, using Win60 defaults: %s", e)
+            self.board = None
+        self.dev = AulaDevice(self.board) if self.board else AulaDevice()
         self._lock = threading.Lock()
         self.pad = None
         self._pad_stop = threading.Event()
         self._pad_thread = None
         try:
-            self.km = device_state.KeyMap()
+            self.km = device_state.KeyMap(self.board.keymap) if self.board else device_state.KeyMap()
         except Exception as e:
             self.km = None
             log.warning("keymap load failed: %s", e)
@@ -92,6 +105,32 @@ class Api:
             return {"ok": True, "iface": info["interface_number"]}
         except Exception as e:
             return {"ok": False, "error": str(e)}
+
+    def get_board(self):
+        """Active board + full registered roster, for the UI's board picker/badge.
+
+        Returns capabilities and `drivable` (whether a protocol is wired yet) so the
+        UI can gray out lighting/actuation for layout-only boards.
+        """
+        try:
+            reg = boards.load_registry()
+            roster = [
+                {"slug": p.slug, "name": p.name, "vidPid": p.vid_pid,
+                 "formFactor": p.form_factor, "status": p.status,
+                 "capabilities": p.capabilities, "drivable": p.drivable,
+                 "issues": list(p.issues)}
+                for p in reg.profiles
+            ]
+        except Exception as e:
+            log.warning("get_board roster failed: %s", e)
+            roster = []
+        b = self.board
+        active = None if b is None else {
+            "slug": b.slug, "name": b.name, "vidPid": b.vid_pid,
+            "formFactor": b.form_factor, "status": b.status,
+            "capabilities": b.capabilities, "drivable": b.drivable,
+        }
+        return {"active": active, "boards": roster}
 
     def _read_keymap_layer(self, fn_layer=False, timeout_s=1.5):
         """Send initKeyValue and collect the device's response packets, reassembling
@@ -197,7 +236,7 @@ class Api:
 
     # ---- actuation / trigger ----
     def set_trigger_all(self, travel_mm, rt_press_mm=0.0, rt_release_mm=0.0,
-                        key_count=64, mode=2):
+                        key_count=64, mode=0):
         try:
             self._write(protocol.build_trigger(int(mode), list(range(int(key_count))),
                         float(travel_mm), float(rt_press_mm), float(rt_release_mm)))
@@ -744,11 +783,17 @@ class Api:
         polls this to mirror the live animation. {} when no host effect is running."""
         if not self.fx or not self.fx.is_running():
             return {}
+            
+        idx2code = getattr(self, '_idx2code', None)
+        if idx2code is None:
+            self._idx2code = idx2code = {v: k for k, v in self.km.index_of_code.items()}
+            
         out = {}
-        for idx, rgb in dict(self.fx.last_frame).items():
-            code = self.km.code_of(idx)
+        # Iterate over the dict directly (thread-safe since fx engine swaps it atomically)
+        for idx, rgb in self.fx.last_frame.items():
+            code = idx2code.get(idx)
             if code:
-                out[code] = [int(rgb[0]), int(rgb[1]), int(rgb[2])]
+                out[code] = rgb
         return out
 
     def start_multicolor(self, pattern, colors, bg=(0, 0, 0), brightness=80,

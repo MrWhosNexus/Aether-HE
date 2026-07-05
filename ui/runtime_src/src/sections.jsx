@@ -9,7 +9,7 @@ const {
 
 /* ===== Shared bits ===== */
 const SubTabs = ({ tabs, active, onChange }) => (
-  <nav className="flex items-center gap-1 border-b border-white/[0.06] mb-4">
+  <nav className="flex items-center gap-1 border-b border-[var(--line)] mb-4">
     {tabs.map(t => {
       const isActive = active === t.id;
       return (
@@ -18,7 +18,7 @@ const SubTabs = ({ tabs, active, onChange }) => (
                       transition-colors
                       ${isActive
                         ? "text-[var(--accent)]"
-                        : "text-slate-400 hover:text-slate-200"}`}>
+                        : "text-[var(--text-dim)] hover:text-[var(--text)]"}`}>
           {t.icon}
           {t.label}
           {isActive && (
@@ -36,12 +36,12 @@ const Slider = ({ label, value, min, max, step, onChange, unit = "", color = "ac
     <div>
       {label && (
         <div className="flex items-baseline justify-between mb-2">
-          <span className="font-display text-[12px] uppercase tracking-[0.18em] text-slate-300">{label}</span>
+          <span className="font-display text-[12px] uppercase tracking-[0.18em] text-[var(--text-dim)]">{label}</span>
           <div className="flex items-baseline gap-1.5">
             <span className="font-mono text-[14px] text-[var(--accent)]">
               {Number(value).toFixed(step < 1 ? 2 : 0)}
             </span>
-            <span className="font-mono text-[10px] text-slate-500 uppercase tracking-[0.18em]">{unit}</span>
+            <span className="font-mono text-[10px] text-[var(--text-faint)] uppercase tracking-[0.18em]">{unit}</span>
           </div>
         </div>
       )}
@@ -59,15 +59,15 @@ const ToolbarButton = ({ children, onClick, variant = "ghost", active, glow }) =
                 ${variant === "primary"
                   ? "bg-[var(--accent)]/15 border-[var(--accent)]/50 text-[var(--accent)] hover:bg-[var(--accent)]/25 shadow-[0_0_10px_var(--accent-glow)]"
                   : active
-                    ? "border-white/15 bg-white/[0.04] text-slate-100"
-                    : "border-white/[0.06] bg-white/[0.015] text-slate-300 hover:border-white/15 hover:text-slate-100"}`}>
+                    ? "border-[var(--line)] bg-white/[0.04] text-[var(--text)]"
+                    : "border-[var(--line)] bg-white/[0.015] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] hover:text-[var(--text)]"}`}>
     {children}
   </button>
 );
 
 const Chip = ({ children, color = "slate" }) => {
   const tones = {
-    slate: "border-white/[0.06] bg-white/[0.02] text-slate-300",
+    slate: "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)]",
     accent: "border-[var(--accent)]/30 bg-[var(--accent)]/10 text-[var(--accent)]",
     danger: "border-rose-400/30 bg-rose-500/10 text-rose-300",
     ok: "border-emerald-400/30 bg-emerald-500/10 text-emerald-300",
@@ -87,7 +87,7 @@ const LayerPicker = ({ layer, setLayer }) => (
         className={`px-3.5 h-9 rounded-md font-display text-[11.5px] uppercase tracking-[0.14em] border transition-all
                     ${layer === l
                       ? "bg-[var(--accent)] border-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_18px_var(--accent-glow)]"
-                      : "bg-white/[0.02] border-white/[0.06] text-slate-300 hover:border-white/20"}`}>
+                      : "bg-white/[0.02] border-[var(--line)] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`}>
         {l === "default" ? "Default Layer" : "Fn Layer"}
       </button>
     ))}
@@ -126,27 +126,27 @@ const KeymapSection = ({ selectedKey, selectedCount = 0, onRemap, onResetKey }) 
       <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6">
         {/* Instructions / picker */}
         <div>
-          <ol className="text-[12px] text-slate-400 leading-relaxed space-y-2 mb-4 font-mono">
+          <ol className="text-[12px] text-[var(--text-dim)] leading-relaxed space-y-2 mb-4 font-mono">
             <li><span className="text-[var(--accent)]">01.</span> Click a key on the keyboard above.</li>
             <li><span className="text-[var(--accent)]">02.</span> Pick the new mapping at right.</li>
             <li><span className="text-[var(--accent)]">03.</span> Or type it into the input below.</li>
-            <li><span className="text-[var(--accent)]">04.</span> Hit <span className="text-slate-200">Apply</span> to flash.</li>
+            <li><span className="text-[var(--accent)]">04.</span> Hit <span className="text-[var(--text)]">Apply</span> to flash.</li>
           </ol>
 
           <div className="flex items-stretch gap-2 mb-3">
-            <div className="grid place-items-center w-14 rounded-md border border-white/[0.06] bg-white/[0.02] font-mono text-[11px] text-slate-300">
+            <div className="grid place-items-center w-14 rounded-md border border-[var(--line)] bg-white/[0.02] font-mono text-[11px] text-[var(--text-dim)]">
               {selectedKey || "None"}
             </div>
-            <div className="grid place-items-center text-slate-500"><IChevron size={14}/></div>
-            <div className="flex-1 rounded-md border border-white/[0.06] bg-white/[0.02] px-3 grid place-items-start py-2">
-              <span className="font-mono text-[12px] text-slate-100">{picked || "—"}</span>
-              <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-slate-500">remap target</span>
+            <div className="grid place-items-center text-[var(--text-faint)]"><IChevron size={14}/></div>
+            <div className="flex-1 rounded-md border border-[var(--line)] bg-white/[0.02] px-3 grid place-items-start py-2">
+              <span className="font-mono text-[12px] text-[var(--text)]">{picked || "—"}</span>
+              <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--text-faint)]">remap target</span>
             </div>
           </div>
           <div className="flex gap-2">
             <button
               onClick={() => { onResetKey && onResetKey(); setPicked(null); showFlash("reset"); }}
-              className="flex-1 h-9 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-300 font-display text-[11px] uppercase tracking-[0.18em] hover:border-white/20">
+              className="flex-1 h-9 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] font-display text-[11px] uppercase tracking-[0.18em] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]">
               Default
             </button>
             <button
@@ -154,7 +154,7 @@ const KeymapSection = ({ selectedKey, selectedCount = 0, onRemap, onResetKey }) 
               onClick={() => { onRemap && onRemap(picked); showFlash("applied"); }}
               className={`flex-1 h-9 rounded-md border font-display text-[11px] uppercase tracking-[0.18em] transition-all
                           ${(!picked || !selectedCount)
-                            ? "border-white/[0.06] bg-white/[0.02] text-slate-600 cursor-not-allowed"
+                            ? "border-[var(--line)] bg-white/[0.02] text-[var(--text-faint)] cursor-not-allowed"
                             : "border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] hover:bg-[var(--accent)]/25 shadow-[0_0_12px_var(--accent-glow)]"}`}>
               Apply
             </button>
@@ -162,7 +162,7 @@ const KeymapSection = ({ selectedKey, selectedCount = 0, onRemap, onResetKey }) 
           <div className="h-5 mt-2 text-[11px] font-mono tracking-[0.14em]">
             {!selectedCount && <span className="text-amber-400/80">Select a key on the board first.</span>}
             {flash === "applied" && <span className="text-[var(--accent)]">✓ Remapped {selectedCount} key{selectedCount > 1 ? "s" : ""} → {picked}</span>}
-            {flash === "reset" && <span className="text-slate-400">↩ Restored default mapping</span>}
+            {flash === "reset" && <span className="text-[var(--text-dim)]">↩ Restored default mapping</span>}
           </div>
         </div>
 
@@ -189,7 +189,7 @@ const AdvancedKeyPanel = ({ selectedKey }) => {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
-      <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5">
+      <div className="glass p-5">
         <div className="flex items-center gap-2 mb-5">
           {[
             { id: "dks", label: "DKS" },
@@ -200,7 +200,7 @@ const AdvancedKeyPanel = ({ selectedKey }) => {
               className={`flex-1 max-w-[120px] h-9 rounded-md border font-display text-[11.5px] uppercase tracking-[0.18em] transition-all
                           ${mode === b.id
                             ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_14px_var(--accent-glow)]"
-                            : "border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20"}`}>
+                            : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`}>
               {b.label}
             </button>
           ))}
@@ -208,8 +208,8 @@ const AdvancedKeyPanel = ({ selectedKey }) => {
 
         {mode === "dks" && (
           <div>
-            <p className="text-[11.5px] text-slate-400 mb-4">
-              <span className="text-slate-200">DKS</span> · Dynamic Key Stroke. Bind up to 4 different actions to a single key at different actuation depths.
+            <p className="text-[11.5px] text-[var(--text-dim)] mb-4">
+              <span className="text-[var(--text)]">DKS</span> · Dynamic Key Stroke. Bind up to 4 different actions to a single key at different actuation depths.
             </p>
             <DKSDiagram points={dksPoints} setPoints={setDksPoints}/>
             <button className="mt-4 px-4 h-9 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-fg)] font-display text-[11.5px] uppercase tracking-[0.18em] shadow-[0_0_12px_var(--accent-glow)]">
@@ -220,28 +220,28 @@ const AdvancedKeyPanel = ({ selectedKey }) => {
 
         {mode === "mt" && (
           <div>
-            <p className="text-[11.5px] text-slate-400 mb-5">
-              <span className="text-slate-200">MT</span> · Mod-Tap. Send one keycode on a quick tap, another when held past the threshold.
+            <p className="text-[11.5px] text-[var(--text-dim)] mb-5">
+              <span className="text-[var(--text)]">MT</span> · Mod-Tap. Send one keycode on a quick tap, another when held past the threshold.
             </p>
             <div className="grid grid-cols-2 gap-4 mb-5">
               <div>
-                <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500 mb-1.5">Tap</div>
+                <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-faint)] mb-1.5">Tap</div>
                 <div className={`h-10 rounded-md border grid place-items-center font-mono text-[14px]
-                                 ${tapKey ? "border-[var(--accent)]/50 text-[var(--accent)] bg-[var(--accent)]/10" : "border-white/[0.06] text-slate-500 bg-white/[0.02]"}`}>
+                                 ${tapKey ? "border-[var(--accent)]/50 text-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--line)] text-[var(--text-faint)] bg-white/[0.02]"}`}>
                   {tapKey || "—"}
                 </div>
               </div>
               <div>
-                <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500 mb-1.5">Hold</div>
+                <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-faint)] mb-1.5">Hold</div>
                 <div className={`h-10 rounded-md border grid place-items-center font-mono text-[14px]
-                                 ${holdKey ? "border-[var(--accent)]/50 text-[var(--accent)] bg-[var(--accent)]/10" : "border-white/[0.06] text-slate-500 bg-white/[0.02]"}`}>
+                                 ${holdKey ? "border-[var(--accent)]/50 text-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--line)] text-[var(--text-faint)] bg-white/[0.02]"}`}>
                   {holdKey || "—"}
                 </div>
               </div>
             </div>
             <div className="mb-2">
               <div className="flex items-baseline justify-between mb-1">
-                <span className="font-display text-[11.5px] uppercase tracking-[0.18em] text-slate-300">Hold Duration</span>
+                <span className="font-display text-[11.5px] uppercase tracking-[0.18em] text-[var(--text-dim)]">Hold Duration</span>
                 <span className="font-mono text-[12px] text-[var(--accent)]">{holdDuration}ms</span>
               </div>
               <input type="range" className="aether w-full"
@@ -254,13 +254,13 @@ const AdvancedKeyPanel = ({ selectedKey }) => {
 
         {mode === "tgl" && (
           <div>
-            <p className="text-[11.5px] text-slate-400 mb-5">
-              <span className="text-slate-200">TGL</span> · Toggle. One tap latches the key down until tapped again — perfect for auto-walk or capslock-style behavior.
+            <p className="text-[11.5px] text-[var(--text-dim)] mb-5">
+              <span className="text-[var(--text)]">TGL</span> · Toggle. One tap latches the key down until tapped again — perfect for auto-walk or capslock-style behavior.
             </p>
             <div className="max-w-[180px]">
-              <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500 mb-1.5">Toggle key</div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-faint)] mb-1.5">Toggle key</div>
               <div className={`h-10 rounded-md border grid place-items-center font-mono text-[14px]
-                               ${tglKey ? "border-[var(--accent)]/50 text-[var(--accent)] bg-[var(--accent)]/10" : "border-white/[0.06] text-slate-500 bg-white/[0.02]"}`}>
+                               ${tglKey ? "border-[var(--accent)]/50 text-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--line)] text-[var(--text-faint)] bg-white/[0.02]"}`}>
                 {tglKey || "—"}
               </div>
             </div>
@@ -286,12 +286,12 @@ const AdvancedKeyPanel = ({ selectedKey }) => {
 const DKSDiagram = ({ points, setPoints }) => {
   // 4 columns, 4 row tracks. Up/down arrow indicators with depth labels.
   return (
-    <div className="rounded-lg border border-white/[0.06] bg-black/30 p-4">
+    <div className="rounded-lg border border-[var(--line)] bg-[rgba(5,11,14,0.5)] p-4">
       <div className="flex items-end gap-4 mb-3">
         <div className="flex flex-col gap-2 w-10">
           {[1,2,3,4].map(i => (
             <div key={i} className={`h-7 rounded border text-center font-mono text-[10px] grid place-items-center
-                                    ${i === 1 ? "border-[var(--accent)]/40 bg-[var(--accent)]/10 text-[var(--accent)]" : "border-white/[0.06] bg-white/[0.02] text-slate-500"}`}>
+                                    ${i === 1 ? "border-[var(--accent)]/40 bg-[var(--accent)]/10 text-[var(--accent)]" : "border-[var(--line)] bg-white/[0.02] text-[var(--text-faint)]"}`}>
               K{i}
             </div>
           ))}
@@ -299,8 +299,8 @@ const DKSDiagram = ({ points, setPoints }) => {
         <div className="flex-1 grid grid-cols-4 gap-3">
           {points.map((p, idx) => (
             <div key={idx} className="flex flex-col items-center">
-              <span className={`font-mono text-[11px] mb-1 ${idx % 3 === 0 ? "text-amber-300" : "text-slate-200"}`}>{p.toFixed(1)}mm</span>
-              <span className="text-slate-400 mb-1">{idx < 2 ? "↓" : "↑"}</span>
+              <span className={`font-mono text-[11px] mb-1 ${idx % 3 === 0 ? "text-amber-300" : "text-[var(--text)]"}`}>{p.toFixed(1)}mm</span>
+              <span className="text-[var(--text-dim)] mb-1">{idx < 2 ? "↓" : "↑"}</span>
               <div className="flex flex-col gap-2 w-full">
                 {[0,1,2,3].map(row => {
                   const filled = row === idx;
@@ -309,7 +309,7 @@ const DKSDiagram = ({ points, setPoints }) => {
                       className={`h-7 rounded-full border grid place-items-center transition-colors
                                   ${filled
                                     ? "border-[var(--accent)] bg-[var(--accent)]/20 text-[var(--accent)]"
-                                    : "border-white/[0.06] bg-white/[0.02] text-slate-500 hover:border-white/20"}`}>
+                                    : "border-[var(--line)] bg-white/[0.02] text-[var(--text-faint)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`}>
                       <span className="text-[10px]">{filled ? "●" : "+"}</span>
                     </button>
                   );
@@ -319,7 +319,7 @@ const DKSDiagram = ({ points, setPoints }) => {
           ))}
         </div>
       </div>
-      <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 mt-2">
+      <div className="flex items-center justify-between text-[10px] font-mono text-[var(--text-faint)] mt-2">
         <span>Press →</span>
         <span>← Release</span>
       </div>
@@ -332,7 +332,7 @@ const KeyGrid = ({ title, keys, picked, onPick }) => {
   return (
     <div>
       <button onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-2 mb-2 text-slate-300 hover:text-slate-100">
+        className="flex items-center gap-2 mb-2 text-[var(--text-dim)] hover:text-[var(--text)]">
         <IChevronD size={12} className={open ? "" : "-rotate-90"}/>
         <span className="font-display text-[12px] uppercase tracking-[0.18em]">{title}</span>
       </button>
@@ -345,7 +345,7 @@ const KeyGrid = ({ title, keys, picked, onPick }) => {
                 className={`h-9 rounded-md border font-mono text-[11px] transition-all
                             ${active
                               ? "border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)] shadow-[0_0_12px_var(--accent-glow)]"
-                              : "border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20 hover:text-slate-100"}`}>
+                              : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] hover:text-[var(--text)]"}`}>
                 {k}
               </button>
             );
@@ -373,7 +373,7 @@ const ActuationSection = ({
     `px-4 h-9 rounded-md border font-display text-[12px] uppercase tracking-[0.16em] transition-all ${
       enabled
         ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_18px_var(--accent-glow)] hover:brightness-110"
-        : "border-white/[0.06] bg-white/[0.02] text-slate-500 cursor-not-allowed"
+        : "border-[var(--line)] bg-white/[0.02] text-[var(--text-faint)] cursor-not-allowed"
     }`;
   const [tab, setTab] = useState("travel");
   // Confirmation toast — shows the exact keys + value the user just wrote so
@@ -411,12 +411,12 @@ const ActuationSection = ({
 
       <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
         {/* Left: switch render */}
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+        <div className="glass p-4">
           <div className="flex items-center justify-between mb-3">
-            <span className="font-display text-[11px] uppercase tracking-[0.18em] text-slate-300">Travel Test</span>
+            <span className="font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)]">Travel Test</span>
             <button onClick={() => setTravelTest(!travelTest)}
               className={`relative w-10 h-5 rounded-full border transition-colors
-                          ${travelTest ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-white/[0.08]"}`}>
+                          ${travelTest ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-[var(--line)]"}`}>
               <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full transition-all
                                 ${travelTest ? "left-[20px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-slate-400"}`}/>
             </button>
@@ -425,41 +425,41 @@ const ActuationSection = ({
         </div>
 
         {/* Right: per-tab content */}
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5">
+        <div className="glass p-5">
           {tab === "travel" && (
             <div>
-              <p className="text-[12px] text-slate-400 mb-3">
+              <p className="text-[12px] text-[var(--text-dim)] mb-3">
                 Select keys on the board, set the actuation point, then press <span className="text-[var(--accent)]">Apply</span> — only the selected keys are written. Nothing is sent while you move the slider.
               </p>
               <div className="mb-5 inline-flex items-center gap-2 px-3 h-7 rounded-md border border-[var(--accent)]/30 bg-[var(--accent)]/[0.06]">
-                <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-400">Applying to</span>
+                <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-dim)]">Applying to</span>
                 <span className="font-display text-[11px] uppercase tracking-[0.16em] text-[var(--accent)]">{scope}</span>
               </div>
               <div className="mb-5">
-                <Slider label="Key Trigger Travel" value={actuation} min={0.1} max={4.0} step={0.05} unit="mm"
+                <Slider label="Key Trigger Travel" value={actuation} min={0.1} max={3.4} step={0.05} unit="mm"
                         onChange={setActuation}/>
                 <div className="flex items-center gap-2 mt-2">
                   <button onClick={() => setActuation(Math.max(0.1, actuation - 0.05))}
-                    className="w-7 h-7 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20">−</button>
-                  <div className="px-3 h-7 rounded-md border border-white/[0.06] bg-white/[0.02] grid place-items-center font-mono text-[12px] text-slate-100">
+                    className="w-7 h-7 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]">−</button>
+                  <div className="px-3 h-7 rounded-md border border-[var(--line)] bg-white/[0.02] grid place-items-center font-mono text-[12px] text-[var(--text)]">
                     {actuation.toFixed(2)} mm
                   </div>
                   <button onClick={() => setActuation(Math.min(4.0, actuation + 0.05))}
-                    className="w-7 h-7 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20">+</button>
+                    className="w-7 h-7 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]">+</button>
                 </div>
               </div>
 
               <label className="flex items-center gap-2 cursor-pointer select-none mb-3">
                 <span className={`w-4 h-4 rounded border grid place-items-center transition
-                                  ${rtEnabled ? "border-[var(--accent)] bg-[var(--accent)]/20" : "border-white/15 bg-white/[0.02]"}`}
+                                  ${rtEnabled ? "border-[var(--accent)] bg-[var(--accent)]/20" : "border-[var(--line)] bg-white/[0.02]"}`}
                       onClick={() => setRtEnabled(!rtEnabled)}>
                   {rtEnabled && <ICheck size={10} className="text-[var(--accent)]"/>}
                 </span>
                 <input type="checkbox" checked={rtEnabled} onChange={(e) => setRtEnabled(e.target.checked)} className="sr-only"/>
-                <span className="font-display text-[11.5px] uppercase tracking-[0.16em] text-slate-200">Rapid Trigger</span>
+                <span className="font-display text-[11.5px] uppercase tracking-[0.16em] text-[var(--text)]">Rapid Trigger</span>
                 <Chip color="accent">RT</Chip>
               </label>
-              <p className="text-[11.5px] text-slate-500 leading-relaxed mb-4">
+              <p className="text-[11.5px] text-[var(--text-faint)] leading-relaxed mb-4">
                 Rapid Trigger dynamically actuates and resets your key based on your intent — perfect for counter-strafing and rebound presses.
               </p>
 
@@ -479,7 +479,7 @@ const ActuationSection = ({
                 </button>
                 {confirm
                   ? <ConfirmToast/>
-                  : <span className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-slate-500">
+                  : <span className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-[var(--text-faint)]">
                       {canApply ? "writes only the selected keys" : "select keys on the board to enable"}
                     </span>}
               </div>
@@ -488,7 +488,7 @@ const ActuationSection = ({
 
           {tab === "dead" && (
             <div>
-              <p className="text-[12px] text-slate-400 mb-5">
+              <p className="text-[12px] text-[var(--text-dim)] mb-5">
                 Configure the dead-band region near the keycap's rest and bottom-out positions — noise inside this band is ignored. Press <span className="text-[var(--accent)]">Apply</span> to write to the selected keys.
               </p>
               <div className="grid grid-cols-2 gap-6">
@@ -504,7 +504,7 @@ const ActuationSection = ({
                 </button>
                 {confirm
                   ? <ConfirmToast/>
-                  : <span className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-slate-500">
+                  : <span className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-[var(--text-faint)]">
                       {canApply ? "writes only the selected keys" : "select keys on the board to enable"}
                     </span>}
               </div>
@@ -525,7 +525,7 @@ const ActuationSection = ({
             const cur = SWITCHES.find(s => s.id === (switchId || "hm1")) || SWITCHES[0];
             return (
             <div>
-              <p className="text-[12px] text-slate-400 mb-5">
+              <p className="text-[12px] text-[var(--text-dim)] mb-5">
                 Select the magnetic switch profile installed in your board. Calibration curves load automatically.
               </p>
               <div className="grid grid-cols-2 gap-3 mb-5">
@@ -536,22 +536,22 @@ const ActuationSection = ({
                     className={`text-left rounded-lg border p-3 transition-all
                                 ${active
                                   ? "border-[var(--accent)]/50 bg-[var(--accent)]/[0.06] shadow-[0_0_14px_var(--accent-glow)]"
-                                  : "border-white/[0.06] bg-white/[0.02] hover:border-white/20"}`}>
+                                  : "border-[var(--line)] bg-white/[0.02] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`}>
                     <div className="flex items-center gap-2">
-                      <div className="font-display text-[14px] text-slate-100">{s.name}</div>
+                      <div className="font-display text-[14px] text-[var(--text)]">{s.name}</div>
                       <span className="w-2.5 h-2.5 rounded-full" style={{ background: s.dot, boxShadow: `0 0 8px ${s.dot}` }}/>
                     </div>
-                    <div className="font-mono text-[10px] text-slate-500 uppercase tracking-[0.18em] mt-0.5">{s.sub}</div>
+                    <div className="font-mono text-[10px] text-[var(--text-faint)] uppercase tracking-[0.18em] mt-0.5">{s.sub}</div>
                   </button>
                   );
                 })}
               </div>
               {/* Switch info readout for the selected profile */}
-              <div className="rounded-xl border border-white/[0.06] bg-black/30 p-4">
+              <div className="rounded-xl border border-[var(--line)] bg-[rgba(5,11,14,0.5)] p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <span className="w-2.5 h-2.5 rounded-full" style={{ background: cur.dot, boxShadow: `0 0 8px ${cur.dot}` }}/>
-                  <span className="font-display text-[13px] text-slate-100">{cur.name}</span>
-                  <span className="font-mono text-[10px] text-slate-500 uppercase tracking-[0.18em]">{cur.maker} · {cur.sub}</span>
+                  <span className="font-display text-[13px] text-[var(--text)]">{cur.name}</span>
+                  <span className="font-mono text-[10px] text-[var(--text-faint)] uppercase tracking-[0.18em]">{cur.maker} · {cur.sub}</span>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3 font-mono text-[11px]">
                   {[
@@ -560,8 +560,8 @@ const ActuationSection = ({
                     ["Rated Life", cur.life + " presses"], ["Tech", "Magnetic / Analog"],
                   ].map(([k, v]) => (
                     <div key={k}>
-                      <div className="text-slate-500 uppercase tracking-[0.14em] text-[9.5px]">{k}</div>
-                      <div className="text-slate-100 mt-0.5">{v}</div>
+                      <div className="text-[var(--text-faint)] uppercase tracking-[0.14em] text-[9.5px]">{k}</div>
+                      <div className="text-[var(--text)] mt-0.5">{v}</div>
                     </div>
                   ))}
                 </div>
@@ -572,7 +572,7 @@ const ActuationSection = ({
 
           {tab === "poll" && (
             <div>
-              <p className="text-[12px] text-slate-400 mb-5">
+              <p className="text-[12px] text-[var(--text-dim)] mb-5">
                 Switch the polling rate of the device. The keyboard will restart and disconnect briefly after switching.
               </p>
               <div className="flex flex-wrap gap-2">
@@ -581,27 +581,27 @@ const ActuationSection = ({
                     className={`px-4 h-9 rounded-md border font-display text-[12px] uppercase tracking-[0.16em] transition-all
                                 ${polling === p
                                   ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_18px_var(--accent-glow)]"
-                                  : "border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20"}`}>
+                                  : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`}>
                     {p}KHz
                   </button>
                 ))}
               </div>
-              <div className="mt-6 p-4 rounded-lg border border-white/[0.06] bg-black/30 font-mono text-[11px] text-slate-400 leading-relaxed">
-                <div><span className="text-slate-500">current</span> · <span className="text-[var(--accent)]">{polling}000 Hz</span> · {(1000/polling).toFixed(2)}ms tick</div>
-                <div><span className="text-slate-500">latency</span> · ~{(0.5 + 1/polling).toFixed(2)}ms end-to-end</div>
+              <div className="mt-6 p-4 rounded-lg border border-[var(--line)] bg-[rgba(5,11,14,0.5)] font-mono text-[11px] text-[var(--text-dim)] leading-relaxed">
+                <div><span className="text-[var(--text-faint)]">current</span> · <span className="text-[var(--accent)]">{polling}000 Hz</span> · {(1000/polling).toFixed(2)}ms tick</div>
+                <div><span className="text-[var(--text-faint)]">latency</span> · ~{(0.5 + 1/polling).toFixed(2)}ms end-to-end</div>
               </div>
             </div>
           )}
 
           {tab === "calib" && (
             <div>
-              <div className="font-display text-[12px] uppercase tracking-[0.18em] text-slate-200 mb-3">Key Calibration</div>
+              <div className="font-display text-[12px] uppercase tracking-[0.18em] text-[var(--text)] mb-3">Key Calibration</div>
               <button onClick={() => onCalibrate && onCalibrate(!calibrating)}
                 className="px-5 h-10 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-fg)] font-display text-[12px] uppercase tracking-[0.18em] shadow-[0_0_18px_var(--accent-glow)] mb-5">
                 {calibrating ? "Stop Calibration" : "Start Calibration"}
               </button>
-              <div className="font-display text-[11px] uppercase tracking-[0.18em] text-slate-300 mb-2">Calibration steps:</div>
-              <ol className="space-y-2 text-[12px] text-slate-400 max-w-2xl">
+              <div className="font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)] mb-2">Calibration steps:</div>
+              <ol className="space-y-2 text-[12px] text-[var(--text-dim)] max-w-2xl">
                 {[
                   "Click the Start Calibration button",
                   "Press the required key (Hit bottom)",
@@ -648,7 +648,7 @@ const SwitchRender = ({ depth, actuation }) => {
         <div className="absolute -right-1 inset-y-0 w-px bg-white/10"/>
         {[0, 1, 2, 3, 4].map(mm => (
           <div key={mm} className="flex items-center gap-2">
-            <span className="font-mono text-[10px] text-slate-400">{mm}.0mm</span>
+            <span className="font-mono text-[10px] text-[var(--text-dim)]">{mm}.0mm</span>
             <span className="w-2 h-px bg-white/30"/>
           </div>
         ))}
@@ -673,7 +673,7 @@ const ActuationToolbar = ({ onSelectAll, onSelectInvert, onDeselectAll, onResetT
         className={`w-[110px] h-8 rounded-md border font-display text-[10.5px] uppercase tracking-[0.16em] transition-all
                     ${b.primary
                       ? "border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] hover:bg-[var(--accent)]/25 shadow-[0_0_10px_var(--accent-glow)]"
-                      : "border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20"}`}>
+                      : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`}>
         {b.label}
       </button>
     ))}
@@ -754,11 +754,11 @@ const ZONE_MODES = [
 
 /* Effect zones: each = a group of keys running its own effect+colors. */
 const ZonesPanel = ({ zones, selectedKeys, onAdd, onUpdate, onRemove }) => (
-  <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4">
+  <div className="glass p-4">
     <div className="flex items-center justify-between mb-3">
       <div>
-        <div className="font-display text-[12px] uppercase tracking-[0.18em] text-slate-200">Effect Zones</div>
-        <div className="font-mono text-[10px] text-slate-500 mt-0.5">Select keys on the board, add a zone, give it its own effect</div>
+        <div className="font-display text-[12px] uppercase tracking-[0.18em] text-[var(--text)]">Effect Zones</div>
+        <div className="font-mono text-[10px] text-[var(--text-faint)] mt-0.5">Select keys on the board, add a zone, give it its own effect</div>
       </div>
       <button onClick={onAdd} disabled={!selectedKeys || selectedKeys.size === 0}
         className="px-2.5 h-8 rounded-md border border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] disabled:opacity-40 font-display text-[10.5px] uppercase tracking-[0.16em]">
@@ -766,19 +766,19 @@ const ZonesPanel = ({ zones, selectedKeys, onAdd, onUpdate, onRemove }) => (
       </button>
     </div>
     {(!zones || zones.length === 0) && (
-      <div className="font-mono text-[11px] text-slate-500">No zones yet — select keys, then click “+ Zone”. Keys outside every zone stay off.</div>
+      <div className="font-mono text-[11px] text-[var(--text-faint)]">No zones yet — select keys, then click “+ Zone”. Keys outside every zone stay off.</div>
     )}
     <div className="flex flex-col gap-2">
       {(zones || []).map(z => (
-        <div key={z.id} className="rounded-lg border border-white/[0.06] bg-black/20 p-2.5">
+        <div key={z.id} className="rounded-lg border border-[var(--line)] bg-[rgba(5,11,14,0.35)] p-2.5">
           <div className="flex items-center gap-2 mb-2">
             <select value={z.mode} onChange={(e) => onUpdate(z.id, { mode: e.target.value })}
-              className="flex-1 h-8 rounded-md bg-black/40 border border-white/[0.08] text-slate-100 font-display text-[11px] uppercase tracking-[0.12em] px-2 outline-none">
+              className="flex-1 h-8 rounded-md bg-[rgba(5,11,14,0.5)] border border-[var(--line)] text-[var(--text)] font-display text-[11px] uppercase tracking-[0.12em] px-2 outline-none">
               {ZONE_MODES.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
             </select>
-            <span className="font-mono text-[10px] text-slate-500 whitespace-nowrap">{z.codes.length} keys</span>
+            <span className="font-mono text-[10px] text-[var(--text-faint)] whitespace-nowrap">{z.codes.length} keys</span>
             <button onClick={() => onRemove(z.id)} title="Remove zone"
-              className="w-7 h-7 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-400 hover:text-rose-300 hover:border-rose-400/40">✕</button>
+              className="w-7 h-7 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:text-rose-300 hover:border-rose-400/40">✕</button>
           </div>
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5">
@@ -791,17 +791,17 @@ const ZonesPanel = ({ zones, selectedKeys, onAdd, onUpdate, onRemove }) => (
                   </div>
                   {z.colors.length > 1 && (
                     <button onClick={() => onUpdate(z.id, { colors: z.colors.filter((_, j) => j !== i) })}
-                      className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-slate-900 ring-1 ring-white/20 text-slate-300 hover:text-rose-300 grid place-items-center text-[9px]">✕</button>
+                      className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-slate-900 ring-1 ring-white/20 text-[var(--text-dim)] hover:text-rose-300 grid place-items-center text-[9px]">✕</button>
                   )}
                 </div>
               ))}
               {(z.colors || []).length < 4 && (
                 <button onClick={() => onUpdate(z.id, { colors: [...(z.colors || []), "#ffffff"] })}
-                  className="w-7 h-7 rounded-md border-2 border-dashed border-white/15 text-slate-400 hover:border-white/30 grid place-items-center text-[12px]">+</button>
+                  className="w-7 h-7 rounded-md border-2 border-dashed border-[var(--line)] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] grid place-items-center text-[12px]">+</button>
               )}
             </div>
             <div className="flex-1 flex items-center gap-2">
-              <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-slate-500">Spd</span>
+              <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--text-faint)]">Spd</span>
               <input type="range" className="aether flex-1" min={0} max={100} step={1}
                 value={z.speed != null ? z.speed : 60} style={{ "--pct": (z.speed != null ? z.speed : 60) + "%" }}
                 onChange={(e) => onUpdate(z.id, { speed: parseFloat(e.target.value) })}/>
@@ -870,26 +870,26 @@ const LightingSection = ({
     <div>
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-3">
-          <span className="font-display text-[15px] text-slate-100 tracking-[0.02em] font-semibold">Lighting</span>
-          <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500">RGB engine · per-key</span>
+          <span className="font-display text-[15px] text-[var(--text)] tracking-[0.02em] font-semibold">Lighting</span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-faint)]">RGB engine · per-key</span>
         </div>
         <div className="flex items-center gap-4">
           {fullColorOk && (
             <div className="flex items-center gap-2" title="Cycle the full RGB spectrum (rainbow) instead of the chosen colors">
-              <span className="font-display text-[11px] uppercase tracking-[0.18em] text-slate-300">Full RGB</span>
+              <span className="font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)]">Full RGB</span>
               <button onClick={() => setFullColor(!fullColor)}
                 className={`relative w-10 h-5 rounded-full border transition-colors
-                            ${fullColor ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-white/[0.08]"}`}>
+                            ${fullColor ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-[var(--line)]"}`}>
                 <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full transition-all
                                   ${fullColor ? "left-[20px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-slate-400"}`}/>
               </button>
             </div>
           )}
           <div className="flex items-center gap-2">
-            <span className="font-display text-[11px] uppercase tracking-[0.18em] text-slate-300">Power</span>
+            <span className="font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)]">Power</span>
             <button onClick={() => setPower(!power)}
               className={`relative w-10 h-5 rounded-full border transition-colors
-                          ${power ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-white/[0.08]"}`}>
+                          ${power ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-[var(--line)]"}`}>
               <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full transition-all
                                 ${power ? "left-[20px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-slate-400"}`}/>
             </button>
@@ -901,7 +901,7 @@ const LightingSection = ({
         {/* LEFT: Light Mode grid + sliders */}
         <div className="flex flex-col gap-5">
           <div>
-            <div className="font-display text-[11px] uppercase tracking-[0.22em] text-slate-400 mb-2">Light Mode</div>
+            <div className="font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)] mb-2">Light Mode</div>
             <div className="grid grid-cols-3 gap-1.5">
               {LIGHT_MODES.map(m => {
                 const active = pattern === m.id;
@@ -910,7 +910,7 @@ const LightingSection = ({
                     className={`h-9 rounded-lg border font-display text-[11px] tracking-[0.06em] flex items-center justify-center gap-1.5 transition-all
                                 ${active
                                   ? "border-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_14px_var(--accent-glow)]"
-                                  : "border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20"}`}
+                                  : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`}
                     style={ active ? { background: "var(--accent-gradient, var(--accent))" } : {} }>
                     <span className="text-[12px]">{m.icon}</span> {m.label}
                   </button>
@@ -922,7 +922,7 @@ const LightingSection = ({
           <div className="grid grid-cols-2 gap-5">
             <div>
               <div className="flex items-baseline justify-between mb-1.5">
-                <span className="font-display text-[11px] uppercase tracking-[0.22em] text-slate-400">Brightness</span>
+                <span className="font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)]">Brightness</span>
                 <span className="font-mono text-[12px] text-[var(--accent)]">{Math.round(brightness)}%</span>
               </div>
               <input type="range" className="aether w-full"
@@ -932,7 +932,7 @@ const LightingSection = ({
             </div>
             <div>
               <div className="flex items-baseline justify-between mb-1.5">
-                <span className="font-display text-[11px] uppercase tracking-[0.22em] text-slate-400">Speed</span>
+                <span className="font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)]">Speed</span>
                 <span className="font-mono text-[12px] text-[var(--accent)]">{Math.round(speed)}%</span>
               </div>
               <input type="range" className="aether w-full"
@@ -944,7 +944,7 @@ const LightingSection = ({
 
           {/* Direction / angle of flow (Wave, Striation, Radar, etc.) */}
           <div>
-            <div className="font-display text-[11px] uppercase tracking-[0.22em] text-slate-400 mb-2">Direction</div>
+            <div className="font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)] mb-2">Direction</div>
             <div className="grid grid-cols-4 gap-1.5 max-w-[220px]">
               {[["→", 0], ["←", 1], ["↑", 2], ["↓", 3]].map(([arrow, val]) => {
                 const active = direction === val;
@@ -953,7 +953,7 @@ const LightingSection = ({
                     className={`h-9 rounded-lg border text-[15px] transition-all
                                 ${active
                                   ? "border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)] shadow-[0_0_12px_var(--accent-glow)]"
-                                  : "border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20"}`}>
+                                  : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`}>
                     {arrow}
                   </button>
                 );
@@ -964,7 +964,7 @@ const LightingSection = ({
           {/* Striation orientation — only relevant for the Striation effect */}
           {pattern === "striation" && (
             <div>
-              <div className="font-display text-[11px] uppercase tracking-[0.22em] text-slate-400 mb-2">Stripe Orientation</div>
+              <div className="font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)] mb-2">Stripe Orientation</div>
               <div className="grid grid-cols-3 gap-1.5 max-w-[260px]">
                 {[["Vertical", "v", "▥"], ["Horizontal", "h", "▤"], ["Both", "both", "▦"]].map(([lbl, val, ic]) => {
                   const active = (striOrient || "v") === val;
@@ -973,7 +973,7 @@ const LightingSection = ({
                       className={`h-9 rounded-lg border text-[11px] uppercase tracking-[0.12em] flex items-center justify-center gap-1.5 transition-all
                                   ${active
                                     ? "border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)] shadow-[0_0_12px_var(--accent-glow)]"
-                                    : "border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20"}`}>
+                                    : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`}>
                       <span className="text-[14px]">{ic}</span>{lbl}
                     </button>
                   );
@@ -983,10 +983,10 @@ const LightingSection = ({
           )}
 
           {/* Background color */}
-          <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4">
+          <div className="glass p-4">
             <div className="flex items-baseline justify-between mb-2.5">
-              <span className="font-display text-[11px] uppercase tracking-[0.22em] text-slate-300">Background color</span>
-              <span className="font-mono text-[10px] text-slate-500">underlies the effect</span>
+              <span className="font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)]">Background color</span>
+              <span className="font-mono text-[10px] text-[var(--text-faint)]">underlies the effect</span>
             </div>
             <div className="flex items-center gap-3">
               <div className="relative w-14 h-12 rounded-xl overflow-hidden ring-1 ring-white/10"
@@ -996,9 +996,9 @@ const LightingSection = ({
               </div>
               <input type="text" value={bgColor.toUpperCase()}
                      onChange={(e) => { const v = e.target.value; if (/^#[0-9a-fA-F]{6}$/.test(v)) setBgColor(v); else setBgColor(v); }}
-                     className="flex-1 h-10 px-3 rounded-lg bg-black/30 border border-white/[0.06] font-mono text-[12px] text-slate-100 outline-none focus:border-white/20"/>
+                     className="flex-1 h-10 px-3 rounded-lg bg-[rgba(5,11,14,0.5)] border border-[var(--line)] font-mono text-[12px] text-[var(--text)] outline-none focus:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"/>
               <button onClick={() => setBgColor("#000000")}
-                className="px-2.5 h-10 rounded-lg border border-white/[0.06] bg-white/[0.02] text-slate-300 hover:text-white hover:border-white/20 font-display text-[10.5px] uppercase tracking-[0.16em]">
+                className="px-2.5 h-10 rounded-lg border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:text-white hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] font-display text-[10.5px] uppercase tracking-[0.16em]">
                 Off
               </button>
             </div>
@@ -1023,15 +1023,15 @@ const LightingSection = ({
           {pattern !== "custom" && (
           <div>
             <div className="flex items-baseline justify-between mb-2">
-              <span className="font-display text-[11px] uppercase tracking-[0.22em] text-slate-300">Effect colors · {palette.length}/4</span>
+              <span className="font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)]">Effect colors · {palette.length}/4</span>
               <div className="flex items-center gap-3">
                 {palette.length > 0 && (
                   <button onClick={() => setColors([])}
-                    className="font-mono text-[10px] uppercase tracking-[0.16em] text-slate-400 hover:text-rose-300">
+                    className="font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--text-dim)] hover:text-rose-300">
                     Clear all
                   </button>
                 )}
-                <span className="font-mono text-[10px] text-slate-500">click slot to recolor</span>
+                <span className="font-mono text-[10px] text-[var(--text-faint)]">click slot to recolor</span>
               </div>
             </div>
             <div className="flex items-stretch gap-2 mb-3">
@@ -1063,7 +1063,7 @@ const LightingSection = ({
               })}
               {palette.length < 4 && (
                 <button onClick={addSlot}
-                  className="flex-1 min-w-0 h-16 rounded-2xl border-2 border-dashed border-white/15 bg-white/[0.02] text-slate-400 hover:border-white/30 hover:bg-white/[0.04] hover:text-white grid place-items-center transition-all">
+                  className="flex-1 min-w-0 h-16 rounded-2xl border-2 border-dashed border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] hover:bg-white/[0.04] hover:text-white grid place-items-center transition-all">
                   <span className="flex items-center gap-1.5 font-display text-[11px] uppercase tracking-[0.18em]">
                     <IPlus size={13}/> Add
                   </span>
@@ -1095,21 +1095,21 @@ const LightingSection = ({
           )}
 
           {/* Per-key assignment */}
-          <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4">
+          <div className="glass p-4">
             <div className="flex items-center justify-between mb-3">
               <div>
-                <div className="font-display text-[12px] uppercase tracking-[0.18em] text-slate-200">Per-key colors</div>
-                <div className="font-mono text-[10px] text-slate-500 mt-0.5">
+                <div className="font-display text-[12px] uppercase tracking-[0.18em] text-[var(--text)]">Per-key colors</div>
+                <div className="font-mono text-[10px] text-[var(--text-faint)] mt-0.5">
                   {selectedKeys?.size ?? 0} key{(selectedKeys?.size ?? 0) === 1 ? "" : "s"} selected · Ctrl/⌘-click to toggle
                 </div>
               </div>
               <div className="flex items-center gap-1.5">
                 <button onClick={onSelectAll}
-                  className="px-2.5 h-8 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-300 hover:text-white hover:border-white/20 font-display text-[10.5px] uppercase tracking-[0.16em]">
+                  className="px-2.5 h-8 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:text-white hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] font-display text-[10.5px] uppercase tracking-[0.16em]">
                   Select all
                 </button>
                 <button onClick={onClearSelection}
-                  className="px-2.5 h-8 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-300 hover:text-white hover:border-white/20 font-display text-[10.5px] uppercase tracking-[0.16em]">
+                  className="px-2.5 h-8 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:text-white hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] font-display text-[10.5px] uppercase tracking-[0.16em]">
                   Clear
                 </button>
               </div>
@@ -1126,7 +1126,7 @@ const LightingSection = ({
               </button>
               <button onClick={clearPerKeyForSelection}
                 disabled={!selectedKeys || selectedKeys.size === 0}
-                className="px-3 h-10 rounded-lg border border-white/[0.06] bg-white/[0.02] text-slate-300 hover:text-white hover:border-white/20 disabled:opacity-40 font-display text-[11.5px] uppercase tracking-[0.18em]">
+                className="px-3 h-10 rounded-lg border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:text-white hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] disabled:opacity-40 font-display text-[11.5px] uppercase tracking-[0.18em]">
                 Reset
               </button>
             </div>
@@ -1138,131 +1138,6 @@ const LightingSection = ({
           )}
         </div>
       </div>
-    </div>
-  );
-};
-
-const LightingSection_unused = () => {
-  return null;
-};
-
-const _Old_Lighting_remove = ({ color, setColor, pattern, setPattern, brightness, setBrightness, speed, setSpeed }) => {
-  const [tab, setTab] = useState("color");
-  const [flash, setFlash] = useState(false);
-  return (
-    <div>
-      <SubTabs active={tab} onChange={setTab}
-        tabs={[
-          { id: "color",   label: "Color",   icon: <IPalette size={13}/> },
-          { id: "pattern", label: "Pattern", icon: <IWaves size={13}/> },
-          { id: "per-key", label: "Per Key", icon: <IGrid size={13}/> },
-        ]}/>
-
-      {tab === "color" && (
-        <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-6">
-          {/* Wheel */}
-          <div className="flex flex-col items-center gap-3">
-            <div className="relative">
-              <div className="absolute inset-0 rounded-full blur-2xl opacity-70"
-                   style={{ background: `radial-gradient(circle, ${color}, transparent 70%)` }} />
-              <div className="relative w-[170px] h-[170px] rounded-full p-[3px]"
-                   style={{ background: `conic-gradient(from 0deg, #ff1f5a, #ffaa1f, #39ff8a, #00f5ff, #5b8cff, #9d4edd, #ff1f5a)` }}>
-                <div className="w-full h-full rounded-full bg-[var(--bg-1)] p-2 grid place-items-center">
-                  <div className="relative w-full h-full rounded-full overflow-hidden ring-1 ring-white/10"
-                       style={{ background: color, boxShadow: `inset 0 0 30px rgba(0,0,0,0.4), 0 0 30px ${color}55` }}>
-                    <input type="color" value={color} onChange={(e) => setColor(e.target.value)}
-                           className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"/>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="text-center">
-              <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500">picked</div>
-              <div className="font-mono text-[13px] text-slate-100">{color.toUpperCase()}</div>
-            </div>
-          </div>
-
-          {/* Presets + brightness */}
-          <div className="flex flex-col gap-5">
-            <div>
-              <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500 mb-2">Quick Presets</div>
-              <div className="grid grid-cols-6 gap-2">
-                {PRESETS.map(p => {
-                  const active = color.toLowerCase() === p.hex.toLowerCase();
-                  return (
-                    <button key={p.id} onClick={() => setColor(p.hex)} title={p.name}
-                      className={`group relative aspect-square rounded-lg border transition-all overflow-hidden
-                                  ${active ? "border-white/40 scale-[1.04]" : "border-white/[0.06] hover:border-white/20"}`}
-                      style={{ background: p.hex, boxShadow: active ? `0 0 18px ${p.hex}80` : "none" }}>
-                      <span className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.35),transparent_50%)]" />
-                      {active && (
-                        <span className="absolute bottom-1 right-1 w-4 h-4 rounded-full bg-black/60 grid place-items-center text-white">
-                          <ICheck size={10} strokeWidth={2.5}/>
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            <Slider label="Brightness" value={brightness} min={0} max={100} step={1} unit="%" onChange={setBrightness}/>
-            <button onClick={() => { setFlash(true); setTimeout(() => setFlash(false), 350); }}
-              className={`h-11 rounded-xl border font-display uppercase tracking-[0.18em] text-[12px] font-semibold transition-all
-                          border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] hover:bg-[var(--accent)]/25
-                          shadow-[0_0_18px_var(--accent-glow)] ${flash ? "flash-on-click" : ""}`}>
-              <span className="flex items-center justify-center gap-2"><IWaves size={14}/> Apply Color</span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {tab === "pattern" && (
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_280px] gap-6">
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-            {PATTERNS.map(p => {
-              const active = pattern === p.id;
-              return (
-                <button key={p.id} onClick={() => setPattern(p.id)}
-                  className={`text-left rounded-xl border p-4 transition-all
-                              ${active
-                                ? "border-[var(--accent)]/60 bg-[var(--accent)]/[0.06] shadow-[0_0_18px_var(--accent-glow)]"
-                                : "border-white/[0.06] bg-white/[0.02] hover:border-white/20"}`}>
-                  <div className="font-display text-[14px] text-slate-100 mb-1">{p.label}</div>
-                  <div className="text-[11px] text-slate-400">{p.desc}</div>
-                  <PatternPreview kind={p.id} color={active ? "var(--accent)" : "#94a3b8"}/>
-                </button>
-              );
-            })}
-          </div>
-          <div className="flex flex-col gap-5 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
-            <Slider label="Speed" value={speed} min={0} max={100} step={1} unit="%" onChange={setSpeed}/>
-            <Slider label="Brightness" value={brightness} min={0} max={100} step={1} unit="%" onChange={setBrightness}/>
-            <div>
-              <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500 mb-2">Direction</div>
-              <div className="grid grid-cols-4 gap-1.5">
-                {["←", "↑", "→", "↓"].map(d => (
-                  <button key={d} className="h-8 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20">
-                    {d}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {tab === "per-key" && (
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5">
-          <p className="text-[12px] text-slate-400 mb-3">Click any key above to assign a color. Bulk-select with Shift-click.</p>
-          <div className="grid grid-cols-8 gap-1.5">
-            {["#ff1f5a","#ffaa1f","#39ff8a","#00f5ff","#5b8cff","#9d4edd","#c77dff","#ffffff"].map(c => (
-              <button key={c} onClick={() => setColor(c)}
-                className="aspect-square rounded-md border border-white/10 hover:scale-105 transition-transform"
-                style={{ background: c, boxShadow: `0 0 12px ${c}50` }}/>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 };
@@ -1311,18 +1186,18 @@ const SOCDSection = ({ socdMode, setSocdMode, hotkey, hotkeyEnabled, setHotkeyEn
   return (
     <div>
       {/* Switch hotkey row */}
-      <div className="flex flex-wrap items-center gap-4 mb-5 pb-4 border-b border-white/[0.06]">
+      <div className="flex flex-wrap items-center gap-4 mb-5 pb-4 border-b border-[var(--line)]">
         <div className="flex items-center gap-2">
-          <span className="font-display text-[11px] uppercase tracking-[0.18em] text-slate-300">Switch</span>
+          <span className="font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)]">Switch</span>
           <button onClick={() => setHotkeyEnabled(!hotkeyEnabled)}
             className={`relative w-10 h-5 rounded-full border transition-colors
-                        ${hotkeyEnabled ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-white/[0.08]"}`}>
+                        ${hotkeyEnabled ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-[rgba(5,11,14,0.5)] border-[var(--line)]"}`}>
             <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full transition-all
-                              ${hotkeyEnabled ? "left-[20px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-slate-400"}`}/>
+                              ${hotkeyEnabled ? "left-[20px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-[var(--text-faint)]"}`}/>
           </button>
         </div>
-        <div className="font-mono text-[11px] text-slate-400">
-          Hotkey: <span className="text-slate-100">{hotkey}</span>
+        <div className="font-mono text-[11px] text-[var(--text-dim)]">
+          Hotkey: <span className="text-[var(--text)]">{hotkey}</span>
         </div>
         <div className="ml-auto">
           <button onClick={() => onApply && onApply(profiles, hotkeyEnabled)}
@@ -1335,44 +1210,44 @@ const SOCDSection = ({ socdMode, setSocdMode, hotkey, hotkeyEnabled, setHotkeyEn
       <div className="grid grid-cols-1 lg:grid-cols-[200px_320px_1fr] gap-5">
         {/* Profile list */}
         <div>
-          <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500 mb-2">{profiles.length}/20 slots</div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-faint)] mb-2">{profiles.length}/20 slots</div>
           <div className="flex flex-col gap-1.5 mb-3">
             {profiles.map(p => (
               <button key={p.id} onClick={() => setActive(p.id)}
                 className={`flex items-center justify-between px-3 h-8 rounded-md border font-mono text-[12px] transition-all
                             ${active === p.id
                               ? "border-[var(--accent)]/50 bg-[var(--accent)]/10 text-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]"
-                              : "border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20"}`}>
+                              : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`}>
                 <span>{p.id}</span>
-                {p.k1 && p.k2 && <span className="font-mono text-[10px] text-slate-500">{p.k1} ↔ {p.k2}</span>}
+                {p.k1 && p.k2 && <span className="font-mono text-[10px] text-[var(--text-faint)]">{p.k1} ↔ {p.k2}</span>}
               </button>
             ))}
           </div>
           <div className="flex gap-2">
-            <button onClick={addProfile} className="flex-1 flex items-center justify-center gap-1 h-8 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20 font-display text-[11px] uppercase tracking-[0.16em]">
+            <button onClick={addProfile} className="flex-1 flex items-center justify-center gap-1 h-8 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] font-display text-[11px] uppercase tracking-[0.16em]">
               <IPlus size={12}/> Create
             </button>
-            <button onClick={delActive} className="flex-1 flex items-center justify-center gap-1 h-8 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-rose-400/40 hover:text-rose-300 font-display text-[11px] uppercase tracking-[0.16em]">
+            <button onClick={delActive} className="flex-1 flex items-center justify-center gap-1 h-8 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-rose-400/40 hover:text-rose-300 font-display text-[11px] uppercase tracking-[0.16em]">
               <ITrash size={12}/> Delete
             </button>
           </div>
         </div>
 
         {/* Center: Key pair + model */}
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+        <div className="glass p-4">
           <div className="flex items-center gap-3 mb-4">
             <div className="flex-1">
-              <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500 mb-1">Key 1</div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-faint)] mb-1">Key 1</div>
               <div className={`h-9 rounded-md border grid place-items-center font-mono text-[14px]
-                               ${cur?.k1 ? "border-[var(--accent)]/50 text-[var(--accent)] bg-[var(--accent)]/10" : "border-white/[0.06] text-slate-500 bg-white/[0.02]"}`}>
+                               ${cur?.k1 ? "border-[var(--accent)]/50 text-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--line)] text-[var(--text-faint)] bg-white/[0.02]"}`}>
                 {cur?.k1 || "—"}
               </div>
             </div>
-            <div className="text-slate-500 mt-5"><IUnlink size={14}/></div>
+            <div className="text-[var(--text-faint)] mt-5"><IUnlink size={14}/></div>
             <div className="flex-1">
-              <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500 mb-1">Key 2</div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-faint)] mb-1">Key 2</div>
               <div className={`h-9 rounded-md border grid place-items-center font-mono text-[14px]
-                               ${cur?.k2 ? "border-[var(--accent)]/50 text-[var(--accent)] bg-[var(--accent)]/10" : "border-white/[0.06] text-slate-500 bg-white/[0.02]"}`}>
+                               ${cur?.k2 ? "border-[var(--accent)]/50 text-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--line)] text-[var(--text-faint)] bg-white/[0.02]"}`}>
                 {cur?.k2 || "—"}
               </div>
             </div>
@@ -1384,15 +1259,15 @@ const SOCDSection = ({ socdMode, setSocdMode, hotkey, hotkeyEnabled, setHotkeyEn
                 className={`flex items-center gap-2 px-3 h-9 rounded-md border font-mono text-[12px] transition-all
                             ${cur?.mode === m
                               ? "border-[var(--accent)]/50 bg-[var(--accent)]/10 text-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]"
-                              : "border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20"}`}>
-                <span className={`w-3 h-3 rounded-full border ${cur?.mode === m ? "border-[var(--accent)] bg-[var(--accent)]" : "border-slate-500"}`}/>
+                              : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`}>
+                <span className={`w-3 h-3 rounded-full border ${cur?.mode === m ? "border-[var(--accent)] bg-[var(--accent)]" : "border-[var(--text-faint)]"}`}/>
                 Model {m}
               </button>
             ))}
           </div>
 
-          <div className="rounded-md border border-white/[0.06] bg-black/30 p-3 text-[11.5px] text-slate-400 leading-relaxed">
-            <div className="text-slate-200 font-display uppercase tracking-[0.18em] text-[10.5px] mb-2">When both Key1 and Key2 fire:</div>
+          <div className="rounded-md border border-[var(--line)] bg-[rgba(5,11,14,0.5)] p-3 text-[11.5px] text-[var(--text-dim)] leading-relaxed">
+            <div className="text-[var(--text)] font-display uppercase tracking-[0.18em] text-[10.5px] mb-2">When both Key1 and Key2 fire:</div>
             <div className="space-y-1.5 font-mono">
               <div><span className="text-[var(--accent)]">Model 1</span> · First press wins; second is interrupted.</div>
               <div><span className="text-[var(--accent)]">Model 2</span> · Key1 interrupts Key2.</div>
@@ -1489,7 +1364,7 @@ const OtherSection = ({ activeProfileName = "Profile", onResetProfile = () => {}
   };
   return (
     <div>
-      <nav className="flex items-center gap-1 border-b border-white/[0.06] mb-5">
+      <nav className="flex items-center gap-1 border-b border-[var(--line)] mb-5">
         <span className="relative flex items-center gap-2 px-2 h-10 -mb-px font-display text-[12px] uppercase tracking-[0.16em] text-[var(--accent)]">
           <IGrid size={13}/> Settings
           <span className="absolute left-0 right-0 -bottom-px h-px bg-[var(--accent)] shadow-[0_0_8px_var(--accent-glow)]" />
@@ -1499,26 +1374,26 @@ const OtherSection = ({ activeProfileName = "Profile", onResetProfile = () => {}
       {/* App / system */}
       <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-4 max-w-3xl">
         {autostart.supported && (
-          <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 flex items-center justify-between">
+          <div className="glass p-4 flex items-center justify-between">
             <div>
-              <div className="font-display text-[12px] uppercase tracking-[0.18em] text-slate-200">Start on launch</div>
-              <div className="text-[11.5px] text-slate-400 mt-1">Open Aether automatically when you sign in to Windows.</div>
+              <div className="font-display text-[12px] uppercase tracking-[0.18em] text-[var(--text)]">Start on launch</div>
+              <div className="text-[11.5px] text-[var(--text-dim)] mt-1">Open Aether automatically when you sign in to Windows.</div>
             </div>
             <button onClick={toggleAutostart}
               className={`relative w-12 h-6 rounded-full border transition-colors shrink-0 ml-4
-                          ${autostart.enabled ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-white/[0.08]"}`}>
+                          ${autostart.enabled ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-[rgba(5,11,14,0.5)] border-[var(--line)]"}`}>
               <span className={`absolute top-0.5 rounded-full transition-all
-                                ${autostart.enabled ? "left-[26px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-slate-400"}`}
+                                ${autostart.enabled ? "left-[26px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-[var(--text-faint)]"}`}
                     style={{ width: 18, height: 18 }}/>
             </button>
           </div>
         )}
 
         {/* Current profile management */}
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
-          <div className="font-display text-[12px] uppercase tracking-[0.18em] text-slate-200">Current profile</div>
-          <div className="text-[12.5px] text-slate-100 mt-1 truncate">{activeProfileName}</div>
-          <div className="text-[11px] text-slate-500 mt-0.5">Use the profile dropdown (top-left) to add, rename, duplicate or delete profiles.</div>
+        <div className="glass p-4">
+          <div className="font-display text-[12px] uppercase tracking-[0.18em] text-[var(--text)]">Current profile</div>
+          <div className="text-[12.5px] text-[var(--text)] mt-1 truncate">{activeProfileName}</div>
+          <div className="text-[11px] text-[var(--text-faint)] mt-0.5">Use the profile dropdown (top-left) to add, rename, duplicate or delete profiles.</div>
           <button onClick={onResetProfile}
             className="mt-3 px-3 h-8 rounded-md border border-rose-400/30 bg-rose-500/10 text-rose-100 font-display text-[10.5px] uppercase tracking-[0.16em] hover:bg-rose-500/15">
             Reset this profile
@@ -1526,28 +1401,28 @@ const OtherSection = ({ activeProfileName = "Profile", onResetProfile = () => {}
         </div>
 
         {/* Updates */}
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 lg:col-span-2">
+        <div className="glass p-4 lg:col-span-2">
           <div className="flex items-baseline justify-between gap-3">
-            <div className="font-display text-[12px] uppercase tracking-[0.18em] text-slate-200">Updates</div>
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
+            <div className="font-display text-[12px] uppercase tracking-[0.18em] text-[var(--text)]">Updates</div>
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-faint)]">
               v{upd.version || "—"}
             </span>
           </div>
           <div className="text-[11.5px] mt-1 min-h-[18px]">
-            {upd.phase === "checking"  && <span className="text-slate-400">Checking for updates…</span>}
+            {upd.phase === "checking"  && <span className="text-[var(--text-dim)]">Checking for updates…</span>}
             {upd.phase === "uptodate"  && <span className="text-emerald-400/80">You're on the latest version{upd.msg ? " — " + upd.msg : "."}</span>}
             {upd.phase === "available" && <span className="text-[var(--accent)]">Update available → v{upd.info?.latest}</span>}
-            {upd.phase === "installing"&& <span className="text-slate-400">{upd.msg || "Installing…"}</span>}
+            {upd.phase === "installing"&& <span className="text-[var(--text-dim)]">{upd.msg || "Installing…"}</span>}
             {upd.phase === "done"      && <span className="text-emerald-400/80">{upd.msg}</span>}
             {upd.phase === "error"     && <span className="text-rose-300/90">Update error: {upd.msg}</span>}
-            {upd.phase === "idle"      && <span className="text-slate-500">Check for a newer release on GitHub.</span>}
+            {upd.phase === "idle"      && <span className="text-[var(--text-faint)]">Check for a newer release on GitHub.</span>}
           </div>
           {upd.phase === "available" && upd.info?.notes && (
-            <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap text-[11px] text-slate-400 bg-black/20 rounded-md p-2 border border-white/[0.05]">{upd.info.notes}</pre>
+            <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap text-[11px] text-[var(--text-dim)] bg-[rgba(5,11,14,0.5)] rounded-md p-2 border border-[var(--line)]">{upd.info.notes}</pre>
           )}
           <div className="mt-3 flex gap-2">
             <button onClick={() => checkUpdate(false)} disabled={upd.phase === "checking" || upd.phase === "installing"}
-              className="px-3 h-8 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-200 font-display text-[10.5px] uppercase tracking-[0.16em] hover:border-white/20 disabled:opacity-40">
+              className="px-3 h-8 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text)] font-display text-[10.5px] uppercase tracking-[0.16em] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] disabled:opacity-40">
               Check for updates
             </button>
             {upd.phase === "available" && (
@@ -1560,17 +1435,17 @@ const OtherSection = ({ activeProfileName = "Profile", onResetProfile = () => {}
         </div>
 
         {/* Settings file */}
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 lg:col-span-2">
+        <div className="glass p-4 lg:col-span-2">
           <div className="flex items-baseline justify-between gap-3">
-            <div className="font-display text-[12px] uppercase tracking-[0.18em] text-slate-200">Settings file</div>
-            <span className={`font-mono text-[10px] uppercase tracking-[0.18em] ${settingsInfo.exists ? "text-emerald-400/80" : "text-slate-500"}`}>
+            <div className="font-display text-[12px] uppercase tracking-[0.18em] text-[var(--text)]">Settings file</div>
+            <span className={`font-mono text-[10px] uppercase tracking-[0.18em] ${settingsInfo.exists ? "text-emerald-400/80" : "text-[var(--text-faint)]"}`}>
               {settingsInfo.exists ? "✓ saved" : "not yet written"}
             </span>
           </div>
-          <div className="font-mono text-[11px] text-slate-400 mt-2 break-all">{settingsInfo.path || "(loading…)"}</div>
+          <div className="font-mono text-[11px] text-[var(--text-dim)] mt-2 break-all">{settingsInfo.path || "(loading…)"}</div>
           <div className="mt-3 flex gap-2">
             <button onClick={revealSettings}
-              className="px-3 h-8 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-200 font-display text-[10.5px] uppercase tracking-[0.16em] hover:border-white/20">
+              className="px-3 h-8 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text)] font-display text-[10.5px] uppercase tracking-[0.16em] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]">
               Show in folder
             </button>
           </div>
@@ -1578,7 +1453,7 @@ const OtherSection = ({ activeProfileName = "Profile", onResetProfile = () => {}
       </div>
 
       <div>
-        <div className="font-display text-[12px] uppercase tracking-[0.18em] text-slate-200 mb-3">If Win Lock is ON:</div>
+        <div className="font-display text-[12px] uppercase tracking-[0.18em] text-[var(--text)] mb-3">If Win Lock is ON:</div>
         <div className="flex flex-col gap-3 max-w-md">
           {[
             { id: "win",      label: "Disable Windows key" },
@@ -1589,98 +1464,14 @@ const OtherSection = ({ activeProfileName = "Profile", onResetProfile = () => {}
             <label key={o.id} className="flex items-center gap-2.5 cursor-pointer select-none">
               <span onClick={() => setWinLock(w => ({ ...w, [o.id]: !w[o.id] }))}
                     className={`w-4 h-4 rounded border grid place-items-center transition
-                                ${winLock[o.id] ? "border-[var(--accent)] bg-[var(--accent)]/20" : "border-white/15 bg-white/[0.02]"}`}>
+                                ${winLock[o.id] ? "border-[var(--accent)] bg-[var(--accent)]/20" : "border-[var(--line)] bg-white/[0.02]"}`}>
                 {winLock[o.id] && <ICheck size={10} className="text-[var(--accent)]"/>}
               </span>
-              <span className="text-[12.5px] text-slate-300">{o.label}</span>
+              <span className="text-[12.5px] text-[var(--text-dim)]">{o.label}</span>
             </label>
           ))}
         </div>
       </div>
-    </div>
-  );
-};
-
-const _Old_OtherSection_remove = () => {
-  const [tab, setTab] = useState("device");
-  return (
-    <div>
-      <SubTabs active={tab} onChange={setTab}
-        tabs={[
-          { id: "device",   label: "Device",   icon: <ICpu size={13}/> },
-          { id: "firmware", label: "Firmware", icon: <IDownload size={13}/> },
-          { id: "import",   label: "Import / Export", icon: <ILayers size={13}/> },
-          { id: "about",    label: "About",    icon: <ISettings size={13}/> },
-        ]}/>
-
-      {tab === "device" && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[
-            { label: "Model", value: "WIN60 HE", color: "accent" },
-            { label: "Firmware", value: "v2.14.0" },
-            { label: "USB", value: "0x4d9:0x0a1c" },
-            { label: "Switch profile", value: "Aether X1" },
-            { label: "Polling", value: "8 KHz", color: "ok" },
-            { label: "Latency", value: "0.62 ms", color: "ok" },
-            { label: "N-Key Rollover", value: "Full NKRO" },
-            { label: "Onboard memory", value: "128 KB" },
-          ].map(s => (
-            <div key={s.label} className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
-              <div className="font-mono text-[9.5px] uppercase tracking-[0.22em] text-slate-500">{s.label}</div>
-              <div className={`font-mono text-[13px] mt-1 ${s.color === "accent" ? "text-[var(--accent)]" : s.color === "ok" ? "text-emerald-300" : "text-slate-100"}`}>{s.value}</div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {tab === "firmware" && (
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5 max-w-2xl">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <div className="font-display text-[14px] text-slate-100 uppercase tracking-[0.16em]">Firmware</div>
-              <div className="font-mono text-[11px] text-slate-500 mt-1">Current: v2.14.0 · Stable</div>
-            </div>
-            <Chip color="ok">Up to date</Chip>
-          </div>
-          <p className="text-[12px] text-slate-400 leading-relaxed mb-4">
-            Manually flash a signed firmware blob via the WebHID interface. The keyboard will enter bootloader mode and re-enumerate.
-          </p>
-          <div className="flex gap-2">
-            <button className="px-4 h-9 rounded-md border border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] font-display text-[12px] uppercase tracking-[0.16em] hover:bg-[var(--accent)]/25">
-              <span className="flex items-center gap-2"><IDownload size={12}/>Check for updates</span>
-            </button>
-            <button className="px-4 h-9 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-300 font-display text-[12px] uppercase tracking-[0.16em] hover:border-white/20">
-              Load .bin
-            </button>
-          </div>
-        </div>
-      )}
-
-      {tab === "import" && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-3xl">
-          <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5">
-            <div className="font-display text-[13px] text-slate-100 uppercase tracking-[0.16em] mb-2">Export profile</div>
-            <p className="text-[11.5px] text-slate-400 mb-3">Dumps the current profile as a JSON file you can share or back up.</p>
-            <button className="px-4 h-9 rounded-md border border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] font-display text-[11.5px] uppercase tracking-[0.16em]">Export JSON</button>
-          </div>
-          <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5">
-            <div className="font-display text-[13px] text-slate-100 uppercase tracking-[0.16em] mb-2">Import profile</div>
-            <p className="text-[11.5px] text-slate-400 mb-3">Loads a profile from disk and flashes it to the keyboard.</p>
-            <button className="px-4 h-9 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-300 font-display text-[11.5px] uppercase tracking-[0.16em] hover:border-white/20">Pick file</button>
-          </div>
-        </div>
-      )}
-
-      {tab === "about" && (
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5 max-w-xl">
-          <div className="font-display text-[14px] text-slate-100 uppercase tracking-[0.18em]">Aether</div>
-          <div className="font-mono text-[11px] text-slate-500 mt-1 mb-4">Web app v0.4.2 · WebHID driver</div>
-          <p className="text-[12px] text-slate-400 leading-relaxed">
-            An open driver for magnetic Hall Effect keyboards. Talks to the WIN60 HE via raw HID byte packets, exposing per-key actuation,
-            rapid trigger, SOCD resolution, and a full RGB lighting engine.
-          </p>
-        </div>
-      )}
     </div>
   );
 };
@@ -1715,13 +1506,13 @@ const GamepadSection = ({ connected, enabled, onToggle, map, onApplyMap, default
   return (
     <div>
       {/* Header: enable capture */}
-      <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5 mb-5">
+      <div className="glass p-5 mb-5">
         <div className="flex items-center justify-between">
           <div>
-            <div className="font-display text-[13px] uppercase tracking-[0.18em] text-slate-100 flex items-center gap-2">
+            <div className="font-display text-[13px] uppercase tracking-[0.18em] text-[var(--text)] flex items-center gap-2">
               <IZap size={15}/> Virtual Gamepad
             </div>
-            <p className="text-[12px] text-slate-400 mt-1.5 max-w-xl">
+            <p className="text-[12px] text-[var(--text-dim)] mt-1.5 max-w-xl">
               Streams live key travel into a system gamepad — press a key deeper for more throttle / steering.
               Maps below drive the analog axes &amp; buttons. {!connected && <span className="text-amber-400/80">Connect the board to capture.</span>}
             </p>
@@ -1729,16 +1520,16 @@ const GamepadSection = ({ connected, enabled, onToggle, map, onApplyMap, default
           <button onClick={() => onToggle(!enabled)} disabled={!connected}
             className={`relative w-12 h-6 rounded-full border transition-colors shrink-0 ml-4
                         ${!connected ? "opacity-40 cursor-not-allowed" : ""}
-                        ${enabled ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-white/[0.08]"}`}>
+                        ${enabled ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-[rgba(5,11,14,0.5)] border-[var(--line)]"}`}>
             <span className={`absolute top-0.5 w-4.5 h-4.5 rounded-full transition-all
-                              ${enabled ? "left-[26px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-slate-400"}`}
+                              ${enabled ? "left-[26px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-[var(--text-faint)]"}`}
                   style={{ width: 18, height: 18 }}/>
           </button>
         </div>
         <div className="mt-3 font-mono text-[11px]">
           {enabled
             ? <span className="text-emerald-400">● Capturing → "Aula Win60 HE Virtual Gamepad"</span>
-            : <span className="text-slate-500">○ Idle</span>}
+            : <span className="text-[var(--text-faint)]">○ Idle</span>}
         </div>
         {error && (
           <div className="mt-3 rounded-md border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-[11.5px] text-rose-100 flex items-center justify-between gap-3">
@@ -1754,12 +1545,12 @@ const GamepadSection = ({ connected, enabled, onToggle, map, onApplyMap, default
       </div>
 
       {/* Mapping rows */}
-      <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5">
+      <div className="glass p-5">
         <div className="flex items-center justify-between mb-3">
-          <span className="font-display text-[11px] uppercase tracking-[0.18em] text-slate-300">Key → Control Mapping</span>
+          <span className="font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)]">Key → Control Mapping</span>
           <div className="flex gap-2">
             <button onClick={() => onApplyMap(defaultMap.map(r => ({ ...r })))}
-              className="px-3 h-8 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-300 font-display text-[10.5px] uppercase tracking-[0.16em] hover:border-white/20 flex items-center gap-1.5">
+              className="px-3 h-8 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] font-display text-[10.5px] uppercase tracking-[0.16em] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] flex items-center gap-1.5">
               <IRefresh size={12}/> Driving Defaults
             </button>
             <button onClick={addRow}
@@ -1769,7 +1560,7 @@ const GamepadSection = ({ connected, enabled, onToggle, map, onApplyMap, default
           </div>
         </div>
 
-        <div className="grid grid-cols-[1fr_1.4fr_1.2fr_28px] gap-2 px-1 mb-1.5 font-mono text-[9.5px] uppercase tracking-[0.18em] text-slate-500">
+        <div className="grid grid-cols-[1fr_1.4fr_1.2fr_28px] gap-2 px-1 mb-1.5 font-mono text-[9.5px] uppercase tracking-[0.18em] text-[var(--text-faint)]">
           <span>Key</span><span>Control</span><span>Behaviour</span><span/>
         </div>
 
@@ -1779,11 +1570,11 @@ const GamepadSection = ({ connected, enabled, onToggle, map, onApplyMap, default
             return (
               <div key={i} className="grid grid-cols-[1fr_1.4fr_1.2fr_28px] gap-2 items-center">
                 <select value={r.key} onChange={(e) => setRow(i, { key: e.target.value })}
-                  className="h-9 rounded-md bg-black/30 border border-white/[0.06] px-2 font-mono text-[12px] text-slate-100 outline-none focus:border-white/20">
+                  className="h-9 rounded-md bg-[rgba(5,11,14,0.5)] border border-[var(--line)] px-2 font-mono text-[12px] text-[var(--text)] outline-none focus:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]">
                   {PAD_KEYS.map(k => <option key={k} value={k}>{k}</option>)}
                 </select>
                 <select value={r.axis} onChange={(e) => setRow(i, { axis: e.target.value })}
-                  className="h-9 rounded-md bg-black/30 border border-white/[0.06] px-2 font-mono text-[12px] text-slate-100 outline-none focus:border-white/20">
+                  className="h-9 rounded-md bg-[rgba(5,11,14,0.5)] border border-[var(--line)] px-2 font-mono text-[12px] text-[var(--text)] outline-none focus:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]">
                   {PAD_AXES.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
                 </select>
                 {meta.stick ? (
@@ -1793,7 +1584,7 @@ const GamepadSection = ({ connected, enabled, onToggle, map, onApplyMap, default
                         className={`flex-1 h-9 rounded-md border font-mono text-[13px] transition-all
                                     ${(r.direction || 1) === val
                                       ? "border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)]"
-                                      : "border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20"}`}>
+                                      : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`}>
                         {lbl}
                       </button>
                     ))}
@@ -1804,22 +1595,22 @@ const GamepadSection = ({ connected, enabled, onToggle, map, onApplyMap, default
                            value={r.threshold_mm ?? 1.5}
                            style={{ "--pct": (((r.threshold_mm ?? 1.5) - 0.2) / 3.8) * 100 + "%" }}
                            onChange={(e) => setRow(i, { threshold_mm: parseFloat(e.target.value) })}/>
-                    <span className="font-mono text-[10px] text-slate-400 w-12 text-right">{(r.threshold_mm ?? 1.5).toFixed(1)}mm</span>
+                    <span className="font-mono text-[10px] text-[var(--text-dim)] w-12 text-right">{(r.threshold_mm ?? 1.5).toFixed(1)}mm</span>
                   </div>
                 ) : (
-                  <span className="font-mono text-[10px] text-slate-500 pl-1">analog 0→max</span>
+                  <span className="font-mono text-[10px] text-[var(--text-faint)] pl-1">analog 0→max</span>
                 )}
                 <button onClick={() => removeRow(i)}
-                  className="w-7 h-7 grid place-items-center rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-500 hover:text-rose-300 hover:border-rose-400/30">
+                  className="w-7 h-7 grid place-items-center rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-faint)] hover:text-rose-300 hover:border-rose-400/30">
                   <ITrash size={12}/>
                 </button>
               </div>
             );
           })}
-          {!rows.length && <div className="text-[12px] text-slate-500 py-4 text-center">No mappings — add one or load driving defaults.</div>}
+          {!rows.length && <div className="text-[12px] text-[var(--text-faint)] py-4 text-center">No mappings — add one or load driving defaults.</div>}
         </div>
 
-        <p className="text-[11px] text-slate-500 mt-4 leading-relaxed">
+        <p className="text-[11px] text-[var(--text-faint)] mt-4 leading-relaxed">
           Sticks combine opposing keys (e.g. A=− and D=+ on Left Stick X). Triggers &amp; sticks are analog —
           deeper press = larger value. Buttons fire past their threshold. Changes apply live while capturing.
         </p>
@@ -1829,6 +1620,57 @@ const GamepadSection = ({ connected, enabled, onToggle, map, onApplyMap, default
 };
 
 window.AetherSections = {
-  KeymapSection, ActuationSection, LightingSection, SOCDSection, GamepadSection, OtherSection, ActuationToolbar
+  KeymapSection: React.memo(KeymapSection, (prev, next) => (
+    prev.selectedKey === next.selectedKey &&
+    prev.selectedCount === next.selectedCount &&
+    prev.selectedKeys === next.selectedKeys &&
+    prev.connected === next.connected
+  )),
+  ActuationSection: React.memo(ActuationSection, (prev, next) => (
+    prev.actuation === next.actuation &&
+    prev.rtPress === next.rtPress &&
+    prev.rtRelease === next.rtRelease &&
+    prev.rtEnabled === next.rtEnabled &&
+    prev.polling === next.polling &&
+    prev.travelTest === next.travelTest &&
+    prev.calibrating === next.calibrating &&
+    prev.deadTop === next.deadTop &&
+    prev.deadBottom === next.deadBottom &&
+    prev.switchId === next.switchId &&
+    prev.liveDepth === next.liveDepth &&
+    prev.selectedCount === next.selectedCount &&
+    prev.selectedKeys === next.selectedKeys &&
+    prev.connected === next.connected
+  )),
+  LightingSection: React.memo(LightingSection, (prev, next) => (
+    prev.colors === next.colors &&
+    prev.bgColor === next.bgColor &&
+    prev.perKeyColors === next.perKeyColors &&
+    prev.pattern === next.pattern &&
+    prev.brightness === next.brightness &&
+    prev.speed === next.speed &&
+    prev.power === next.power &&
+    prev.fullColor === next.fullColor &&
+    prev.direction === next.direction &&
+    prev.striOrient === next.striOrient &&
+    prev.bgBright === next.bgBright &&
+    prev.zones === next.zones &&
+    prev.selectedKeys === next.selectedKeys
+  )),
+  SOCDSection: React.memo(SOCDSection, (prev, next) => (
+    prev.socdMode === next.socdMode &&
+    prev.hotkey === next.hotkey &&
+    prev.hotkeyEnabled === next.hotkeyEnabled &&
+    prev.profiles === next.profiles &&
+    prev.active === next.active
+  )),
+  GamepadSection: React.memo(GamepadSection, (prev, next) => (
+    prev.connected === next.connected &&
+    prev.enabled === next.enabled &&
+    prev.map === next.map &&
+    prev.error === next.error
+  )),
+  OtherSection: React.memo(OtherSection),
+  ActuationToolbar: React.memo(ActuationToolbar)
 };
 })();

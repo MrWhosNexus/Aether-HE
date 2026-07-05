@@ -157,14 +157,14 @@ const ProfileDropdown = ({ profiles, activeId, onChange, onRename, onAdd, onDupl
     <div className="relative" ref={ref}>
       <button onClick={() => setOpen(o => !o)}
         className="flex items-center gap-2.5 pl-2 pr-3 h-9 rounded-xl hover:bg-white/[0.04] transition-colors">
-        <span className="grid place-items-center w-6 h-6 rounded-md bg-white/[0.04] text-slate-400">
+        <span className="grid place-items-center w-6 h-6 rounded-md bg-white/[0.04] text-[var(--text-dim)]">
           <IFolder size={12}/>
         </span>
-        <span className="font-display text-[14px] font-medium text-slate-100">{current.name}</span>
-        <IChevronD size={13} className={`text-slate-500 transition-transform ${open ? "rotate-180" : ""}`}/>
+        <span className="font-display text-[14px] font-medium text-[var(--text)]">{current.name}</span>
+        <IChevronD size={13} className={`text-[var(--text-faint)] transition-transform ${open ? "rotate-180" : ""}`}/>
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1.5 w-[280px] rounded-xl p-1.5 menu-pop z-50 animate-[fadeIn_140ms_ease-out]">
+        <div className="absolute top-full left-0 mt-1.5 w-[280px] p-1.5 menu-pop z-50 animate-[fadeIn_140ms_ease-out]">
           {profiles.map(p => {
             const active = p.id === activeId;
             if (editing === p.id) {
@@ -174,36 +174,36 @@ const ProfileDropdown = ({ profiles, activeId, onChange, onRename, onAdd, onDupl
                     onChange={(e) => setDraft(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(null); }}
                     onBlur={commit}
-                    className="w-full h-7 px-2 rounded bg-black/40 border border-white/20 text-slate-100 font-display text-[13px] outline-none"/>
+                    className="input w-full h-7 px-2 text-[var(--text)] font-display text-[13px] outline-none"/>
                 </div>
               );
             }
             return (
               <div key={p.id}
                 className={`w-full flex items-center gap-1 pl-2.5 pr-1 h-9 rounded-lg transition-colors
-                            ${active ? "bg-[var(--accent)]/15 text-slate-100" : "text-slate-300 hover:bg-white/[0.04] hover:text-slate-100"}`}>
+                            ${active ? "bg-[var(--accent)]/15 text-[var(--text)]" : "text-[var(--text-dim)] hover:bg-white/[0.04] hover:text-[var(--text)]"}`}>
                 <button onClick={() => { onChange(p.id); setOpen(false); }}
                   className="flex-1 flex items-center gap-2 text-left min-w-0">
                   <span className="font-display text-[13px] truncate">{p.name}</span>
                   {active && <ICheck size={12} className="text-[var(--accent)] shrink-0"/>}
                 </button>
                 <button onClick={(e) => { e.stopPropagation(); startEdit(p); }} title="Rename"
-                  className="text-slate-500 hover:text-slate-200 px-1.5 h-7 grid place-items-center">
+                  className="text-[var(--text-faint)] hover:text-[var(--text)] px-1.5 h-7 grid place-items-center">
                   <IEdit size={11}/>
                 </button>
                 <button onClick={(e) => { e.stopPropagation(); onDuplicate(p.id); }} title="Duplicate"
-                  className="text-slate-500 hover:text-slate-200 px-1.5 h-7 grid place-items-center">
+                  className="text-[var(--text-faint)] hover:text-[var(--text)] px-1.5 h-7 grid place-items-center">
                   <ILink size={11}/>
                 </button>
                 <button onClick={(e) => { e.stopPropagation(); handleDelete(p); }} title="Delete"
                   disabled={profiles.length <= 1}
-                  className="text-slate-500 hover:text-rose-300 disabled:text-slate-700 disabled:cursor-not-allowed px-1.5 h-7 grid place-items-center">
+                  className="text-[var(--text-faint)] hover:text-rose-300 disabled:text-[var(--text-faint)] disabled:cursor-not-allowed px-1.5 h-7 grid place-items-center">
                   <ITrash size={11}/>
                 </button>
               </div>
             );
           })}
-          <div className="h-px bg-white/[0.06] my-1.5"/>
+          <div className="h-px bg-[var(--line)] my-1.5"/>
           <button onClick={handleAdd}
             className="w-full flex items-center gap-2 pl-2.5 pr-1.5 h-9 rounded-lg text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors">
             <IPlus size={12}/>
@@ -220,17 +220,17 @@ const ProfileDropdown = ({ profiles, activeId, onChange, onRename, onAdd, onDupl
    ============================================================ */
 const TopBar = ({ profiles, activeId, onProfileChange, onRenameProfile, onAddProfile, onDuplicateProfile, onDeleteProfile,
                    connected, connecting, onTogglePair, autoConnect, setAutoConnect, onOpenTheme, onOpenSettings, saveStatus }) => (
-  <header className="sticky top-0 z-40 bg-[var(--bg-0)]/70 backdrop-blur-xl border-b border-white/[0.04]">
+  <header className="sticky top-0 z-40 bg-[var(--ink)]/70 backdrop-blur-xl border-b border-[var(--line)]">
     <div className="max-w-[1400px] mx-auto px-6 lg:px-10 h-14 flex items-center gap-3">
       {/* Logo + name */}
       <div className="flex items-center gap-3">
         <img src={(window.__resources && window.__resources.logo) || "assets/logo.png"} alt="" className="w-8 h-8 drop-shadow-[0_4px_14px_rgba(157,78,221,0.55)]"/>
         <div className="hidden md:block leading-tight">
-          <div className="font-display text-[16px] font-bold tracking-[0.14em] text-white">Aether</div>
+          <div className="font-display text-[16px] font-bold tracking-[0.14em] text-[var(--text)]">Aether</div>
         </div>
       </div>
 
-      <span className="mx-3 h-5 w-px bg-white/[0.06]"/>
+      <span className="mx-3 h-5 w-px bg-[var(--line)]"/>
 
       {/* Profile selector */}
       <ProfileDropdown profiles={profiles} activeId={activeId}
@@ -240,7 +240,7 @@ const TopBar = ({ profiles, activeId, onProfileChange, onRenameProfile, onAddPro
       {/* Save status — fades in for ~1.5s after a successful save */}
       {saveStatus && (
         <span className={`ml-2 font-mono text-[10px] uppercase tracking-[0.18em] transition-opacity
-                          ${saveStatus === "saving" ? "text-slate-500"
+                          ${saveStatus === "saving" ? "text-[var(--text-faint)]"
                             : saveStatus === "saved" ? "text-emerald-400/80"
                             : "text-rose-400/80"}`}>
           {saveStatus === "saving" ? "saving…" : saveStatus === "saved" ? "✓ saved" : "save failed"}
@@ -250,26 +250,26 @@ const TopBar = ({ profiles, activeId, onProfileChange, onRenameProfile, onAddPro
       {/* Right cluster */}
       <div className="ml-auto flex items-center gap-2">
         {/* Device status */}
-        <div className="flex items-center gap-2 pl-2.5 pr-3 h-9 rounded-xl border border-white/[0.05] bg-white/[0.025]">
-          <span className={`relative inline-block w-1.5 h-1.5 rounded-full pulse-ring ${connected ? "bg-emerald-400 text-emerald-400" : "bg-slate-500 text-slate-500"}`}/>
-          <span className="font-display text-[12.5px] tracking-[0.04em] text-slate-100">WIN 60 HE</span>
-          <span className={`font-mono text-[9.5px] uppercase tracking-[0.2em] ml-1 ${connected ? "text-emerald-300/85" : "text-slate-500"}`}>{connected ? "Linked" : "Offline"}</span>
+        <div className="flex items-center gap-2 pl-2.5 pr-3 h-9 rounded-xl border border-[var(--line)]">
+          <span className={`relative inline-block w-1.5 h-1.5 rounded-full pulse-ring ${connected ? "bg-[var(--good)] text-[var(--good)]" : "bg-[var(--text-faint)] text-[var(--text-faint)]"}`}/>
+          <span className="font-display text-[12.5px] tracking-[0.04em] text-[var(--text)]">WIN 60 HE</span>
+          <span className={`font-mono text-[9.5px] uppercase tracking-[0.2em] ml-1 ${connected ? "text-[var(--good)]/85" : "text-[var(--text-faint)]"}`}>{connected ? "Linked" : "Offline"}</span>
         </div>
 
         {/* Auto-connect on launch */}
-        <label className="flex items-center gap-1.5 pl-2 pr-2.5 h-9 rounded-xl border border-white/[0.05] bg-white/[0.025] cursor-pointer select-none"
+        <label className="flex items-center gap-1.5 pl-2 pr-2.5 h-9 rounded-xl border border-[var(--line)] cursor-pointer select-none"
                title="Connect to the keyboard automatically when the app opens">
           <span onClick={() => setAutoConnect(!autoConnect)}
                 className={`w-3.5 h-3.5 rounded border grid place-items-center transition
-                            ${autoConnect ? "border-[var(--accent)] bg-[var(--accent)]/20" : "border-white/15 bg-white/[0.02]"}`}>
+                            ${autoConnect ? "border-[var(--accent)] bg-[var(--accent)]/20" : "border-[var(--line)] bg-white/[0.02]"}`}>
             {autoConnect && <ICheck size={9} className="text-[var(--accent)]"/>}
           </span>
-          <span className="font-display text-[10px] uppercase tracking-[0.16em] text-slate-400">Auto</span>
+          <span className="font-display text-[10px] uppercase tracking-[0.16em] text-[var(--text-dim)]">Auto</span>
         </label>
 
         {/* Theme btn */}
         <button onClick={onOpenTheme}
-          className="flex items-center gap-2 pl-2.5 pr-3 h-9 rounded-xl border border-white/[0.05] bg-white/[0.025] text-slate-300 hover:text-white hover:border-white/15 transition-colors">
+          className="flex items-center gap-2 pl-2.5 pr-3 h-9 rounded-xl border border-[var(--line)] text-[var(--text-dim)] hover:text-[var(--text)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] transition-colors">
           <span className="w-3.5 h-3.5 rounded-full ring-1 ring-white/15"
                 style={{ background: "var(--accent-gradient, var(--accent))" }}/>
           <span className="font-display text-[12px] uppercase tracking-[0.16em]">Theme</span>
@@ -288,7 +288,7 @@ const TopBar = ({ profiles, activeId, onProfileChange, onRenameProfile, onAddPro
         </button>
 
         <button title="Settings" onClick={onOpenSettings}
-          className="w-9 h-9 rounded-xl border border-white/[0.05] bg-white/[0.025] text-slate-400 hover:text-white hover:border-white/15 grid place-items-center transition-colors">
+          className="w-9 h-9 rounded-xl border border-[var(--line)] text-[var(--text-dim)] hover:text-[var(--text)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] grid place-items-center transition-colors">
           <ISettings size={14}/>
         </button>
       </div>
@@ -301,13 +301,13 @@ const TopBar = ({ profiles, activeId, onProfileChange, onRenameProfile, onAddPro
    ============================================================ */
 const SectionNav = ({ section, setSection }) => (
   <div className="flex justify-center">
-    <div className="inline-flex gap-1 p-1 rounded-2xl border border-white/[0.05] bg-white/[0.02] backdrop-blur-md">
+    <div className="inline-flex gap-1 p-1 rounded-2xl border border-[var(--line)] backdrop-blur-md">
       {NAV.map(n => {
         const active = section === n.id;
         return (
           <button key={n.id} onClick={() => setSection(n.id)}
             className={`relative flex items-center gap-2 px-4 h-9 rounded-xl font-display text-[12px] uppercase tracking-[0.18em] transition-all
-                        ${active ? "pill-active" : "text-slate-400 hover:text-slate-100 hover:bg-white/[0.03]"}`}>
+                        ${active ? "pill-active" : "text-[var(--text-dim)] hover:text-[var(--text)] hover:bg-white/[0.03]"}`}>
             <span className={active ? "text-[var(--accent)]" : ""}>{n.icon}</span>
             {n.label}
           </button>
@@ -327,7 +327,7 @@ const HeroCard = ({ children, badge, breadcrumb }) => (
          style={{ background: "var(--accent-gradient, var(--accent))" }}/>
     <div className="relative">
       <div className="flex items-center justify-between mb-5">
-        <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-slate-500">{breadcrumb}</div>
+        <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-[var(--text-faint)]">{breadcrumb}</div>
         {badge}
       </div>
       {children}
@@ -812,7 +812,9 @@ function App() {
     let alive = true;
     const id = setInterval(() => {
       apiCall("read_live").then(d => {
-        if (alive && d && typeof d === "object" && !(d.ok === false)) setLiveDepths(d);
+        if (alive && d && typeof d === "object" && !(d.ok === false)) {
+          setLiveDepths(prev => JSON.stringify(prev) === JSON.stringify(d) ? prev : d);
+        }
       });
     }, 33);   // ~30fps — smooth enough for visual depth, doesn't starve the lighting stream
     return () => { alive = false; clearInterval(id); };
@@ -854,7 +856,8 @@ function App() {
     const id = setInterval(() => {
       apiCall("get_light_frame").then(f => {
         if (!alive) return;
-        setLightFrame(f && typeof f === "object" && !(f.ok === false) && Object.keys(f).length ? f : null);
+        const valid = f && typeof f === "object" && !(f.ok === false) && Object.keys(f).length ? f : null;
+        setLightFrame(prev => JSON.stringify(prev) === JSON.stringify(valid) ? prev : valid);
       });
     }, 50);
     return () => { alive = false; clearInterval(id); };
@@ -900,13 +903,13 @@ function App() {
       <Stat label="Hotkey" value={hotkey}/>
     </div>
   ) : section === "keymap" ? (
-    <div className="flex items-center gap-2 p-1 rounded-xl border border-white/[0.06] bg-white/[0.02]">
+    <div className="flex items-center gap-2 p-1 rounded-xl border border-[var(--line)] bg-white/[0.02]">
       {["default","fn"].map(l => (
         <button key={l} onClick={() => setLayer(l)}
           className={`px-3 h-7 rounded-lg font-display text-[11px] uppercase tracking-[0.16em] transition-all
                       ${layer === l
                         ? "bg-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_14px_var(--accent-glow)]"
-                        : "text-slate-400 hover:text-slate-100"}`}>
+                        : "text-[var(--text-dim)] hover:text-[var(--text)]"}`}>
           {l === "default" ? "Default Layer" : "Fn Layer"}
         </button>
       ))}
@@ -974,6 +977,8 @@ function App() {
             <KeymapSection
               selectedKey={selectedKey}
               selectedCount={selectedKeys.size}
+              selectedKeys={selectedKeys}
+              connected={connected}
               onRemap={(label) => {
                 const hid = HID_BY_LABEL[label];
                 if (connected && hid != null && selectedKeys.size)
@@ -999,6 +1004,8 @@ function App() {
               switchId={switchId} onPickSwitch={handlePickSwitch}
               liveDepth={liveMax}
               selectedCount={selectedKeys.size}
+              selectedKeys={selectedKeys}
+              connected={connected}
               onApplyActuation={applyActuation}
               onApplyDeadband={applyDeadband}
             />
@@ -1063,9 +1070,9 @@ function App() {
 }
 
 const Stat = ({ label, value }) => (
-  <div className="flex items-baseline gap-1.5 px-3 py-1.5 rounded-xl border border-white/[0.05] bg-white/[0.02]">
-    <span className="font-mono text-[9px] uppercase tracking-[0.22em] text-slate-500">{label}</span>
-    <span className="font-mono text-[12px] text-slate-100">{value}</span>
+  <div className="flex items-baseline gap-1.5 px-3 py-1.5 rounded-xl border border-[var(--line)] bg-white/[0.02]">
+    <span className="font-mono text-[9px] uppercase tracking-[0.22em] text-[var(--text-faint)]">{label}</span>
+    <span className="font-mono text-[12px] text-[var(--text)]">{value}</span>
   </div>
 );
 

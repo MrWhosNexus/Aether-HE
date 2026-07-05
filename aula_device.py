@@ -99,19 +99,32 @@ def find_vendor_interface(vid=AULA_VID, pid=AULA_PID, usage_page=VENDOR_USAGE_PA
 
 
 class AulaDevice:
-    """Thread-safe wrapper around a single hidraw handle for the Aula Win60 HE."""
+    """Thread-safe wrapper around a single hidraw handle for an Aula HE keyboard.
 
-    def __init__(self):
+    By default it targets the Aula Win60 HE (back-compat). Pass a `boards.BoardProfile`
+    (or anything exposing `.vid`, `.pid`, `.usage_page`, `.name`) to target another
+    registered board — its VID/PID drive enumeration and its `usage_page` selects the
+    vendor interface (falling back to the highest interface when None / not found).
+    """
+
+    def __init__(self, profile=None):
         self._dev = None
         self._info = None
         self._lock = threading.Lock()
+        self._profile = profile
 
     def open(self):
-        info = find_vendor_interface()
+        if self._profile is not None:
+            vid, pid = self._profile.vid, self._profile.pid
+            usage_page = self._profile.usage_page or VENDOR_USAGE_PAGE
+            name = self._profile.name
+        else:
+            vid, pid, usage_page, name = AULA_VID, AULA_PID, VENDOR_USAGE_PAGE, "Aula Win60 HE"
+        info = find_vendor_interface(vid, pid, usage_page)
         if info is None:
-            raise IOError("Aula Win60 HE not found")
+            raise IOError(f"{name} not found (VID:PID {vid:04X}:{pid:04X})")
         dev = hid.device()
-        log.info("Opening Aula interface %s", info["interface_number"])
+        log.info("Opening %s interface %s", name, info["interface_number"])
         dev.open_path(info["path"])
         dev.set_nonblocking(False)
         with self._lock:

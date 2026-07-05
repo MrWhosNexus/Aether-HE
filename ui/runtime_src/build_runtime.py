@@ -57,6 +57,32 @@ def resolve_fonts(head, manifest):
     return head
 
 
+FONT_FILES = {
+    "instrument-serif-400": "fonts/instrument-serif-400.woff2",
+    "schibsted-grotesk-400": "fonts/schibsted-grotesk-400.woff2",
+    "schibsted-grotesk-500": "fonts/schibsted-grotesk-500.woff2",
+    "schibsted-grotesk-600": "fonts/schibsted-grotesk-600.woff2",
+    "fragment-mono-400": "fonts/fragment-mono-400.woff2",
+    "fragment-mono-400i": "fonts/fragment-mono-400i.woff2",
+}
+
+
+def embed_local_fonts(head):
+    """Replace url("<local-font-key>") placeholders with data: URIs read
+    directly from ui/runtime_src/fonts/ — no manifest/UUID, no network."""
+    def repl(m):
+        key = m.group(1)
+        path = FONT_FILES.get(key)
+        if not path:
+            return m.group(0)
+        raw = open(os.path.join(HERE, path), "rb").read()
+        b64 = base64.b64encode(raw).decode("ascii")
+        return f'url("data:font/woff2;base64,{b64}")'
+    return re.sub(
+        r'url\(["\']?(instrument-serif-[\w-]+|schibsted-grotesk-[\w-]+|fragment-mono-[\w-]+)["\']?\)',
+        repl, head)
+
+
 def compile_jsx(manifest):
     babel = os.path.join(HERE, "vendor", "babel.js")
     jobs = [
@@ -80,6 +106,7 @@ def main():
 
     head = open(os.path.join(HERE, "head_inner.html"), encoding="utf-8").read()
     head = resolve_fonts(head, manifest)
+    head = embed_local_fonts(head)
 
     compiled = compile_jsx(manifest)
 
@@ -118,6 +145,13 @@ def main():
 {head}
 </head>
 <body class="min-h-screen overflow-x-auto" style="min-width: 1200px;">
+<div class="bg-layer" aria-hidden="true">
+  <div class="aurora-blob" style="background: radial-gradient(circle, var(--accent), transparent 70%); top: -10%; left: -5%;"></div>
+  <div class="aurora-blob b2" style="background: radial-gradient(circle, var(--accent-2), transparent 70%); top: 20%; right: -10%;"></div>
+  <div class="aurora-blob b3" style="background: radial-gradient(circle, var(--good), transparent 70%); bottom: -15%; left: 20%;"></div>
+  <div class="grain"></div>
+  <div class="vignette"></div>
+</div>
 <div id="__bg-image-layer"></div>
 <div id="root" class="relative z-10"></div>
 {script_html}
@@ -127,6 +161,18 @@ def main():
     open(OUT, "w", encoding="utf-8").write(html)
     kb = len(html) / 1024
     print(f"\nWrote {OUT}  ({kb:.0f} KB)")
+
+    # Offline assertion: no live network references for fonts/assets. Scoped to
+    # actual resource-loading contexts (href=/src=/url(...) and the Google Fonts
+    # domains) rather than any bare "http(s)://" substring — react.js/react-dom.js/
+    # tailwind.js vendor bundles legitimately contain https://reactjs.org,
+    # https://github.com, etc. inside warning-message strings and comments; those
+    # are static text, never fetched, and predate this task.
+    banned = set(re.findall(r'(fonts\.googleapis\.com|fonts\.gstatic\.com)', html))
+    banned |= set(re.findall(r'(?:href|src)=["\']https?://[^"\']*', html))
+    banned |= set(re.findall(r'url\(\s*["\']?https?://[^)"\']*', html))
+    if banned:
+        raise SystemExit(f"Offline check failed: network references present: {banned}")
 
 
 if __name__ == "__main__":
