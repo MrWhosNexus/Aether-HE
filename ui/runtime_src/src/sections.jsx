@@ -1311,18 +1311,18 @@ const SOCDSection = ({ socdMode, setSocdMode, hotkey, hotkeyEnabled, setHotkeyEn
   return (
     <div>
       {/* Switch hotkey row */}
-      <div className="flex flex-wrap items-center gap-4 mb-5 pb-4 border-b border-white/[0.06]">
+      <div className="flex flex-wrap items-center gap-4 mb-5 pb-4 border-b border-[var(--line)]">
         <div className="flex items-center gap-2">
-          <span className="font-display text-[11px] uppercase tracking-[0.18em] text-slate-300">Switch</span>
+          <span className="font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)]">Switch</span>
           <button onClick={() => setHotkeyEnabled(!hotkeyEnabled)}
             className={`relative w-10 h-5 rounded-full border transition-colors
-                        ${hotkeyEnabled ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-white/[0.04] border-white/[0.08]"}`}>
+                        ${hotkeyEnabled ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-[rgba(5,11,14,0.5)] border-[var(--line)]"}`}>
             <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full transition-all
-                              ${hotkeyEnabled ? "left-[20px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-slate-400"}`}/>
+                              ${hotkeyEnabled ? "left-[20px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-[var(--text-faint)]"}`}/>
           </button>
         </div>
-        <div className="font-mono text-[11px] text-slate-400">
-          Hotkey: <span className="text-slate-100">{hotkey}</span>
+        <div className="font-mono text-[11px] text-[var(--text-dim)]">
+          Hotkey: <span className="text-[var(--text)]">{hotkey}</span>
         </div>
         <div className="ml-auto">
           <button onClick={() => onApply && onApply(profiles, hotkeyEnabled)}
@@ -1335,44 +1335,44 @@ const SOCDSection = ({ socdMode, setSocdMode, hotkey, hotkeyEnabled, setHotkeyEn
       <div className="grid grid-cols-1 lg:grid-cols-[200px_320px_1fr] gap-5">
         {/* Profile list */}
         <div>
-          <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500 mb-2">{profiles.length}/20 slots</div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-faint)] mb-2">{profiles.length}/20 slots</div>
           <div className="flex flex-col gap-1.5 mb-3">
             {profiles.map(p => (
               <button key={p.id} onClick={() => setActive(p.id)}
                 className={`flex items-center justify-between px-3 h-8 rounded-md border font-mono text-[12px] transition-all
                             ${active === p.id
                               ? "border-[var(--accent)]/50 bg-[var(--accent)]/10 text-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]"
-                              : "border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20"}`}>
+                              : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`}>
                 <span>{p.id}</span>
-                {p.k1 && p.k2 && <span className="font-mono text-[10px] text-slate-500">{p.k1} ↔ {p.k2}</span>}
+                {p.k1 && p.k2 && <span className="font-mono text-[10px] text-[var(--text-faint)]">{p.k1} ↔ {p.k2}</span>}
               </button>
             ))}
           </div>
           <div className="flex gap-2">
-            <button onClick={addProfile} className="flex-1 flex items-center justify-center gap-1 h-8 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20 font-display text-[11px] uppercase tracking-[0.16em]">
+            <button onClick={addProfile} className="flex-1 flex items-center justify-center gap-1 h-8 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] font-display text-[11px] uppercase tracking-[0.16em]">
               <IPlus size={12}/> Create
             </button>
-            <button onClick={delActive} className="flex-1 flex items-center justify-center gap-1 h-8 rounded-md border border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-rose-400/40 hover:text-rose-300 font-display text-[11px] uppercase tracking-[0.16em]">
+            <button onClick={delActive} className="flex-1 flex items-center justify-center gap-1 h-8 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-rose-400/40 hover:text-rose-300 font-display text-[11px] uppercase tracking-[0.16em]">
               <ITrash size={12}/> Delete
             </button>
           </div>
         </div>
 
         {/* Center: Key pair + model */}
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+        <div className="glass p-4">
           <div className="flex items-center gap-3 mb-4">
             <div className="flex-1">
-              <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500 mb-1">Key 1</div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-faint)] mb-1">Key 1</div>
               <div className={`h-9 rounded-md border grid place-items-center font-mono text-[14px]
-                               ${cur?.k1 ? "border-[var(--accent)]/50 text-[var(--accent)] bg-[var(--accent)]/10" : "border-white/[0.06] text-slate-500 bg-white/[0.02]"}`}>
+                               ${cur?.k1 ? "border-[var(--accent)]/50 text-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--line)] text-[var(--text-faint)] bg-white/[0.02]"}`}>
                 {cur?.k1 || "—"}
               </div>
             </div>
-            <div className="text-slate-500 mt-5"><IUnlink size={14}/></div>
+            <div className="text-[var(--text-faint)] mt-5"><IUnlink size={14}/></div>
             <div className="flex-1">
-              <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500 mb-1">Key 2</div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-faint)] mb-1">Key 2</div>
               <div className={`h-9 rounded-md border grid place-items-center font-mono text-[14px]
-                               ${cur?.k2 ? "border-[var(--accent)]/50 text-[var(--accent)] bg-[var(--accent)]/10" : "border-white/[0.06] text-slate-500 bg-white/[0.02]"}`}>
+                               ${cur?.k2 ? "border-[var(--accent)]/50 text-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--line)] text-[var(--text-faint)] bg-white/[0.02]"}`}>
                 {cur?.k2 || "—"}
               </div>
             </div>
@@ -1384,15 +1384,15 @@ const SOCDSection = ({ socdMode, setSocdMode, hotkey, hotkeyEnabled, setHotkeyEn
                 className={`flex items-center gap-2 px-3 h-9 rounded-md border font-mono text-[12px] transition-all
                             ${cur?.mode === m
                               ? "border-[var(--accent)]/50 bg-[var(--accent)]/10 text-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]"
-                              : "border-white/[0.06] bg-white/[0.02] text-slate-300 hover:border-white/20"}`}>
-                <span className={`w-3 h-3 rounded-full border ${cur?.mode === m ? "border-[var(--accent)] bg-[var(--accent)]" : "border-slate-500"}`}/>
+                              : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`}>
+                <span className={`w-3 h-3 rounded-full border ${cur?.mode === m ? "border-[var(--accent)] bg-[var(--accent)]" : "border-[var(--text-faint)]"}`}/>
                 Model {m}
               </button>
             ))}
           </div>
 
-          <div className="rounded-md border border-white/[0.06] bg-black/30 p-3 text-[11.5px] text-slate-400 leading-relaxed">
-            <div className="text-slate-200 font-display uppercase tracking-[0.18em] text-[10.5px] mb-2">When both Key1 and Key2 fire:</div>
+          <div className="rounded-md border border-[var(--line)] bg-[rgba(5,11,14,0.5)] p-3 text-[11.5px] text-[var(--text-dim)] leading-relaxed">
+            <div className="text-[var(--text)] font-display uppercase tracking-[0.18em] text-[10.5px] mb-2">When both Key1 and Key2 fire:</div>
             <div className="space-y-1.5 font-mono">
               <div><span className="text-[var(--accent)]">Model 1</span> · First press wins; second is interrupted.</div>
               <div><span className="text-[var(--accent)]">Model 2</span> · Key1 interrupts Key2.</div>
