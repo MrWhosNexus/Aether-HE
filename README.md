@@ -39,6 +39,7 @@ Aether is built to grow beyond one board. If your keyboard isn't supported yet,
 | Aula Win60 HE Max | Hall-effect | — | — | Layout added — needs captures (#5) |
 | Aula win68 HE Max | Hall-effect | — | — | Layout added (65%) — needs captures (#7) |
 | Aula WIN 60 HE Pro | Hall-effect | — | — | Layout added — SayoDevice, needs captures (#3) |
+| Aula F75 Tri-Mode | Mechanical | — | — | Added to registry — needs captures (#8) |
 | **Your board?** | — | — | — | **[Submit it →](https://github.com/MrWhosNexus/Aether-HE/issues/new?template=add-a-board.yml)** |
 <!-- BOARDS:END -->
 
