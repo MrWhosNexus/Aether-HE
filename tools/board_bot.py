@@ -115,9 +115,13 @@ def build_prompt(submission, template):
 
 
 def parse_model_output(text):
-    """Parse MiniMax's === FILE: name === delimited output into artifacts."""
+    """Parse MiniMax's === FILE: name === delimited output into artifacts.
+
+    Reasoning models (e.g. MiniMax-M3) prefix a <think>...</think> block; strip
+    it so its contents can't be mistaken for output blocks."""
+    text = re.sub(r"<think>.*?</think>", "", text or "", flags=re.S)
     blocks = {m.group("name").strip(): m.group("body").strip()
-              for m in _FILE_BLOCK.finditer(text or "")}
+              for m in _FILE_BLOCK.finditer(text)}
 
     def as_json(name):
         raw = blocks.get(name)

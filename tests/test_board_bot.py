@@ -171,3 +171,12 @@ def test_safe_fetch_json_accepts_public_ip_and_parses(monkeypatch):
     monkeypatch.setattr(bot.urllib.request, "build_opener", lambda *a, **k: FakeOpener())
     result = bot._safe_fetch_json("https://github.com/x/files/1/board.json")
     assert result["schema"] == "aether-board-submission/1"
+
+
+def test_parse_model_output_strips_think():
+    txt = ("<think>\nFILE stuff that should be ignored\n=== FILE: registry_entry.json ===\n{}\n"
+           "</think>\n=== FILE: DECODE_NOTES.md ===\nreal notes\n")
+    a = bot.parse_model_output(txt)
+    # the registry block INSIDE <think> must not be picked up; only the real notes block after
+    assert a["registry"] is None
+    assert "real notes" in a["notes"]

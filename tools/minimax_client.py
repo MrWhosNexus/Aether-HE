@@ -10,7 +10,7 @@ DEFAULT_MODEL = "MiniMax-M3"
 DEFAULT_BASE = "https://api.minimax.io/v1"
 
 
-def complete(prompt, *, model=None, key=None, base_url=None, timeout=120):
+def complete(prompt, *, model=None, key=None, base_url=None, timeout=300):
     key = key or os.environ.get("MINIMAX_API_KEY")
     if not key:
         raise RuntimeError("MINIMAX_API_KEY not set")
