@@ -70,6 +70,14 @@ copy-paste templates, and how-to-capture instructions.
 > Don't want to fiddle with JSON or captures? **Just send the photo and the required
 > fields** — the maintainer builds the layout and reverse-engineers the protocol from there.
 
+### Automated board drafting (maintainers)
+New **add-a-board** issues trigger `.github/workflows/board-bot.yml`, which validates the
+attached submission and uses MiniMax to open a **draft PR** (`experimental`) with a registry
+entry, layout, best-effort protocol adapter, and `DECODE_NOTES.md`. **It never merges** —
+verify the adapter on real hardware, flip `experimental`→`supported`, then merge.
+Setup: add a repo secret **`MINIMAX_API_KEY`** (Settings → Secrets → Actions). Optional:
+`MINIMAX_MODEL` / `MINIMAX_BASE_URL` repo variables if your endpoint differs from the default.
+
 ---
 
 ## Install — Windows

@@ -1,0 +1,39 @@
+# .github/workflows/board-bot.yml
+name: Board draft bot
+
+on:
+  issues:
+    types: [opened]
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: "Issue number to draft"
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  draft:
+    # Only run for add-a-board submissions (label or template marker in the title).
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.issue.title, '[Board]') ||
+      contains(toJSON(github.event.issue.labels.*.name), 'add-a-board')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Draft board support
+        env:
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number || github.event.inputs.issue }}
+        run: |
+          git config user.name "aether-board-bot"
+          git config user.email "bot@users.noreply.github.com"
+          python tools/board_bot.py --issue "$ISSUE"
