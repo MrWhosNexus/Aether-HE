@@ -21,6 +21,11 @@ flatpak/.flatpak-builder/
 .flatpak-builder/
 flatpak/*.flatpak
 
+# Secrets — never commit. Local key lives here; CI uses a GitHub Actions secret.
+.env
+.env.*
+!.env.example
+
 # Generated / scratch / logs (not shipped)
 graphify-out/
 .superpowers/

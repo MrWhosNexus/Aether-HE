@@ -269,12 +269,33 @@ def run(issue_number, *, gh, complete, repo_root):
     return {"ok": True, "pr_url": pr_url, "reason": "ok"}
 
 
+def _load_dotenv(repo_root):
+    """Load KEY=VALUE lines from a local .env into os.environ (stdlib only, no dep).
+    Never overrides a variable already set in the environment (CI's real secret
+    always wins over a stale local file), and never prints any value."""
+    path = os.path.join(repo_root, ".env")
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                k, v = k.strip(), v.strip().strip('"').strip("'")
+                if k and k not in os.environ:
+                    os.environ[k] = v
+    except FileNotFoundError:
+        pass
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--issue", type=int, required=True)
     args = ap.parse_args()
+    repo_root = os.getcwd()
+    _load_dotenv(repo_root)                              # local runs: pick up .env
     from minimax_client import complete as mm_complete   # env key; raises if absent
-    res = run(args.issue, gh=_gh, complete=mm_complete, repo_root=os.getcwd())
+    res = run(args.issue, gh=_gh, complete=mm_complete, repo_root=repo_root)
     print("result:", res["reason"])   # never prints the key
 
 
