@@ -7,7 +7,7 @@ import os
 import urllib.request
 
 DEFAULT_MODEL = "MiniMax-M3"
-DEFAULT_BASE = "https://api.minimax.chat/v1"
+DEFAULT_BASE = "https://api.minimax.io/v1"
 
 
 def complete(prompt, *, model=None, key=None, base_url=None, timeout=120):
