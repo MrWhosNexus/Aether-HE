@@ -241,15 +241,27 @@ def run(issue_number, *, gh, complete, repo_root):
     open(os.path.join(repo_root, "DECODE_NOTES.md"), "w", encoding="utf-8").write(notes)
 
     branch = f"board/{slug}"
+    # Stage only the files this bot wrote — never `git add -A`, which would sweep
+    # in any stray untracked file that happens to be in the working tree.
+    written = [reg_path, lay_path,
+               os.path.join(repo_root, f"protocol_{slug.replace('-', '_')}.py"),
+               os.path.join(repo_root, "DECODE_NOTES.md")]
     # Only do real git ops when repo_root is an actual git checkout (production).
     # In tests repo_root is a bare tmp_path with no .git, so this is skipped —
     # keeps tests hermetic and never risks running git against the real repo cwd.
     if os.path.isdir(os.path.join(repo_root, ".git")):
         _run(["git", "checkout", "-b", branch], cwd=repo_root)
-        _run(["git", "add", "-A"], cwd=repo_root)
+        _run(["git", "add"] + written, cwd=repo_root)
         _run(["git", "commit", "-m",
               f"draft(board): {slug} (AI-DRAFTED, experimental) — closes #{issue_number}"], cwd=repo_root)
         _run(["git", "push", "-u", "origin", branch], cwd=repo_root)
+    # Ensure the `experimental` label exists before referencing it — a fresh repo
+    # has no such label and `gh pr create --label` hard-fails without it.
+    try:
+        gh(["label", "create", "experimental", "--color", "BFD4F2",
+            "--description", "AI-drafted board support, unverified on hardware"])
+    except Exception:
+        pass  # already exists (or no perms) — non-fatal
     pr_url = gh(["pr", "create", "--title", f"Draft board: {slug} (experimental)",
                  "--body", f"AI-drafted from #{issue_number}. UNVERIFIED — verify on hardware before promoting to supported. See DECODE_NOTES.md.",
                  "--label", "experimental", "--head", branch]).strip()
