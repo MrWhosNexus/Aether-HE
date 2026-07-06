@@ -19,6 +19,7 @@ import webview
 from aula_device import AulaDevice
 import boards
 import protocol
+import protocol_adapter
 import effects
 import device_state
 import gamepad
@@ -274,6 +275,10 @@ class Api:
             log.warning("board registry unavailable, using Win60 defaults: %s", e)
             self.board = None
         self.dev = AulaDevice(self.board) if self.board else AulaDevice()
+        # Per-board protocol adapter. None -> this board uses the inline legacy
+        # 2E3C path (protocol.build_*). A non-None adapter (e.g. SayoDevice) means
+        # actuation/lighting/connect route through protocol_adapter instead.
+        self.adapter = protocol_adapter.for_board(self.board)
         self._lock = threading.Lock()
         self.pad = None
         self._pad_stop = threading.Event()
@@ -307,6 +312,12 @@ class Api:
     def connect(self):
         try:
             info = self.dev.open()
+            # Non-2E3C boards (e.g. SayoDevice) speak a different command set: the
+            # cmd-0 heartbeat and cmd-24 Fn-layer keymap read below are meaningless
+            # on their vendor interface and would put wrong bytes on the wire, so
+            # for them the connect flow is just "open the device".
+            if self.adapter is not None and not self.adapter.needs_legacy_handshake():
+                return {"ok": True, "iface": info["interface_number"]}
             # device-info handshake + start live travel reader
             try:
                 self.dev.write(protocol.build_heartbeat())
@@ -443,6 +454,11 @@ class Api:
     def set_light(self, mode, r, g, b, brightness=4, speed=4,
                   bg_r=0, bg_g=0, bg_b=0, direction=0, power_on=True, full_color=0):
         try:
+            if self.adapter is not None and not self.adapter.supports_color:
+                # This board's color/brightness fields aren't decoded yet; only the
+                # effect-mode byte is honored (r/g/b are ignored for now).
+                self._write(self.adapter.lighting_packet(int(mode)))
+                return {"ok": True, "colorSupported": False}
             self._write(protocol.build_light(
                 int(mode), int(brightness), int(speed), (int(r), int(g), int(b)),
                 (int(bg_r), int(bg_g), int(bg_b)), int(direction), int(full_color),
@@ -456,9 +472,34 @@ class Api:
         return self.set_light(mode, r, g, b, brightness, speed)
 
     # ---- actuation / trigger ----
+    def _adapter_actuation(self, key_ids, travel_mm, rt_press_mm, rt_release_mm, mode):
+        """Route a per-key actuation apply through the board's protocol adapter.
+
+        Fixed mode (mode 0, or no RT values) sets release == press == travel.
+        Otherwise the explicit rapid-trigger press/release are passed through
+        best-effort (the adapter flags RT as unverified). Writes one packet per
+        key plus the trailing save. Returns the number of keys written."""
+        travel_mm = float(travel_mm)
+        rt_press_mm = float(rt_press_mm)
+        rt_release_mm = float(rt_release_mm)
+        if int(mode) == 0 or (rt_press_mm <= 0 and rt_release_mm <= 0):
+            press, release = travel_mm, None          # release tracks press
+        else:
+            press = rt_press_mm if rt_press_mm > 0 else travel_mm
+            release = rt_release_mm if rt_release_mm > 0 else press
+        for pkt in self.adapter.actuation_packets(key_ids, press, release):
+            self._write(pkt)
+            threading.Event().wait(0.005)
+        return len(list(key_ids))
+
     def set_trigger_all(self, travel_mm, rt_press_mm=0.0, rt_release_mm=0.0,
                         key_count=64, mode=0):
         try:
+            if self.adapter is not None:
+                key_ids = self.km.indices() if self.km else list(range(int(key_count)))
+                n = self._adapter_actuation(key_ids, travel_mm, rt_press_mm,
+                                            rt_release_mm, mode)
+                return {"ok": True, "keys": n}
             self._write(protocol.build_trigger(int(mode), list(range(int(key_count))),
                         float(travel_mm), float(rt_press_mm), float(rt_release_mm)))
             return {"ok": True}
@@ -470,6 +511,11 @@ class Api:
 
     def open_analog_codes(self, codes=None):
         try:
+            if self.adapter is not None and not self.adapter.supports_live_read:
+                # No live travel stream on this board yet (poll response undecoded).
+                # Report success so the actuation screen still opens; it just won't
+                # receive live per-key depths.
+                return {"ok": True, "keys": 0, "liveRead": False}
             if self.km:
                 idxs = self.km.indices_for_codes(codes or []) if codes else self.km.indices()
                 if not idxs:
@@ -489,6 +535,10 @@ class Api:
             if self.reader:
                 self.reader.stop()
                 self.reader = None
+            elif self.adapter is not None:
+                # No live reader was started for this board; nothing to close, and
+                # the 2E3C close-trigger packet would be wrong on its interface.
+                pass
             else:
                 self._write(protocol.build_close_trigger_test())
             return {"ok": True}
@@ -534,6 +584,16 @@ class Api:
         idxs = self.km.indices_for_codes(codes) if codes else []
         if not idxs:
             return {"ok": False, "error": "no keys"}
+        if self.adapter is not None:
+            # SayoDevice and other non-2E3C boards: one cmd-0x1C write per key +
+            # a save, via the adapter. `idxs` are the layout's (provisional) key
+            # ids used directly as the per-key TLV index.
+            try:
+                n = self._adapter_actuation(idxs, travel_mm, rt_press_mm,
+                                            rt_release_mm, mode)
+                return {"ok": True, "keys": n, "idxs": sorted(idxs)}
+            except Exception as e:
+                return {"ok": False, "error": str(e)}
         cfg = (int(mode),
                protocol.mm_to_raw(travel_mm),
                protocol.mm_to_raw(rt_press_mm),
@@ -556,6 +616,8 @@ class Api:
         vanished for a chunk of keys."""
         if not self.km or not self.dev.is_open():
             return {"ok": False, "error": "not connected"}
+        if self.adapter is not None and not self.adapter.supports_live_read:
+            return {"ok": False, "error": "read-back not supported on this board yet"}
         try:
             with self._lock:
                 vals_by_name = device_state.read_actuation(self.dev, self.km)
