@@ -61,6 +61,80 @@ def test_capture_dedupes_and_caps(monkeypatch):
     hexes = [r["hex"] for r in reps]
     assert all(hexes[i] != hexes[i - 1] for i in range(1, len(hexes)))  # no consecutive dupes
 
+def test_capture_arms_stream_only_for_recognized_board(monkeypatch):
+    import threading, protocol
+    writes = []
+    class FakeRaw:
+        def set_nonblocking(self, v): pass
+        def read(self, n): return []
+        def close(self): pass
+    class FakeAula:  # stand-in for AulaDevice (the app's shared handle)
+        def __init__(self): self._dev = FakeRaw(); self._lock = threading.Lock()
+        def is_open(self): return True
+        def write(self, b): writes.append(bytes(b)); return len(b)
+    # Fresh read-only handle used only for the unknown-board path.
+    freshes = []
+    class FreshDev:
+        def open_path(self, p): pass
+        def set_nonblocking(self, v): pass
+        def write(self, b): writes.append(bytes(b)); return len(b)   # must never be called
+        def read(self, n, timeout_ms=0): return []
+        def close(self): freshes.append("closed")
+    monkeypatch.setattr(app_web.hid, "device", lambda: FreshDev())
+    a = _api()
+    a.board = types.SimpleNamespace(vid=0x2E3C, pid=0xC365)
+    a.km = types.SimpleNamespace(indices=lambda: [0, 1, 2])
+    a.dev = FakeAula()
+    a.reader = None
+
+    # Matching board -> shared handle, arms Travel-Test on open, disarms on stop,
+    # and NEVER closes the app's device.
+    a.open_capture("p", "0x2e3c", "0xc365")
+    assert a._cap_shared is True
+    assert writes and writes[0] == bytes(protocol.build_open_trigger_test([0, 1, 2]))
+    a.stop_capture()
+    assert writes[-1] == bytes(protocol.build_close_trigger_test())
+    assert freshes == []                      # app handle never closed
+
+    # Non-matching device -> fresh read-only handle, never written to.
+    writes.clear()
+    a.open_capture("p", "0x9999", "0x0001")
+    assert a._cap_shared is False
+    a.stop_capture()
+    assert writes == []                       # zero writes on unknown hardware
+    assert freshes == ["closed"]              # fresh handle opened and closed
+
+def test_capture_bounds_held_key_flood(monkeypatch):
+    import threading
+    def travel_frame(row, col, depth):
+        b = [0] * 64
+        b[0] = 1; b[1] = 33; b[5] = 5; b[7] = row; b[8] = col
+        b[9] = depth & 0xFF; b[10] = (depth >> 8) & 0xFF
+        return b
+    calls = {"i": 0}
+    class FakeRaw:
+        def set_nonblocking(self, v): pass
+        def read(self, n):
+            # Same key (2,2) held: depth jitters every sample, so full frames all
+            # differ — a frame-level filter would never dedup these.
+            i = calls["i"]; calls["i"] += 1
+            return travel_frame(2, 2, 100 + (i % 5)) if i < 200 else []
+        def close(self): pass
+    class FakeAula:
+        def __init__(self): self._dev = FakeRaw(); self._lock = threading.Lock()
+        def is_open(self): return True
+        def write(self, b): return len(b)
+    a = _api()
+    a.board = types.SimpleNamespace(vid=0x2E3C, pid=0xC365)
+    a.km = types.SimpleNamespace(indices=lambda: [0, 1, 2])
+    a.dev = FakeAula(); a.reader = None
+    monkeypatch.setattr(app_web.Api, "_CAP_MAX_PER_KEY", 3)
+    a.open_capture("p", "0x2e3c", "0xc365")
+    import time; time.sleep(0.1); a.stop_capture()
+    reps = a.read_capture()["reports"]
+    assert len(reps) == 3          # one held key bounded to _CAP_MAX_PER_KEY, not 200
+    assert all(r["hex"][14:18] == "0202" for r in reps)  # all the same key (row=2,col=2)
+
 def test_save_submission_trims_whitespace(monkeypatch, tmp_path):
     a = _api()
     monkeypatch.setattr(a, "_submissions_dir", lambda: str(tmp_path))

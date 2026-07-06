@@ -40360,14 +40360,19 @@
     const startCapture = async () => {
       setReports([]);
       setKeysSeen(0);
-      await api().open_capture?.(dev.path);
+      await api().open_capture?.(dev.path, dev.vid, dev.pid);
       setCapturing(true);
       pollRef.current = setInterval(async () => {
         const r = await api().read_capture?.();
         if (r && r.ok && r.count) {
           setReports(prev => {
             const next = prev.concat(r.reports);
-            setKeysSeen(new Set(next.map(x => x.hex.slice(0, 6))).size);
+            // Count DISTINCT KEYS, not distinct byte-prefixes. HE Travel-Test frames
+            // are all "01 21 .. 05 .." — the key identity is row/col at bytes 7-8
+            // (see LiveReader). For those, key on bytes 7-8; otherwise fall back to
+            // the whole frame so non-HE input reports still count sensibly.
+            const keyOf = h => h.length >= 18 && h.slice(2, 4) === "21" && h.slice(10, 12) === "05" ? h.slice(14, 18) : h;
+            setKeysSeen(new Set(next.map(x => keyOf(x.hex))).size);
             return next;
           });
         }

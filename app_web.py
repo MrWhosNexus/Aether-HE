@@ -45,6 +45,9 @@ class Api:
     # Max distinct input frames retained per capture — bounds submission size so
     # a continuous HE telemetry stream can't balloon the JSON past a sane limit.
     _CAP_MAX_REPORTS = 512
+    # Max frames kept per distinct key — bounds a held/repeating key so its jittery
+    # analog stream can't flood the capture buffer (and the UI) with one key.
+    _CAP_MAX_PER_KEY = 6
 
     # ---- board submission (in-app) ----
     def list_hid_devices(self):
@@ -80,52 +83,137 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
-    def open_capture(self, path):
-        """Open an arbitrary HID device READ-ONLY and stream input reports.
-        Never writes to the device — this is the safety guarantee for unknown boards."""
+    def _capture_arm_indices(self, vid, pid):
+        """If the picked device is the recognized, protocol-known board, return the
+        key indices to arm its Travel-Test stream with; else None (stay read-only).
+
+        HE boards emit nothing per-key on the vendor interface until that stream is
+        enabled — the same reason the calibration/live-reader tools arm it. We only
+        ever write to a board whose protocol we already know (VID/PID matches the
+        detected board); unknown hardware is never written to."""
+        try:
+            if not (self.board and vid and pid):
+                return None
+            if int(str(vid), 16) != self.board.vid or int(str(pid), 16) != self.board.pid:
+                return None
+            return list(self.km.indices()) if self.km else None
+        except Exception:
+            return None
+
+    def open_capture(self, path, vid=None, pid=None):
+        """Stream input reports from the picked device for a board submission.
+
+        Two modes, chosen by whether we recognize the board:
+
+        - RECOGNIZED + CONNECTED (VID/PID matches the detected board and the app's
+          own handle is open): capture through the SAME `self.dev` handle the app
+          already uses for live travel — arm the firmware Travel-Test stream, read
+          under `self.dev._lock`, disarm on stop. This is the proven path: if the
+          app's actuation/live-travel works, this works, because it's the same code.
+        - UNKNOWN board: open a fresh handle and stay strictly READ-ONLY (never
+          writes) — the safety guarantee for hardware whose protocol we don't know.
+        """
         try:
             self.stop_capture()  # idempotent: close any prior capture
-            dev = hid.device()
-            dev.open_path(path.encode() if isinstance(path, str) else path)
-            dev.set_nonblocking(True)
-            self._cap_dev = dev
             self._cap_buf = []
             self._cap_t0 = time.time()
             self._cap_lock = threading.Lock()
             self._cap_stop = threading.Event()
 
-            # Snapshot per-capture objects as locals so the thread only ever
-            # touches its OWN buffer/lock, even if a new open_capture() call
-            # reassigns self._cap_* while this thread is still stopping.
+            arm_indices = self._capture_arm_indices(vid, pid)
+            _dev = getattr(self, "dev", None)
+            shared = bool(arm_indices) and _dev is not None and _dev.is_open()
+            self._cap_shared = shared
+            self._cap_armed = shared
+
             lock = self._cap_lock
             buf = self._cap_buf
             stop_ev = self._cap_stop
             t0 = self._cap_t0
 
-            def loop():
-                # HE boards stream continuous analog telemetry on the vendor
-                # interface, so a naive capture piles up thousands of near-identical
-                # 64-byte frames. Keep only frames that DIFFER from the previous one
-                # (the transitions that actually carry information) and hard-cap the
-                # total so a submission can never balloon past a sane size.
-                last_hex = None
-                kept = 0
-                while not stop_ev.is_set() and kept < self._CAP_MAX_REPORTS:
-                    try:
-                        r = dev.read(64, timeout_ms=50)
-                    except Exception:
-                        break
-                    if r:
-                        hx = bytes(r).hex()
-                        if hx == last_hex:
-                            continue  # drop consecutive duplicate telemetry frame
-                        last_hex = hx
-                        rec = {"t": int((time.time() - t0) * 1000), "hex": hx}
-                        with lock:
-                            buf.append(rec)
-                        kept += 1
-                    else:
-                        time.sleep(0.005)
+            if shared:
+                # Reuse the app's open vendor-interface handle (the live-travel path).
+                # Pause any live reader so the two loops don't drain the same handle.
+                if self.reader:
+                    try: self.reader.stop()
+                    except Exception: pass
+                    self.reader = None
+                dev = self.dev
+                try:
+                    dev.write(protocol.build_open_trigger_test(arm_indices))
+                except Exception:
+                    pass
+
+                def loop():
+                    last_arm = time.time()
+                    kept = 0
+                    # Dedup by KEY IDENTITY, not by frame. A held/repeating key streams
+                    # analog Travel-Test frames whose depth jitters every sample, so a
+                    # frame-level filter can't catch them and they flood the buffer/UI.
+                    # Keep at most _CAP_MAX_PER_KEY samples per distinct key (row/col),
+                    # which captures each key's press without ever flooding on a hold.
+                    per_key = {}
+                    while not stop_ev.is_set() and kept < self._CAP_MAX_REPORTS:
+                        # Re-arm periodically like LiveReader: the firmware stops
+                        # streaming after a while, so held/late presses would vanish.
+                        if time.time() - last_arm > 0.8:
+                            last_arm = time.time()
+                            try: dev.write(protocol.build_open_trigger_test(arm_indices))
+                            except Exception: pass
+                        got = False
+                        try:
+                            with dev._lock:
+                                if not dev._dev:
+                                    break
+                                dev._dev.set_nonblocking(True)
+                                for _ in range(256):          # bounded drain
+                                    r = dev._dev.read(64)
+                                    if not r:
+                                        break
+                                    # Travel sub-report → key identity is (row,col) at
+                                    # bytes 7-8; other reports keyed by the whole frame.
+                                    if len(r) >= 11 and r[1] == 33 and r[5] == 5:
+                                        kid = (r[7], r[8])
+                                    else:
+                                        kid = bytes(r).hex()
+                                    if per_key.get(kid, 0) >= self._CAP_MAX_PER_KEY:
+                                        continue              # this key already sampled → skip flood
+                                    per_key[kid] = per_key.get(kid, 0) + 1
+                                    with lock:
+                                        buf.append({"t": int((time.time() - t0) * 1000), "hex": bytes(r).hex()})
+                                    kept += 1
+                                    got = True
+                                    if kept >= self._CAP_MAX_REPORTS:
+                                        break
+                        except Exception:
+                            time.sleep(0.05); continue
+                        if not got:
+                            time.sleep(0.005)
+            else:
+                # Unknown board: fresh read-only handle, never written to.
+                dev = hid.device()
+                dev.open_path(path.encode() if isinstance(path, str) else path)
+                dev.set_nonblocking(True)
+                self._cap_dev = dev
+
+                def loop():
+                    last_hex = None
+                    kept = 0
+                    while not stop_ev.is_set() and kept < self._CAP_MAX_REPORTS:
+                        try:
+                            r = dev.read(64, timeout_ms=50)
+                        except Exception:
+                            break
+                        if r:
+                            hx = bytes(r).hex()
+                            if hx == last_hex:
+                                continue  # drop consecutive duplicate telemetry frame
+                            last_hex = hx
+                            with lock:
+                                buf.append({"t": int((time.time() - t0) * 1000), "hex": hx})
+                            kept += 1
+                        else:
+                            time.sleep(0.005)
 
             self._cap_thread = threading.Thread(target=loop, daemon=True)
             self._cap_thread.start()
@@ -154,10 +242,20 @@ class Api:
             th = getattr(self, "_cap_thread", None)
             if th:
                 th.join(timeout=0.3)
-            dev = getattr(self, "_cap_dev", None)
-            if dev:
-                dev.close()
+            if getattr(self, "_cap_shared", False):
+                # Shared app handle: disarm the stream we armed, but never close it —
+                # the app owns self.dev and keeps using it.
+                try:
+                    self.dev.write(protocol.build_close_trigger_test())
+                except Exception:
+                    pass
+            else:
+                dev = getattr(self, "_cap_dev", None)
+                if dev:
+                    dev.close()
             self._cap_dev = None
+            self._cap_shared = False
+            self._cap_armed = False
             return {"ok": True}
         except Exception as e:
             return {"ok": False, "error": str(e)}
