@@ -14,6 +14,7 @@ const { ThemePopup, useTheme } = window.AetherTheme;
 // Desktop-widget shell (foundation) + section widget registries.
 const { Workspace, TopBar: DesktopTopBar, SECTION_DEFS } = window.AetherDesktop;
 const SetupWizard = window.AetherWizard && window.AetherWizard.SetupWizard;
+const BoardSubmit = window.AetherBoardSubmit && window.AetherBoardSubmit.BoardSubmit;
 
 // Placeholder for sections not yet built by later waves — a single
 // "coming soon" widget so the workspace surface isn't blank.
@@ -383,6 +384,7 @@ function App() {
     try { localStorage.setItem("aether-setup-done", "1"); } catch {}
     setWizardOpen(false);
   };
+  const [submitOpen, setSubmitOpen] = useState(false);
 
   // User zoom multiplier (top-bar − / % / + control), on top of the auto-fit.
   const [uiZoom, setUiZoom] = useState(() => {
@@ -1065,7 +1067,7 @@ function App() {
     activeProfileName: (profiles.find(p => p.id === activeId) || {}).name || "Profile",
     // theme
     theme, setTheme, themeOpen, setThemeOpen,
-    setWizardOpen,
+    setWizardOpen, setSubmitOpen,
     // section
     section, setSection,
     // key selection (shared across workspaces)
@@ -1119,6 +1121,9 @@ function App() {
 
       {/* First-run setup wizard (reopenable from Settings via ctx.setWizardOpen). */}
       {SetupWizard && <SetupWizard open={wizardOpen} onClose={closeWizard} ctx={ctx}/>}
+
+      {/* Board submission modal (opened from wizard's board step or Settings). */}
+      {BoardSubmit && <BoardSubmit open={submitOpen} onClose={() => setSubmitOpen(false)} />}
     </>
   );
 }

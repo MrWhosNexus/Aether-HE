@@ -58,6 +58,7 @@
     SECTION_DEFS
   } = window.AetherDesktop;
   const SetupWizard = window.AetherWizard && window.AetherWizard.SetupWizard;
+  const BoardSubmit = window.AetherBoardSubmit && window.AetherBoardSubmit.BoardSubmit;
 
   // Placeholder for sections not yet built by later waves — a single
   // "coming soon" widget so the workspace surface isn't blank.
@@ -700,6 +701,7 @@
       } catch {}
       setWizardOpen(false);
     };
+    const [submitOpen, setSubmitOpen] = useState(false);
 
     // User zoom multiplier (top-bar − / % / + control), on top of the auto-fit.
     const [uiZoom, setUiZoom] = useState(() => {
@@ -1585,6 +1587,7 @@
       themeOpen,
       setThemeOpen,
       setWizardOpen,
+      setSubmitOpen,
       // section
       section,
       setSection,
@@ -1708,6 +1711,9 @@
       open: wizardOpen,
       onClose: closeWizard,
       ctx: ctx
+    }), BoardSubmit && /*#__PURE__*/React.createElement(BoardSubmit, {
+      open: submitOpen,
+      onClose: () => setSubmitOpen(false)
     }));
   }
   const Stat = ({

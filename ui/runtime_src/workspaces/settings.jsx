@@ -300,7 +300,7 @@ function BackupWidget(ctx) {
 
 /* ===== About/Update widget ===== */
 function AboutWidget(ctx) {
-  const { setWizardOpen } = ctx;
+  const { setWizardOpen, setSubmitOpen } = ctx;
   const [version, setVersion] = useState("—");
   const [updateState, setUpdateState] = useState({ phase: "idle", msg: "" });
 
@@ -380,6 +380,9 @@ function AboutWidget(ctx) {
         <button onClick={openWizard}
           className="h-9 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] font-display text-[11px] uppercase tracking-[0.16em] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] transition-all">
           Setup Wizard
+        </button>
+        <button className="btn" onClick={() => setSubmitOpen && setSubmitOpen(true)}>
+          Submit a board
         </button>
       </div>
 

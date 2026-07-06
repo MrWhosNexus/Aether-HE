@@ -103,6 +103,7 @@ def compile_jsx(manifest):
         ("vendor/theme.jsx", "theme.js"),
         ("src/desktop.jsx", "desktop.js"),
         *ws_jobs,
+        ("src/board-submit.jsx", "board-submit.js"),
         ("src/wizard.jsx", "wizard.js"),
         ("src/app.jsx", "app.js"),
     ]

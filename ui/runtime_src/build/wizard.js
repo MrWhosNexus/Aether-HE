@@ -98,7 +98,9 @@
      ============================================================ */
   function StepBoard({
     board,
-    setBoard
+    setBoard,
+    ctx,
+    onClose
   }) {
     return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
       className: "font-title",
@@ -171,7 +173,16 @@
           border: "1px solid var(--line)"
         }
       }, STATUS_LABEL[b.status] || b.status)));
-    })));
+    })), /*#__PURE__*/React.createElement("button", {
+      className: "btn",
+      onClick: () => {
+        onClose();
+        ctx && ctx.setSubmitOpen && ctx.setSubmitOpen(true);
+      },
+      style: {
+        marginTop: 14
+      }
+    }, "My board isn\u2019t listed \u2192 Submit it"));
   }
 
   /* ============================================================
@@ -479,7 +490,9 @@
     let body = null;
     if (step === 0) body = /*#__PURE__*/React.createElement(StepBoard, {
       board: board,
-      setBoard: setBoard
+      setBoard: setBoard,
+      ctx: c,
+      onClose: close
     });else if (step === 1) body = /*#__PURE__*/React.createElement(StepLayout, {
       board: board
     });else if (step === 2) body = /*#__PURE__*/React.createElement(StepAnimations, {

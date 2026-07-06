@@ -67,6 +67,10 @@ Every submission is reviewed and validated before it ships — see
 [**docs/SUBMIT_A_BOARD.md**](docs/SUBMIT_A_BOARD.md) for the full walkthrough,
 copy-paste templates, and how-to-capture instructions.
 
+> Prefer not to leave the app? You can submit a board from inside Aether too —
+> **Settings → Submit a board** runs a short read-only capture and opens a
+> pre-filled GitHub issue for you.
+
 > Don't want to fiddle with JSON or captures? **Just send the photo and the required
 > fields** — the maintainer builds the layout and reverse-engineers the protocol from there.
 
