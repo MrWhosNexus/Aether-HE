@@ -131,6 +131,48 @@ def build_lighting(mode, echo=DEFAULT_ECHO):
 
 
 # ---------------- per-key analog / actuation (cmd 0x1C) ----------------
+# Actuation travel bounds (mm), matching protocol.py's cmd-33 range.
+ACTUATION_MIN_MM = 0.08
+ACTUATION_MAX_MM = 3.4
+
+# The fixed-actuation "new-capture default" cmd-0x1C payload, split around the
+# decoded press/release fields (bytes 12-15). Bytes 0-11 are per-key Hall
+# calibration + schema constants; bytes 16-23 are constant schema bytes. Both
+# are replayed verbatim; only bytes 12-15 carry the actuation the user picks.
+# See docs/context/issue-3-sayodevice-raw/actuation_decode_analysis.md.
+_ANALOG_DEFAULT_HEAD = bytes.fromhex("6d8403006b84969e50020000")  # payload 0-11
+_ANALOG_DEFAULT_TAIL = bytes.fromhex("e7000a0f64009001")          # payload 16-23
+
+
+def build_key_analog(key_idx, press_mm, release_mm=None, echo=DEFAULT_ECHO):
+    """Build a cmd-0x1C per-key analog config write with decoded actuation.
+
+    Encodes press actuation at payload bytes 12-13 (LE16, units 0.001 mm) and
+    release actuation at bytes 14-15. In fixed-actuation mode release tracks
+    press, so `release_mm` defaults to `press_mm`. Both must be in
+    [ACTUATION_MIN_MM, ACTUATION_MAX_MM]; anything else raises ValueError.
+
+    Bytes 0-11 and 16-23 are replayed verbatim from the fixed-mode capture
+    default (they are per-key calibration + schema constants the app does not
+    author). Reproduces the 0.4mm / 1.0mm / 2.0mm steady-state writes from
+    actuation_0.4mm.pcapng and actuation_2.0mm.pcapng byte-for-byte.
+    """
+    if release_mm is None:
+        release_mm = press_mm
+    for name, val in (("press_mm", press_mm), ("release_mm", release_mm)):
+        if not (ACTUATION_MIN_MM <= val <= ACTUATION_MAX_MM):
+            raise ValueError(
+                f"{name}={val} out of range "
+                f"[{ACTUATION_MIN_MM}, {ACTUATION_MAX_MM}] mm")
+    press = round(press_mm * 1000)
+    release = round(release_mm * 1000)
+    payload = (_ANALOG_DEFAULT_HEAD
+               + struct.pack("<H", press)
+               + struct.pack("<H", release)
+               + _ANALOG_DEFAULT_TAIL)
+    return build_packet([(CMD_KEY_ANALOG, key_idx, payload)], echo=echo)
+
+
 def build_key_analog_raw(key_index, payload, echo=DEFAULT_ECHO):
     """Build a cmd-0x1C per-key analog config write: TLV index = key id,
     24-byte payload. Framing (cmd byte, key-in-index, payload size, checksum)

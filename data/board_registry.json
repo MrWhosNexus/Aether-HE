@@ -74,11 +74,11 @@
       "vid": "0x8089",
       "pid": "0x0009",
       "formFactor": "60%",
-      "_note": "SayoDevice silicon (CH32V307). Config traffic in the issue-#3 captures runs on the usage-page 0xFF12 vendor interface (Report ID 0x22, 1024-byte packets); 0xFF11 (Report ID 0x21, 64-byte) is the management fallback. Lighting (cmd 0x26) decoded + golden-tested; actuation (cmd 0x1C) framing captured but payload fields unverified, so it stays false.",
+      "_note": "SayoDevice silicon (CH32V307). Config traffic in the issue-#3 captures runs on the usage-page 0xFF12 vendor interface (Report ID 0x22, 1024-byte packets); 0xFF11 (Report ID 0x21, 64-byte) is the management fallback. Lighting (cmd 0x26) decoded + golden-tested; actuation (cmd 0x1C) field map is decoded (payload bytes 12-13 = press, bytes 14-15 = release, LE16, units 0.001 mm) and golden-tested.",
       "usage_page": "0xFF12",
       "keymap": "ui/layouts/aula-win60he-pro.json",
       "protocol": "protocol_sayo",
-      "capabilities": { "lighting": true, "actuation": false, "perKeyRgb": false },
+      "capabilities": { "lighting": true, "actuation": true, "perKeyRgb": false },
       "status": "bringup",
       "issues": [3]
     },

@@ -86,6 +86,38 @@ def test_analog_payload_length_guard():
         raise AssertionError("short analog payload should be rejected")
 
 
+# ---- actuation (cmd 0x1C): new 0.4mm / 1.0mm / 2.0mm steady-state captures ----
+# Golden constants below carry the checksum computed by protocol_sayo.checksum()
+# (the verified on-wire algorithm) and the SETTLED bytes 22-23 = 0x0190, matching
+# the fixed-mode default template. See the module test for the full field map.
+ACT_0_4MM_KEY_2F = ("221220001c001c2f6d8403006b84969e50020000"
+                    "90019001e7000a0f64009001")
+ACT_2_0MM_KEY_2F = ("2212a00c1c001c2f6d8403006b84969e50020000"
+                    "d007d007e7000a0f64009001")
+ACT_1_0MM_KEY_2F = ("2212d0041c001c2f6d8403006b84969e50020000"
+                    "e803e803e7000a0f64009001")
+
+
+def test_actuation_0_4mm_matches_capture():
+    assert psy.build_key_analog(0x2F, 0.4) == P(ACT_0_4MM_KEY_2F)
+
+
+def test_actuation_2_0mm_matches_capture():
+    assert psy.build_key_analog(0x2F, 2.0) == P(ACT_2_0MM_KEY_2F)
+
+
+def test_actuation_explicit_press_release_matches_capture():
+    assert psy.build_key_analog(0x2F, 1.0, 1.0) == P(ACT_1_0MM_KEY_2F)
+
+
+def test_actuation_out_of_range_raises():
+    import pytest
+    with pytest.raises(ValueError):
+        psy.build_key_analog(0x2F, 0.05)
+    with pytest.raises(ValueError):
+        psy.build_key_analog(0x2F, 5.0)
+
+
 if __name__ == "__main__":
     import traceback
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
