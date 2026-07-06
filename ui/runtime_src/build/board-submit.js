@@ -159,7 +159,7 @@
       style: {
         textAlign: "left"
       }
-    }, d.product || "(unknown)", " \xB7 ", d.vid, ":", d.pid, " \xB7 iface ", d.interface_number))), /*#__PURE__*/React.createElement("div", {
+    }, d.product || "(unknown)", " \xB7 ", d.vid, ":", d.pid, " \xB7 iface ", d.interface_number, " \xB7 ", (d.usage_pages || [d.usage_page]).join(", ")))), /*#__PURE__*/React.createElement("div", {
       className: "flex justify-end mt-4"
     }, /*#__PURE__*/React.createElement("button", {
       className: "btn accent",

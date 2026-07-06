@@ -90,7 +90,7 @@ function BoardSubmit({ open, onClose }) {
               {devices.map((d, i) => (
                 <button key={i} onClick={() => setDev(d)}
                   className={`btn ${dev && dev.path === d.path ? "on" : ""}`} style={{ textAlign: "left" }}>
-                  {d.product || "(unknown)"} · {d.vid}:{d.pid} · iface {d.interface_number}
+                  {d.product || "(unknown)"} · {d.vid}:{d.pid} · iface {d.interface_number} · {(d.usage_pages || [d.usage_page]).join(", ")}
                 </button>
               ))}
             </div>

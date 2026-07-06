@@ -42,23 +42,41 @@ INDEX = _RUNTIME if os.path.exists(_RUNTIME) else _BUNDLE
 
 
 class Api:
+    # Max distinct input frames retained per capture — bounds submission size so
+    # a continuous HE telemetry stream can't balloon the JSON past a sane limit.
+    _CAP_MAX_REPORTS = 512
+
     # ---- board submission (in-app) ----
     def list_hid_devices(self):
-        """All HID devices for the submit-a-board picker. Read-only enumeration."""
+        """Devices for the submit-a-board picker. Read-only enumeration, collapsed
+        by (vid, pid, interface): a keyboard exposes one physical interface as
+        several HID usage collections, so raw enumeration lists it many times with
+        indistinguishable rows. Group them, keep the first openable path, and list
+        every usage_page on that interface so the user can tell them apart."""
         try:
-            out = []
+            groups = {}
+            order = []
             for d in hid.enumerate():
+                iface = d.get("interface_number", -1)
+                key = (d.get("vendor_id", 0), d.get("product_id", 0), iface)
                 path = d.get("path")
-                out.append({
-                    "path": path.decode("utf-8", "replace") if isinstance(path, bytes) else str(path),
-                    "vid": f"0x{d.get('vendor_id', 0):04x}",
-                    "pid": f"0x{d.get('product_id', 0):04x}",
-                    "manufacturer": d.get("manufacturer_string") or "",
-                    "product": d.get("product_string") or "",
-                    "usage_page": f"0x{d.get('usage_page', 0):04x}",
-                    "interface_number": d.get("interface_number", -1),
-                })
-            return {"ok": True, "devices": out}
+                path = path.decode("utf-8", "replace") if isinstance(path, bytes) else str(path)
+                up = f"0x{d.get('usage_page', 0):04x}"
+                if key not in groups:
+                    order.append(key)
+                    groups[key] = {
+                        "path": path,  # first path for this interface — any collection reads fine
+                        "vid": f"0x{d.get('vendor_id', 0):04x}",
+                        "pid": f"0x{d.get('product_id', 0):04x}",
+                        "manufacturer": d.get("manufacturer_string") or "",
+                        "product": d.get("product_string") or "",
+                        "usage_page": up,
+                        "usage_pages": [up],
+                        "interface_number": iface,
+                    }
+                elif up not in groups[key]["usage_pages"]:
+                    groups[key]["usage_pages"].append(up)
+            return {"ok": True, "devices": [groups[k] for k in order]}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
@@ -85,16 +103,27 @@ class Api:
             t0 = self._cap_t0
 
             def loop():
-                while not stop_ev.is_set():
+                # HE boards stream continuous analog telemetry on the vendor
+                # interface, so a naive capture piles up thousands of near-identical
+                # 64-byte frames. Keep only frames that DIFFER from the previous one
+                # (the transitions that actually carry information) and hard-cap the
+                # total so a submission can never balloon past a sane size.
+                last_hex = None
+                kept = 0
+                while not stop_ev.is_set() and kept < self._CAP_MAX_REPORTS:
                     try:
                         r = dev.read(64, timeout_ms=50)
                     except Exception:
                         break
                     if r:
-                        rec = {"t": int((time.time() - t0) * 1000),
-                               "hex": bytes(r).hex()}
+                        hx = bytes(r).hex()
+                        if hx == last_hex:
+                            continue  # drop consecutive duplicate telemetry frame
+                        last_hex = hx
+                        rec = {"t": int((time.time() - t0) * 1000), "hex": hx}
                         with lock:
                             buf.append(rec)
+                        kept += 1
                     else:
                         time.sleep(0.005)
 
@@ -763,6 +792,13 @@ class Api:
 
     def save_submission(self, obj):
         """Validate against aether-board-submission/1 and write to the submissions dir."""
+        # Trim stray whitespace on free-text meta fields before validation/save so
+        # "Aula " doesn't leak into the slug or the drafted board name.
+        meta = obj.get("meta")
+        if isinstance(meta, dict):
+            for k in ("brand", "model", "form_factor"):
+                if isinstance(meta.get(k), str):
+                    meta[k] = meta[k].strip()
         errors = board_submission.validate_submission(obj)
         if errors:
             return {"ok": False, "errors": errors}
