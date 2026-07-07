@@ -41931,7 +41931,9 @@
     onDismiss
   }) {
     if (!gate || gate.phase === "idle") return null;
-    const backdrop = "fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm";
+    // Above the setup wizard (zIndex 9999): on a true first run the update
+    // decision is asked first, then dismisses to reveal onboarding underneath.
+    const backdrop = "fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-sm";
     const card = "w-[430px] max-w-[92vw] rounded-2xl border border-[var(--line)] bg-[#0b1016] shadow-2xl p-5";
     const btnPrimary = "px-3 h-9 rounded-md border border-[var(--accent)]/40 bg-[var(--accent)]/15 text-[var(--accent)] font-display text-[10.5px] uppercase tracking-[0.16em] hover:bg-[var(--accent)]/25";
     const btnGhost = "px-3 h-9 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text)] font-display text-[10.5px] uppercase tracking-[0.16em] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]";
