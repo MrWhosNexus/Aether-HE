@@ -929,6 +929,19 @@ class Api:
         """Ask GitHub for the latest release and whether it's newer than us."""
         return updater.check_for_update()
 
+    def get_auto_update(self):
+        """Auto-update-on-launch preference. `autoUpdate` is None when never set
+        (first run), else a bool. The UI uses None to show the first-run prompt."""
+        return {"ok": True, "autoUpdate": updater.get_auto_update(self._settings_path())}
+
+    def set_auto_update(self, on):
+        """Persist the auto-update-on-launch preference (merged into settings.json)."""
+        try:
+            val = updater.set_auto_update(self._settings_path(), bool(on))
+            return {"ok": True, "autoUpdate": val}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     def apply_update(self, asset_url, asset_name=None):
         """Download + install the update for this OS. On success the caller
         should quit (Windows) or prompt a restart (Flatpak)."""

@@ -82,6 +82,38 @@ def _pick_asset(assets, kind):
     return None, None
 
 
+# ------------------------------------------------------------ preference ----
+# The auto-update-on-launch flag lives in the app's settings.json as `autoUpdate`.
+# These helpers are stdlib-only and take an explicit path so they can be unit
+# tested without importing app_web (which pulls in the native `hid` module).
+def get_auto_update(settings_path):
+    """Return the auto-update-on-launch preference: True, False, or None when the
+    key is absent or the file is missing/unreadable (i.e. first run)."""
+    try:
+        with open(settings_path, "r", encoding="utf-8") as f:
+            s = json.load(f)
+    except Exception:
+        return None
+    val = s.get("autoUpdate") if isinstance(s, dict) else None
+    return val if isinstance(val, bool) else None
+
+
+def set_auto_update(settings_path, on):
+    """Persist the preference, merging into settings.json so sibling keys survive.
+    A missing or corrupt file is treated as an empty settings object."""
+    try:
+        with open(settings_path, "r", encoding="utf-8") as f:
+            s = json.load(f)
+        if not isinstance(s, dict):
+            s = {}
+    except Exception:
+        s = {}
+    s["autoUpdate"] = bool(on)
+    with open(settings_path, "w", encoding="utf-8") as f:
+        json.dump(s, f, indent=2)
+    return bool(on)
+
+
 # ------------------------------------------------------------------- check ----
 def check_for_update(timeout=10):
     """Return {ok, update, current, latest, notes, url, asset_url, asset_name}.

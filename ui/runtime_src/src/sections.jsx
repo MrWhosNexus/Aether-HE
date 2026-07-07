@@ -1300,6 +1300,8 @@ const OtherSection = ({ activeProfileName = "Profile", onResetProfile = () => {}
   // Updates: current version + latest GitHub release. State machine:
   // idle -> checking -> {uptodate | available | error}; then installing -> done.
   const [upd, setUpd] = useState({ phase: "idle", version: "", info: null, msg: "" });
+  // Auto-update-on-launch preference (null = still loading / never set).
+  const [autoUpd, setAutoUpd] = useState(null);
   useEffect(() => {
     const api = window.pywebview?.api;
     if (!api?.app_version) return;
@@ -1347,6 +1349,14 @@ const OtherSection = ({ activeProfileName = "Profile", onResetProfile = () => {}
           setSettingsInfo({ path: r.path || "", exists: !!r.exists });
         }).catch(() => {});
       }
+      if (api.get_auto_update) {
+        api.get_auto_update().then(r => {
+          if (cancelled || !r || !r.ok) return;
+          // null (never answered) shows as ON here, matching the default the
+          // startup prompt applies; the toggle then persists an explicit value.
+          setAutoUpd(r.autoUpdate === null ? true : !!r.autoUpdate);
+        }).catch(() => {});
+      }
     };
     probe();
     const id = setInterval(probe, 800);
@@ -1358,6 +1368,13 @@ const OtherSection = ({ activeProfileName = "Profile", onResetProfile = () => {}
     if (!window.pywebview?.api?.set_autostart) return;
     const r = await window.pywebview.api.set_autostart(next);
     if (!(r && r.ok)) setAutostart(s => ({ ...s, enabled: !next }));
+  };
+  const toggleAutoUpdate = async () => {
+    const next = !autoUpd;
+    setAutoUpd(next);
+    if (!window.pywebview?.api?.set_auto_update) return;
+    const r = await window.pywebview.api.set_auto_update(next);
+    if (!(r && r.ok)) setAutoUpd(!next);
   };
   const revealSettings = async () => {
     if (window.pywebview?.api?.reveal_settings) await window.pywebview.api.reveal_settings();
@@ -1431,6 +1448,19 @@ const OtherSection = ({ activeProfileName = "Profile", onResetProfile = () => {}
                 Download & install
               </button>
             )}
+          </div>
+          <div className="mt-4 pt-3 border-t border-[var(--line)] flex items-center justify-between gap-3">
+            <div>
+              <div className="text-[12px] text-[var(--text)]">Auto-update on launch</div>
+              <div className="text-[11px] text-[var(--text-dim)] mt-0.5">Install new releases automatically when Aether opens.</div>
+            </div>
+            <button onClick={toggleAutoUpdate} disabled={autoUpd === null}
+              className={`relative w-12 h-6 rounded-full border transition-colors shrink-0 ml-4 disabled:opacity-40
+                          ${autoUpd ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-[rgba(5,11,14,0.5)] border-[var(--line)]"}`}>
+              <span className={`absolute top-0.5 rounded-full transition-all
+                                ${autoUpd ? "left-[26px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-[var(--text-faint)]"}`}
+                    style={{ width: 18, height: 18 }}/>
+            </button>
           </div>
         </div>
 

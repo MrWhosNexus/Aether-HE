@@ -373,6 +373,55 @@ const HeroCard = ({ children, badge, breadcrumb }) => (
 /* ============================================================
    App
    ============================================================ */
+// Startup update gate: first-run opt-out prompt + the auto-install overlay.
+// Driven by App's `updGate` state machine (idle | firstrun | updating | done | error).
+function UpdateGate({ gate, onChoose, onDismiss }) {
+  if (!gate || gate.phase === "idle") return null;
+  const backdrop = "fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm";
+  const card = "w-[430px] max-w-[92vw] rounded-2xl border border-[var(--line)] bg-[#0b1016] shadow-2xl p-5";
+  const btnPrimary = "px-3 h-9 rounded-md border border-[var(--accent)]/40 bg-[var(--accent)]/15 text-[var(--accent)] font-display text-[10.5px] uppercase tracking-[0.16em] hover:bg-[var(--accent)]/25";
+  const btnGhost = "px-3 h-9 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text)] font-display text-[10.5px] uppercase tracking-[0.16em] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]";
+  if (gate.phase === "firstrun") {
+    return (
+      <div className={backdrop}>
+        <div className={card}>
+          <div className="font-display text-[14px] uppercase tracking-[0.16em] text-[var(--text)]">Keep Aether up to date?</div>
+          <div className="text-[12.5px] text-[var(--text-dim)] mt-2 leading-relaxed">
+            Aether can install new releases automatically when you open it. You can change this any time in Settings.
+          </div>
+          <div className="mt-4 flex gap-2">
+            <button onClick={() => onChoose(true)} className={btnPrimary}>Yes, auto-update</button>
+            <button onClick={() => onChoose(false)} className={btnGhost}>No, I'll check manually</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  const dismissable = gate.phase === "done" || gate.phase === "error";
+  return (
+    <div className={backdrop}>
+      <div className={card}>
+        <div className="font-display text-[14px] uppercase tracking-[0.16em] text-[var(--text)]">
+          {gate.phase === "error" ? "Update error" : "Updating Aether"}
+        </div>
+        <div className={`text-[12.5px] mt-2 leading-relaxed ${gate.phase === "error" ? "text-rose-300/90" : "text-[var(--text-dim)]"}`}>
+          {gate.msg || "Working…"}
+        </div>
+        {gate.phase === "updating" && (
+          <div className="mt-3 h-1 rounded-full bg-white/[0.06] overflow-hidden">
+            <div className="h-full bg-[var(--accent)]/70 animate-pulse" style={{ width: "40%" }}/>
+          </div>
+        )}
+        {dismissable && (
+          <div className="mt-4 flex justify-end">
+            <button onClick={onDismiss} className={btnGhost}>{gate.phase === "done" ? "OK" : "Dismiss"}</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [theme, setTheme] = useTheme();
   const [themeOpen, setThemeOpen] = useState(false);
@@ -385,6 +434,50 @@ function App() {
     setWizardOpen(false);
   };
   const [submitOpen, setSubmitOpen] = useState(false);
+
+  // ---- auto-update on launch (first-run opt-out) ----
+  // On mount, read the persisted preference: null -> first-run prompt; true ->
+  // silently check and auto-install; false -> nothing. The updating overlay only
+  // appears once an update is confirmed, so there is no flash when up to date.
+  const [updGate, setUpdGate] = useState({ phase: "idle", info: null, msg: "" });
+  const updRan = useRef(false);
+  const dismissUpdate = () => setUpdGate({ phase: "idle", info: null, msg: "" });
+  const runUpdateFlow = async (api, showChecking) => {
+    if (showChecking) setUpdGate({ phase: "updating", info: null, msg: "Checking for updates…" });
+    let chk;
+    try { chk = await api.check_update(); }
+    catch { if (showChecking) dismissUpdate(); return; }
+    if (!chk || !chk.ok || !chk.update) { if (showChecking) dismissUpdate(); return; }
+    setUpdGate({ phase: "updating", info: chk, msg: `Updating Aether to v${chk.latest}…` });
+    try {
+      const r = await api.apply_update(chk.asset_url, chk.asset_name);
+      if (!r || !r.ok) { setUpdGate({ phase: "error", info: chk, msg: r?.error || "update failed" }); return; }
+      if (r.quit) setUpdGate({ phase: "done", info: chk, msg: "Installer launched — Aether will close and reopen." });
+      else if (r.restart) setUpdGate({ phase: "done", info: chk, msg: "Update installed — quit and reopen Aether to apply it." });
+      else setUpdGate({ phase: "done", info: chk, msg: r.path ? `Downloaded to ${r.path}` : "Downloaded." });
+    } catch (e) { setUpdGate({ phase: "error", info: chk, msg: String(e) }); }
+  };
+  const chooseAutoUpdate = async (yes) => {
+    const api = getApi();
+    try { await api?.set_auto_update?.(yes); } catch {}
+    if (yes) await runUpdateFlow(api, true);
+    else dismissUpdate();
+  };
+  useEffect(() => {
+    let tries = 0, timer = null;
+    const run = async () => {
+      const api = getApi();
+      if (!api?.get_auto_update) { if (tries++ < 40) timer = setTimeout(run, 200); return; }
+      if (updRan.current) return;
+      updRan.current = true;
+      let pref;
+      try { const r = await api.get_auto_update(); pref = r && r.autoUpdate; } catch { return; }
+      if (pref === null || pref === undefined) setUpdGate({ phase: "firstrun", info: null, msg: "" });
+      else if (pref === true) runUpdateFlow(api, false);
+    };
+    run();
+    return () => { if (timer) clearTimeout(timer); };
+  }, []);
 
   // User zoom multiplier (top-bar − / % / + control), on top of the auto-fit.
   const [uiZoom, setUiZoom] = useState(() => {
@@ -1124,6 +1217,9 @@ function App() {
 
       {/* Board submission modal (opened from wizard's board step or Settings). */}
       {BoardSubmit && <BoardSubmit open={submitOpen} onClose={() => setSubmitOpen(false)} />}
+
+      {/* Auto-update gate: first-run opt-out prompt + auto-install overlay. */}
+      <UpdateGate gate={updGate} onChoose={chooseAutoUpdate} onDismiss={dismissUpdate}/>
     </>
   );
 }
