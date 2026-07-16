@@ -783,7 +783,7 @@
     const [polling, setPolling] = useState(8);
     const [travelTest, setTravelTest] = useState(false);
     const [liveDepths, setLiveDepths] = useState(null); // real per-key travel (mm)
-    const [lightFrame, setLightFrame] = useState(null); // live effect frame {code:[r,g,b]}
+
     const [calibrating, setCalibrating] = useState(false);
     const [calibratedKeys, setCalibratedKeys] = useState(() => new Set()); // codes confirmed calibrated by firmware
     const [lightNonce, setLightNonce] = useState(0); // bump to force-resend lighting (e.g. after calibration)
@@ -1434,32 +1434,8 @@
       };
     }, [connected, calibrating]);
 
-    // Mirror the live host effect onto the IN-APP keyboard: poll the current frame
-    // while on the Lighting tab and paint each key with its real animated color.
-    // The host engine streams cmd-9 pages to the board at 120fps under the GIL;
-    // a tight polling loop here starves it and makes the board look choppy.
-    // 50ms (~20fps) is plenty for the on-screen mirror and leaves the engine room.
-    useEffect(() => {
-      if (!connected || section !== "lighting") {
-        setLightFrame(null);
-        return;
-      }
-      let alive = true;
-      const id = setInterval(() => {
-        apiCall("get_light_frame").then(f => {
-          if (!alive) return;
-          const valid = f && typeof f === "object" && !(f.ok === false) && Object.keys(f).length ? f : null;
-          setLightFrame(prev => JSON.stringify(prev) === JSON.stringify(valid) ? prev : valid);
-        });
-      }, 50);
-      return () => {
-        alive = false;
-        clearInterval(id);
-      };
-    }, [connected, section]);
-
     // Deepest currently-pressed key, for the switch-cutaway animation.
-    const liveMax = useMemo(() => {
+    const liveMax = React.useMemo(() => {
       if (!liveDepths) return 0;
       let m = 0;
       for (const k in liveDepths) {
@@ -1468,14 +1444,6 @@
       }
       return m;
     }, [liveDepths]);
-
-    // Live effect colors for the in-app keyboard (overrides the static preview).
-    const ledMapLive = useMemo(() => {
-      if (!lightFrame) return null;
-      const m = {};
-      for (const code in lightFrame) m[code] = rgbToHex(lightFrame[code]);
-      return m;
-    }, [lightFrame]);
 
     // Hero badge & breadcrumb vary by section
     const breadcrumb = useMemo(() => {
@@ -1662,7 +1630,6 @@
       updateZone,
       removeZone,
       ledMap,
-      ledMapLive,
       // socd
       socdMode,
       setSocdMode,

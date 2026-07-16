@@ -34173,7 +34173,7 @@
       "data-code": code,
       className: `relative rounded-[5px] border text-left
                   px-1.5 pt-1 pb-0.5 h-[46px] overflow-hidden
-                  transition-all duration-150
+                  transition-[border-color,box-shadow] duration-150
                   ${calibrated ? "border-emerald-400 shadow-[0_0_0_1px_#10b981,0_0_14px_rgba(16,185,129,0.6)]" : calibrating ? "border-amber-400/40 animate-pulse" : selected ? mode === "lighting" ? "border-white shadow-[0_0_0_2px_#ffffff,0_0_12px_rgba(255,255,255,0.75)]" : "border-[var(--accent)]/80 shadow-[0_0_0_1px_var(--accent),0_0_18px_var(--accent-glow)]" : actuated ? "border-[var(--accent)]/60 shadow-[0_0_14px_var(--accent-glow)]" : highlighted ? "border-[color-mix(in_srgb,var(--accent)_30%,transparent)]" : "border-[var(--line)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`
     }, mode !== "lighting" && depth > 0.02 && /*#__PURE__*/React.createElement("span", {
       "aria-hidden": true,
@@ -36885,7 +36885,7 @@
     }, /*#__PURE__*/React.createElement("div", {
       className: "absolute inset-0 bg-black/65 backdrop-blur-md animate-[fadeIn_180ms_ease-out]"
     }), /*#__PURE__*/React.createElement("div", {
-      className: "relative w-[680px] max-w-[92vw] max-h-[90vh] overflow-hidden rounded-3xl\r bg-[#0e1220]/95 border border-white/[0.06]\r shadow-[0_40px_120px_-20px_rgba(0,0,0,0.85),0_0_0_1px_rgba(255,255,255,0.04)_inset]\r animate-[popIn_220ms_cubic-bezier(.2,.9,.3,1.1)]"
+      className: "relative w-[680px] max-w-[92vw] max-h-[90vh] overflow-hidden rounded-3xl bg-[#0e1220]/95 border border-white/[0.06] shadow-[0_40px_120px_-20px_rgba(0,0,0,0.85),0_0_0_1px_rgba(255,255,255,0.04)_inset] animate-[popIn_220ms_cubic-bezier(.2,.9,.3,1.1)]"
     }, /*#__PURE__*/React.createElement("div", {
       className: "px-7 pt-6 pb-3 flex items-start justify-between"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
@@ -38607,7 +38607,9 @@
      ============================================================ */
   const {
     useState,
-    useRef
+    useEffect,
+    useRef,
+    useMemo
   } = React;
   const S = window.AetherSections || {};
   const Slider = S.Slider,
@@ -39438,12 +39440,44 @@
     const KeyboardPanel = KB.KeyboardPanel;
     const {
       ledMap,
-      ledMapLive,
       perKeyColors,
       selectedKeys,
       setSelectedKeys,
-      connected
+      connected,
+      apiCall
     } = ctx;
+    const [lightFrame, setLightFrame] = useState(null);
+    useEffect(() => {
+      if (!connected) {
+        setLightFrame(null);
+        return;
+      }
+      let alive = true;
+      const id = setInterval(() => {
+        apiCall("get_light_frame").then(f => {
+          if (!alive) return;
+          const valid = f && typeof f === "object" && !(f.ok === false) && Object.keys(f).length ? f : null;
+          setLightFrame(prev => JSON.stringify(prev) === JSON.stringify(valid) ? prev : valid);
+        });
+      }, 50);
+      return () => {
+        alive = false;
+        clearInterval(id);
+      };
+    }, [connected]);
+    const ledMapLive = useMemo(() => {
+      if (!lightFrame) return null;
+      const m = {};
+      const rgbToHex = rgb => {
+        if (!rgb) return "";
+        const r = rgb[0].toString(16).padStart(2, "0");
+        const g = rgb[1].toString(16).padStart(2, "0");
+        const b = rgb[2].toString(16).padStart(2, "0");
+        return `#${r}${g}${b}`;
+      };
+      for (const code in lightFrame) m[code] = rgbToHex(lightFrame[code]);
+      return m;
+    }, [lightFrame]);
     if (typeof KeyboardPanel !== "function") {
       return /*#__PURE__*/React.createElement("div", {
         className: "font-mono text-[11px] text-[var(--text-faint)] p-2"
@@ -41987,7 +42021,7 @@
     const [polling, setPolling] = useState(8);
     const [travelTest, setTravelTest] = useState(false);
     const [liveDepths, setLiveDepths] = useState(null); // real per-key travel (mm)
-    const [lightFrame, setLightFrame] = useState(null); // live effect frame {code:[r,g,b]}
+
     const [calibrating, setCalibrating] = useState(false);
     const [calibratedKeys, setCalibratedKeys] = useState(() => new Set()); // codes confirmed calibrated by firmware
     const [lightNonce, setLightNonce] = useState(0); // bump to force-resend lighting (e.g. after calibration)
@@ -42638,32 +42672,8 @@
       };
     }, [connected, calibrating]);
 
-    // Mirror the live host effect onto the IN-APP keyboard: poll the current frame
-    // while on the Lighting tab and paint each key with its real animated color.
-    // The host engine streams cmd-9 pages to the board at 120fps under the GIL;
-    // a tight polling loop here starves it and makes the board look choppy.
-    // 50ms (~20fps) is plenty for the on-screen mirror and leaves the engine room.
-    useEffect(() => {
-      if (!connected || section !== "lighting") {
-        setLightFrame(null);
-        return;
-      }
-      let alive = true;
-      const id = setInterval(() => {
-        apiCall("get_light_frame").then(f => {
-          if (!alive) return;
-          const valid = f && typeof f === "object" && !(f.ok === false) && Object.keys(f).length ? f : null;
-          setLightFrame(prev => JSON.stringify(prev) === JSON.stringify(valid) ? prev : valid);
-        });
-      }, 50);
-      return () => {
-        alive = false;
-        clearInterval(id);
-      };
-    }, [connected, section]);
-
     // Deepest currently-pressed key, for the switch-cutaway animation.
-    const liveMax = useMemo(() => {
+    const liveMax = React.useMemo(() => {
       if (!liveDepths) return 0;
       let m = 0;
       for (const k in liveDepths) {
@@ -42672,14 +42682,6 @@
       }
       return m;
     }, [liveDepths]);
-
-    // Live effect colors for the in-app keyboard (overrides the static preview).
-    const ledMapLive = useMemo(() => {
-      if (!lightFrame) return null;
-      const m = {};
-      for (const code in lightFrame) m[code] = rgbToHex(lightFrame[code]);
-      return m;
-    }, [lightFrame]);
 
     // Hero badge & breadcrumb vary by section
     const breadcrumb = useMemo(() => {
@@ -42866,7 +42868,6 @@
       updateZone,
       removeZone,
       ledMap,
-      ledMapLive,
       // socd
       socdMode,
       setSocdMode,

@@ -8,7 +8,9 @@
      ============================================================ */
   const {
     useState,
-    useRef
+    useEffect,
+    useRef,
+    useMemo
   } = React;
   const S = window.AetherSections || {};
   const Slider = S.Slider,
@@ -839,12 +841,44 @@
     const KeyboardPanel = KB.KeyboardPanel;
     const {
       ledMap,
-      ledMapLive,
       perKeyColors,
       selectedKeys,
       setSelectedKeys,
-      connected
+      connected,
+      apiCall
     } = ctx;
+    const [lightFrame, setLightFrame] = useState(null);
+    useEffect(() => {
+      if (!connected) {
+        setLightFrame(null);
+        return;
+      }
+      let alive = true;
+      const id = setInterval(() => {
+        apiCall("get_light_frame").then(f => {
+          if (!alive) return;
+          const valid = f && typeof f === "object" && !(f.ok === false) && Object.keys(f).length ? f : null;
+          setLightFrame(prev => JSON.stringify(prev) === JSON.stringify(valid) ? prev : valid);
+        });
+      }, 50);
+      return () => {
+        alive = false;
+        clearInterval(id);
+      };
+    }, [connected]);
+    const ledMapLive = useMemo(() => {
+      if (!lightFrame) return null;
+      const m = {};
+      const rgbToHex = rgb => {
+        if (!rgb) return "";
+        const r = rgb[0].toString(16).padStart(2, "0");
+        const g = rgb[1].toString(16).padStart(2, "0");
+        const b = rgb[2].toString(16).padStart(2, "0");
+        return `#${r}${g}${b}`;
+      };
+      for (const code in lightFrame) m[code] = rgbToHex(lightFrame[code]);
+      return m;
+    }, [lightFrame]);
     if (typeof KeyboardPanel !== "function") {
       return /*#__PURE__*/React.createElement("div", {
         className: "font-mono text-[11px] text-[var(--text-faint)] p-2"

@@ -11,4 +11,4 @@ Keep installer.iss (#define MyAppVersion) and the Flatpak metainfo
 __version__ = "0.3.0"
 
 # owner/repo that releases are published under.
-GITHUB_REPO = "MrWhosNexus/aether-linux-app"
+GITHUB_REPO = "MrWhosNexus/Aether-HE"

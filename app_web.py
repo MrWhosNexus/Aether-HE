@@ -1195,7 +1195,7 @@ def main():
         width=1340, height=900, min_size=(1160, 800),
         background_color="#07080d",
     )
-    webview.start(_on_start, window)
+    webview.start(_on_start, window, debug=True, private_mode=False)
 
 
 if __name__ == "__main__":
