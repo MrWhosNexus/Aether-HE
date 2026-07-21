@@ -1505,6 +1505,39 @@ def test_api_list_boards_marks_connected_and_active(monkeypatch):
     assert by_slug["mini60-pro"]["active"] is True
     assert by_slug["mini60-pro-24g"]["connected"] is False
     assert by_slug["mini60-pro-24g"]["drivable"] is False
+    # `offered` must reach JS: the picker/wizard filter on it, nothing else.
+    assert by_slug["win60"]["offered"] is True          # undeclared -> drivable
+    assert by_slug["mini60-pro-24g"]["offered"] is False
+
+
+def test_api_list_boards_shared_vidpid_sibling_not_marked_connected(monkeypatch):
+    """THE board-picker bug of 2026-07-21, pinned against the REAL registry:
+    `connected` was keyed by (vid, pid), and the KP-TE153 ships as 2E3C:C365 —
+    the Win60's VID:PID — so plugging in a Win60 marked the (never-offered)
+    KP-TE153 "connected" and the picker listed it while both MINI 60 HE PRO
+    entries went missing. `connected` must be per-profile (slug), trusting
+    connected_profiles()'s product-string resolution of the attached device."""
+    reg = boards.load_registry()                       # the shipped registry
+    win60 = reg.by_slug("aula-win60-he")
+    a = _api()
+    a._registry = reg
+    a.board = win60
+    monkeypatch.setattr(app_web.drivers, "connected_profiles",
+                        lambda r, enumerate_fn=None: [win60])
+    out = a.list_boards()
+    assert out["ok"] is True
+    by_slug = {b["slug"]: b for b in out["boards"]}
+    assert by_slug["aula-win60-he"]["connected"] is True
+    # shared-VID:PID siblings of the Win60 must NOT read as connected
+    assert by_slug["aula-kp-te153"]["connected"] is False
+    assert by_slug["aula-win68-he"]["connected"] is False
+    # the user-facing picker contract: exactly these four are offered, and the
+    # two MINI 60 HE PRO entries stay offered while NOT connected
+    offered = {b["slug"] for b in out["boards"] if b["offered"]}
+    assert offered == {"aula-win60-he", "aula-win68-he",
+                       "aula-mini60he-pro", "aula-mini60he-pro-24g"}
+    assert by_slug["aula-mini60he-pro"]["connected"] is False
+    assert by_slug["aula-mini60he-pro-24g"]["connected"] is False
 
 
 def test_api_init_prefers_drivable_board(monkeypatch):

@@ -1411,8 +1411,8 @@ function App() {
         <Workspace section={section} widgets={WIDGETS[section] || []} ctx={ctx}/>
       </main>
 
-      {/* Board picker — renders null unless 2+ registered boards are connected,
-          so single-board machines see exactly the previous UI. */}
+      {/* Board picker — lists the registry's OFFERED boards (same flag as the
+          wizard) once the live roster arrives; renders null without a bridge. */}
       {BoardPicker && (
         <BoardPicker roster={boardRoster} active={board}
                      switching={boardSwitching} onSelect={selectBoard}/>

@@ -477,7 +477,12 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e), "boards": []}
         try:
-            attached = {(p.vid, p.pid) for p in drivers.connected_profiles(reg)}
+            # Keyed by SLUG, not (vid, pid): several registry entries share one
+            # VID:PID (the KP-TE153 ships as 2E3C:C365 like the Win60/Win68), so
+            # a pair-keyed set marked every sibling "connected" the moment one
+            # of them was plugged in. connected_profiles() already resolved the
+            # attached device to exactly one profile — trust that answer.
+            attached = {p.slug for p in drivers.connected_profiles(reg)}
         except Exception:
             attached = set()
         active_slug = self.board.slug if self.board else None
@@ -492,7 +497,7 @@ class Api:
              # UI surface must filter on THIS, not re-derive the rule from
              # `drivable`, or the two drift apart.
              "offered": p.offered,
-             "connected": (p.vid, p.pid) in attached,
+             "connected": p.slug in attached,
              "active": p.slug == active_slug}
             for p in reg.profiles
         ]

@@ -2,11 +2,13 @@
 /* ============================================================
    BoardPicker — multi-board chooser (PER_BOARD_PARITY_PLAN.md step 4).
 
-   Renders NOTHING unless two or more REGISTERED boards are physically
-   connected right now, so single-board users keep exactly today's UI.
+   Lists every board the registry OFFERS (`offered`, resolved from
+   `offerInUi`) — the same flag the setup wizard reads — whether or not the
+   hardware is plugged in right now. Renders NOTHING when the live roster
+   hasn't arrived (no bridge / plain-browser preview).
 
    Rules:
-   - The active board is marked; drivable connected boards can be switched
+   - The active board is marked; drivable offered boards can be switched
      to via select_board(slug).
    - Non-drivable boards (protocol not decoded — e.g. the Mini 60 HE Pro
      2.4GHz dongle) are listed but NOT selectable as drive targets, with the
@@ -87,11 +89,20 @@ function BoardPicker({ roster, active, switching, onSelect }) {
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  const connected = (roster || []).filter(b => b.connected);
-  // Single-board (or no-data) machines: stay invisible — today's UI, untouched.
-  if (connected.length < 2) return null;
+  // The boards this picker lists = registry entries the registry says may be
+  // OFFERED (`offered`, resolved from `offerInUi`) — the SAME flag the wizard
+  // reads, so the two pickers can never disagree. It is deliberately NOT a
+  // filter on `connected`: an offered board is pickable whether or not it is
+  // plugged in right now (select_board() rebinds; connect() then reports
+  // honestly if the hardware is absent). Filtering on `connected` was the bug
+  // this replaces — the KP-TE153 shares the Win60's VID:PID, so it read as
+  // "connected" and appeared here while never being offered at all.
+  // `offered` is undefined on older payloads -> fall back to `drivable`.
+  const offered = (roster || []).filter(b => b && (b.offered !== undefined ? b.offered : b.drivable));
+  // No roster yet (no bridge / plain-browser preview): stay invisible.
+  if (offered.length < 2) return null;
 
-  const current = active || connected.find(b => b.active) || null;
+  const current = active || offered.find(b => b.active) || null;
   const label = current ? current.name : "Select board";
   const doSelect = (slug) => { setOpen(false); onSelect && onSelect(slug); };
 
@@ -100,7 +111,7 @@ function BoardPicker({ roster, active, switching, onSelect }) {
       {/* Trigger — styled like the top bar's own chips (.topbar-status: 34px,
           radius 11, Impact title face) so it reads as part of that cluster. */}
       <button onClick={() => setOpen(o => !o)} disabled={!!switching}
-        title="Multiple boards are connected — choose which one Aether drives"
+        title="Choose which board Aether drives"
         className="flex items-center gap-2 h-[34px] pl-3 pr-2.5 rounded-[11px] border border-[var(--line)]
                    bg-[color-mix(in_srgb,var(--ink)_70%,transparent)] backdrop-blur-xl text-[var(--text)]
                    hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] transition-colors
@@ -109,7 +120,7 @@ function BoardPicker({ roster, active, switching, onSelect }) {
               style={{ background: "var(--good)", boxShadow: "0 0 8px var(--good)" }}/>
         <span className="font-title text-[13px] tracking-[0.04em] uppercase">{switching ? "Switching…" : label}</span>
         <span className="font-mono text-[9.5px] uppercase tracking-[0.2em] text-[var(--text-faint)]">
-          {connected.length} boards
+          {offered.length} boards
         </span>
         {IChevronD && <IChevronD size={12} className={`text-[var(--text-faint)] transition-transform ${open ? "rotate-180" : ""}`}/>}
       </button>
@@ -117,9 +128,9 @@ function BoardPicker({ roster, active, switching, onSelect }) {
       {open && (
         <div className="absolute top-full right-0 mt-1.5 w-[340px] p-1.5 menu-pop z-[61] animate-[fadeIn_140ms_ease-out]">
           <div className="px-2.5 pt-1.5 pb-2 font-mono text-[9px] uppercase tracking-[0.22em] text-[var(--text-faint)]">
-            Connected boards
+            Boards
           </div>
-          {connected.map(b => (
+          {offered.map(b => (
             <BoardRow key={b.slug} b={b} switching={!!switching} onSelect={doSelect}/>
           ))}
           <div className="h-px bg-[var(--line)] my-1"/>
