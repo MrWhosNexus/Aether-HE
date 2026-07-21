@@ -341,9 +341,14 @@ usage page `0xFF68` usage `0x61`, 64-byte frames.** All HARDWARE-VERIFIED:
   control is not something this hardware can do.
 - Gamepad: **not available**. There is no board-side gamepad command anywhere in
   the vendor SDK for this board.
-- SOCD, macros and calibration are SOURCE-ONLY: the commands were read out of the
-  vendor SDK but never captured or exercised. They are gated `wip` and the UI will
-  not drive them.
+- Macros: HARDWARE-VERIFIED. A 10-event macro composed by Aether's own encoder —
+  not a replay of a captured vendor frame — was written with `0x25`, read back
+  byte for byte with `0x15`, and the slot restored. Binding a macro to a key
+  (key table `0x12`/`0x22`, pageType 6) was verified separately by clearing 11
+  records and confirming the other 117 were preserved byte-identical.
+- SOCD and calibration are SOURCE-ONLY: the commands were read out of the vendor
+  SDK but never captured or exercised. They are gated `wip` and the UI will not
+  drive them.
 
 **2.4 GHz receiver, `0C45:FEFE`, product string `MINI 60 HE PRO Dongle`, usage page
 `0xFF60`, 32-byte frames.** Same protocol, half the frame size:
@@ -358,8 +363,14 @@ usage page `0xFF68` usage `0x61`, 64-byte frames.** All HARDWARE-VERIFIED:
   dongle contains only firmware-effect commands. Aether refuses host effects on the
   wireless profile so it cannot silently animate nothing. Firmware effects work
   fine wirelessly.
-- Dead zone, SOCD, macros and calibration stay `wip` over RF because none of them
-  was ever observed working across the bridge.
+- Macros are HARDWARE-VERIFIED over RF too: the same own-encoder macro round-tripped
+  byte for byte at 32-byte frames and the slot restored. Worth stating because the
+  prior expectation was the opposite — `0x32` streaming is accepted and dropped by
+  this bridge, so macros were assumed to fail as well. They don't. Capability over
+  this transport has to be tested per command; it cannot be inferred from the wired
+  result in either direction.
+- Dead zone, SOCD and calibration stay `wip` over RF because none of them was ever
+  observed working across the bridge.
 - **Transport gotcha worth knowing as a user:** with the USB-C cable plugged in the
   board runs wired and the receiver still enumerates but has nothing behind it.
   Aether therefore always prefers the wired entry when both are attached. If you
