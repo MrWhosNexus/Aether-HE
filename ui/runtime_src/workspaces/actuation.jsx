@@ -29,6 +29,23 @@ const ConfirmToast = ({ confirm }) => confirm ? (
   <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-[var(--accent)]">✓ {confirm}</span>
 ) : null;
 
+/* ============================================================
+   Board-awareness helpers (additive — PER_BOARD_PARITY_PLAN step 6).
+   ctx.board is the board-context value from components/board-context.jsx
+   (locked contract). Everything falls back to today's hardcoded values when
+   the board declares nothing, so the Win60 (and any unknown board) renders
+   exactly as before.
+   ============================================================ */
+const boardCtxOf = (ctx) =>
+  (ctx && ctx.board)
+  || (window.AetherBoard && window.AetherBoard.UNKNOWN_BOARD)
+  || { board: null, lighting: null, actuation: null,
+       cap: () => undefined, capState: () => "unknown", isSupported: () => true };
+
+/* [min, max] from a registry range with a hardcoded fallback (today's values). */
+const rangeOr = (r, fallback) =>
+  (Array.isArray(r) && r.length === 2 && isFinite(r[0]) && isFinite(r[1])) ? r : fallback;
+
 /* ===== Travel widget (actuation point + rapid trigger + live switch render) ===== */
 function TravelWidget(ctx) {
   const {
@@ -40,10 +57,22 @@ function TravelWidget(ctx) {
   const scope = selectedCount > 0 ? `${selectedCount} selected key${selectedCount > 1 ? "s" : ""}` : "no keys (select some)";
   const canApply = selectedCount > 0;
   const [confirm, flash] = useFlash();
+
+  /* Board awareness (additive): ranges from the registry actuation block when
+     present (the Win60's block equals today's hardcoded values), rapid-trigger
+     gated on the capability flag ("wip" = source-only = unavailable; unknown =
+     fail-open = render as today). */
+  const bctx = boardCtxOf(ctx);
+  const bact = bctx.actuation;
+  const boardName = (bctx.board && bctx.board.name) || "this board";
+  const [travelMin, travelMax] = rangeOr(bact && bact.travelRange, [0.1, 3.4]);
+  const [rtMin, rtMax] = rangeOr(bact && bact.rtRange, [0.05, 2.0]);
+  const rtState = bctx.capState ? bctx.capState("rapidTrigger") : "unknown";
+  const rtAvailable = rtState === "yes" || rtState === "unknown";
   const handleApplyTravel = () => {
     if (!canApply || !applyActuation) return;
     applyActuation();
-    const rt = rtEnabled ? ` · RT press ${rtPress.toFixed(2)}mm / release ${rtRelease.toFixed(2)}mm` : "";
+    const rt = (rtEnabled && rtAvailable) ? ` · RT press ${rtPress.toFixed(2)}mm / release ${rtRelease.toFixed(2)}mm` : "";
     flash(`Wrote ${actuation.toFixed(2)}mm to ${selectedCount} key${selectedCount === 1 ? "" : "s"}${rt}`);
   };
   return (
@@ -71,7 +100,7 @@ function TravelWidget(ctx) {
           <span className="font-display text-[11px] uppercase tracking-[0.16em] text-[var(--accent)]">{scope}</span>
         </div>
         <div className="mb-5">
-          <Slider label="Key Trigger Travel" value={actuation} min={0.1} max={3.4} step={0.05} unit="mm" onChange={setActuation}/>
+          <Slider label="Key Trigger Travel" value={actuation} min={travelMin} max={travelMax} step={0.05} unit="mm" onChange={setActuation}/>
           <div className="flex items-center gap-2 mt-2">
             <button onClick={() => setActuation(Math.max(0.1, actuation - 0.05))}
               className="w-7 h-7 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]">−</button>
@@ -82,23 +111,41 @@ function TravelWidget(ctx) {
               className="w-7 h-7 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]">+</button>
           </div>
         </div>
-        <label className="flex items-center gap-2 cursor-pointer select-none mb-3">
-          <span className={`w-4 h-4 rounded border grid place-items-center transition
-                            ${rtEnabled ? "border-[var(--accent)] bg-[var(--accent)]/20" : "border-[var(--line)] bg-white/[0.02]"}`}
-                onClick={() => setRtEnabled(!rtEnabled)}>
-            {rtEnabled && ICheck && <ICheck size={10} className="text-[var(--accent)]"/>}
-          </span>
-          <input type="checkbox" checked={rtEnabled} onChange={(e) => setRtEnabled(e.target.checked)} className="sr-only"/>
-          <span className="font-display text-[11.5px] uppercase tracking-[0.16em] text-[var(--text)]">Rapid Trigger</span>
-          {Chip && <Chip color="accent">RT</Chip>}
-        </label>
-        <p className="text-[11.5px] text-[var(--text-faint)] leading-relaxed mb-4">
-          Rapid Trigger dynamically actuates and resets your key based on your intent — perfect for counter-strafing and rebound presses.
-        </p>
-        {rtEnabled && (
-          <div className="grid grid-cols-2 gap-5 mt-4 p-4 rounded-lg border border-[var(--accent)]/20 bg-[var(--accent)]/[0.05]">
-            <Slider label="Press Sensitivity" value={rtPress} min={0.05} max={2.0} step={0.05} unit="mm" onChange={setRtPress}/>
-            <Slider label="Release Sensitivity" value={rtRelease} min={0.05} max={2.0} step={0.05} unit="mm" onChange={setRtRelease}/>
+        {rtAvailable ? (
+          <>
+            <label className="flex items-center gap-2 cursor-pointer select-none mb-3">
+              <span className={`w-4 h-4 rounded border grid place-items-center transition
+                                ${rtEnabled ? "border-[var(--accent)] bg-[var(--accent)]/20" : "border-[var(--line)] bg-white/[0.02]"}`}
+                    onClick={() => setRtEnabled(!rtEnabled)}>
+                {rtEnabled && ICheck && <ICheck size={10} className="text-[var(--accent)]"/>}
+              </span>
+              <input type="checkbox" checked={rtEnabled} onChange={(e) => setRtEnabled(e.target.checked)} className="sr-only"/>
+              <span className="font-display text-[11.5px] uppercase tracking-[0.16em] text-[var(--text)]">Rapid Trigger</span>
+              {Chip && <Chip color="accent">RT</Chip>}
+            </label>
+            <p className="text-[11.5px] text-[var(--text-faint)] leading-relaxed mb-4">
+              Rapid Trigger dynamically actuates and resets your key based on your intent — perfect for counter-strafing and rebound presses.
+            </p>
+            {rtEnabled && (
+              <div className="grid grid-cols-2 gap-5 mt-4 p-4 rounded-lg border border-[var(--accent)]/20 bg-[var(--accent)]/[0.05]">
+                <Slider label="Press Sensitivity" value={rtPress} min={rtMin} max={rtMax} step={0.05} unit="mm" onChange={setRtPress}/>
+                <Slider label="Release Sensitivity" value={rtRelease} min={rtMin} max={rtMax} step={0.05} unit="mm" onChange={setRtRelease}/>
+              </div>
+            )}
+          </>
+        ) : (
+          /* Unavailable — same info-box idiom as Dead Band / Switch / Calibration
+             (and the pre-existing Polling readout): bordered ink card, mono body. */
+          <div className="mb-4 p-4 rounded-lg border border-[var(--line)] bg-[rgba(5,11,14,0.5)]">
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="font-display text-[11.5px] uppercase tracking-[0.16em] text-[var(--text-dim)]">Rapid Trigger</span>
+              {Chip && <Chip color="accent">RT</Chip>}
+            </div>
+            <p className="font-mono text-[11px] text-[var(--text-dim)] leading-relaxed">
+              {rtState === "wip"
+                ? `Rapid trigger is not yet available on ${boardName} — its protocol is known only from vendor driver source and has not been verified on hardware, so Aether will not drive it.`
+                : `${boardName} does not support rapid trigger.`}
+            </p>
           </div>
         )}
         <div className="mt-6 flex items-center gap-3">
@@ -119,29 +166,72 @@ function TravelWidget(ctx) {
 function DeadBandWidget(ctx) {
   const { deadTop, setDeadTop, deadBottom, setDeadBottom, selectedKeys, applyDeadband } = ctx;
   const selectedCount = selectedKeys ? selectedKeys.size : 0;
-  const canApply = selectedCount > 0;
   const [confirm, flash] = useFlash();
+
+  /* Board awareness (additive). deadzoneScope "global" means the dead zones
+     live in ONE whole-board config table — a per-key control CANNOT work on
+     that hardware, so the widget becomes a single board-wide control. The
+     Win60 declares "per-key" (and unknown boards declare nothing), so both
+     take the original per-key path unchanged. */
+  const bctx = boardCtxOf(ctx);
+  const bact = bctx.actuation;
+  const boardName = (bctx.board && bctx.board.name) || "this board";
+  const globalScope = !!(bact && bact.deadzoneScope === "global");
+  const [dzMin, dzMax] = rangeOr(bact && bact.deadzoneRange, [0.0, 0.5]);
+  const dzState = bctx.capState ? bctx.capState("deadzone") : "unknown";
+  const canApply = globalScope ? true : selectedCount > 0;
+
   const handleApplyDead = () => {
     if (!canApply || !applyDeadband) return;
     applyDeadband();
-    flash(`Wrote dead band ${(deadTop ?? 0.04).toFixed(2)}/${(deadBottom ?? 0.05).toFixed(2)}mm to ${selectedCount} key${selectedCount === 1 ? "" : "s"}`);
+    flash(`Wrote dead band ${(deadTop ?? 0.04).toFixed(2)}/${(deadBottom ?? 0.05).toFixed(2)}mm to ${globalScope ? "the whole board" : `${selectedCount} key${selectedCount === 1 ? "" : "s"}`}`);
   };
+
+  /* Capability gate: "wip" = decoded from vendor source only, never proven on
+     hardware — do not drive it. The Win60 flag is a hard true (and unknown
+     boards fail open), so this branch never renders there. */
+  if (dzState === "wip" || dzState === "no") {
+    return (
+      <div>
+        <p className="text-[12px] text-[var(--text-dim)] mb-4">
+          Configure the dead-band region near the keycap's rest and bottom-out positions — noise inside this band is ignored.
+        </p>
+        <div className="p-4 rounded-lg border border-[var(--line)] bg-[rgba(5,11,14,0.5)] font-mono text-[11px] text-[var(--text-dim)] leading-relaxed">
+          {dzState === "wip"
+            ? `Dead-band control is not yet available on ${boardName} — its protocol is known only from vendor driver source and has not been verified on hardware, so Aether will not drive it.`
+            : `${boardName} does not support dead-band configuration.`}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <p className="text-[12px] text-[var(--text-dim)] mb-5">
-        Configure the dead-band region near the keycap's rest and bottom-out positions — noise inside this band is ignored. Press <span className="text-[var(--accent)]">Apply</span> to write to the selected keys.
+        {globalScope ? (
+          <>Configure the dead-band region near the keycap's rest and bottom-out positions — noise inside this band is ignored. On {boardName} the dead zones are a <span className="text-[var(--accent)]">single board-wide setting</span>: per-key dead bands are not possible on this hardware, so these values apply to every key at once.</>
+        ) : (
+          <>Configure the dead-band region near the keycap's rest and bottom-out positions — noise inside this band is ignored. Press <span className="text-[var(--accent)]">Apply</span> to write to the selected keys.</>
+        )}
       </p>
+      {globalScope && (
+        <div className="mb-5 inline-flex items-center gap-2 px-3 h-7 rounded-md border border-[var(--accent)]/30 bg-[var(--accent)]/[0.06]">
+          <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-dim)]">Scope</span>
+          <span className="font-display text-[11px] uppercase tracking-[0.16em] text-[var(--accent)]">Whole board · every key</span>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-6">
-        <Slider label="Top Dead Band" value={deadTop ?? 0.04} min={0} max={0.5} step={0.01} unit="mm" onChange={setDeadTop}/>
-        <Slider label="Bottom Dead Band" value={deadBottom ?? 0.05} min={0} max={0.5} step={0.01} unit="mm" onChange={setDeadBottom}/>
+        <Slider label="Top Dead Band" value={deadTop ?? 0.04} min={dzMin} max={dzMax} step={0.01} unit="mm" onChange={setDeadTop}/>
+        <Slider label="Bottom Dead Band" value={deadBottom ?? 0.05} min={dzMin} max={dzMax} step={0.01} unit="mm" onChange={setDeadBottom}/>
       </div>
       <div className="mt-6 flex items-center gap-3">
         <button onClick={handleApplyDead} disabled={!canApply} className={applyBtnCls(canApply)}>
-          Apply to {selectedCount || 0} key{selectedCount === 1 ? "" : "s"}
+          {globalScope ? "Apply to whole board" : <>Apply to {selectedCount || 0} key{selectedCount === 1 ? "" : "s"}</>}
         </button>
         {confirm ? <ConfirmToast confirm={confirm}/>
           : <span className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-[var(--text-faint)]">
-              {canApply ? "writes only the selected keys" : "select keys on the board to enable"}
+              {globalScope ? "one pair of values for every key — key selection is ignored"
+                : canApply ? "writes only the selected keys" : "select keys on the board to enable"}
             </span>}
       </div>
     </div>
@@ -161,15 +251,48 @@ const SWITCHES = [
 ];
 function SwitchWidget(ctx) {
   const { switchId, handlePickSwitch } = ctx;
-  const cur = SWITCHES.find(s => s.id === (switchId || "hm1")) || SWITCHES[0];
+
+  /* Board awareness (additive): the switch/axis list comes from the registry
+     actuation block when the board declares one. The Win60's registry list
+     carries the same four ids as the hardcoded list below, and matching ids
+     keep the hardcoded display fields verbatim — so the Win60 renders
+     byte-identically. A board that declares an EMPTY list (axis ids never
+     verified on hardware) gets an honest explanation instead of a picker.
+     No board data at all -> today's hardcoded list (fail-open). */
+  const bctx = boardCtxOf(ctx);
+  const bact = bctx.actuation;
+  const boardName = (bctx.board && bctx.board.name) || "this board";
+  let switchList = SWITCHES;
+  if (bact && Array.isArray(bact.switches)) {
+    if (bact.switches.length === 0) {
+      return (
+        <div>
+          <p className="text-[12px] text-[var(--text-dim)] mb-5">
+            Select the magnetic switch profile installed in your board. Calibration curves load automatically.
+          </p>
+          <div className="p-4 rounded-lg border border-[var(--line)] bg-[rgba(5,11,14,0.5)] font-mono text-[11px] text-[var(--text-dim)] leading-relaxed">
+            No verified switch list for {boardName} yet — this board selects its magnetic
+            axis per key by an id that has never been read back from hardware. Aether
+            will not guess axis ids, so the switch picker stays disabled.
+          </div>
+        </div>
+      );
+    }
+    switchList = bact.switches.map(s => {
+      const legacy = SWITCHES.find(x => x.id === s.id);
+      return legacy ? { ...s, ...legacy } : s;
+    });
+  }
+  const defaultId = (switchList[0] && switchList[0].id) || "hm1";
+  const cur = switchList.find(s => s.id === (switchId || defaultId)) || switchList[0];
   return (
     <div>
       <p className="text-[12px] text-[var(--text-dim)] mb-5">
         Select the magnetic switch profile installed in your board. Calibration curves load automatically.
       </p>
       <div className="grid grid-cols-2 gap-3 mb-5">
-        {SWITCHES.map(s => {
-          const active = (switchId || "hm1") === s.id;
+        {switchList.map(s => {
+          const active = (switchId || defaultId) === s.id;
           return (
           <button key={s.id} onClick={() => handlePickSwitch && handlePickSwitch(s.id)}
             className={`text-left rounded-lg border p-3 transition-all
@@ -193,9 +316,9 @@ function SwitchWidget(ctx) {
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3 font-mono text-[11px]">
           {[
-            ["Total Travel", cur.travel], ["Actuation Range", cur.range],
-            ["Initial Force", cur.force], ["Sensing", cur.poles + " Hall"],
-            ["Rated Life", cur.life + " presses"], ["Tech", "Magnetic / Analog"],
+            ["Total Travel", cur.travel || "—"], ["Actuation Range", cur.range || "—"],
+            ["Initial Force", cur.force || "—"], ["Sensing", cur.poles ? cur.poles + " Hall" : "—"],
+            ["Rated Life", cur.life ? cur.life + " presses" : "—"], ["Tech", "Magnetic / Analog"],
           ].map(([k, v]) => (
             <div key={k}>
               <div className="text-[var(--text-faint)] uppercase tracking-[0.14em] text-[9.5px]">{k}</div>
@@ -238,6 +361,27 @@ function PollingWidget(ctx) {
 /* ===== Calibration widget ===== */
 function CalibrationWidget(ctx) {
   const { calibrating, handleCalibrate } = ctx;
+
+  /* Board awareness (additive): gate on the calibration capability. "wip"
+     means the commands are only known from vendor driver source — never
+     verified on hardware — and must not be driven. The Win60 flag is a hard
+     true (and unknown boards fail open), so it renders exactly as today. */
+  const bctx = boardCtxOf(ctx);
+  const calState = bctx.capState ? bctx.capState("calibration") : "unknown";
+  if (calState === "wip" || calState === "no") {
+    const boardName = (bctx.board && bctx.board.name) || "this board";
+    return (
+      <div>
+        <div className="font-display text-[12px] uppercase tracking-[0.18em] text-[var(--text)] mb-3">Key Calibration</div>
+        <div className="p-4 rounded-lg border border-[var(--line)] bg-[rgba(5,11,14,0.5)] font-mono text-[11px] text-[var(--text-dim)] leading-relaxed max-w-2xl">
+          {calState === "wip"
+            ? `Calibration is not yet available on ${boardName} — its protocol is known only from vendor driver source and has not been verified on hardware, so Aether will not drive it.`
+            : `${boardName} does not support key calibration.`}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="font-display text-[12px] uppercase tracking-[0.18em] text-[var(--text)] mb-3">Key Calibration</div>
@@ -273,4 +417,6 @@ const ACTUATION_WIDGETS = [
 
 window.AetherWorkspaces = window.AetherWorkspaces || {};
 window.AetherWorkspaces.ACTUATION_WIDGETS = ACTUATION_WIDGETS;
+// Pure board-awareness helpers exported for verification (no UI reads these).
+window.AetherWorkspaces.ACTUATION_BOARD = { SWITCHES, rangeOr, boardCtxOf };
 })();

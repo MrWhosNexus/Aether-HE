@@ -7,7 +7,7 @@
    ctx.* and window.pywebview.api.* exactly like the existing sections.
 
    4 steps:
-     1) Board selection   (from the board registry — Aula Win60 HE supported)
+     1) Board selection   (drivable registry boards only — decoded protocol)
      2) Board layout preview (reuses window.AetherKeyboard.KeyboardPanel, read-only)
      3) Animation how-to  (points at the Lighting workspace)
      4) JSON import       (returning users: file -> parse -> ctx.applyState)
@@ -26,23 +26,50 @@ const BOARD_ISSUE_URL =
 const LS_BOARD = "aether-board";
 const LS_DONE  = "aether-setup-done";
 
-/* The supported-board list mirrors data/board_registry.json (read-only; the
-   file itself is backend-owned and not imported at build time). Only boards
-   whose protocol is wired are selectable; the rest read "coming soon". */
+/* Static fallback list — mirrors the data/board_registry.json entries whose
+   protocol is DECODED (drivable), used only when the live roster isn't up yet
+   (no bridge, plain-browser preview). The wizard offers ONLY boards Aether can
+   actually drive; identity-only registry entries (dongles, un-captured PIDs)
+   stay in the registry so a plugged-in board is still recognised, but they are
+   never pickable here. */
 const BOARDS = [
-  { slug: "aula-win60-he",      name: "Aula Win60 HE",       form: "60%", status: "supported" },
-  { slug: "aula-win60he-pro",   name: "Aula WIN 60 HE Pro",  form: "60%", status: "bringup"   },
-  { slug: "aula-mini60he-max",  name: "Aula MINI60HE Max",   form: "60%", status: "bringup"   },
-  { slug: "aula-mini60he-pro",  name: "Aula Mini 60 HE Pro", form: "60%", status: "planned"   },
-  { slug: "aula-win60he-max",   name: "Aula Win60 HE Max",   form: "60%", status: "planned"   },
-  { slug: "aula-win68he-max",   name: "Aula win68 HE Max",   form: "65%", status: "planned"   },
-  { slug: "aula-f75-tri-mode",  name: "Aula F75 Tri-Mode",   form: "75%", status: "planned"   },
+  { slug: "aula-win60-he",      name: "Aula Win60 HE",              form: "60%", status: "supported" },
+  { slug: "aula-win68-he",      name: "Aula WIN 68 HE",             form: "65%", status: "bringup"   },
+  { slug: "aula-kp-te153",      name: "Aula KP-TE153",              form: "65%", status: "bringup"   },
+  { slug: "aula-mini60he-max",  name: "Aula MINI60HE Max",          form: "60%", status: "bringup"   },
+  { slug: "aula-mini60he-pro",  name: "Aula Mini 60 HE Pro (wired)", form: "60%", status: "supported" },
+  { slug: "aula-win60he-pro",   name: "Aula WIN 60 HE Pro",         form: "60%", status: "bringup"   },
 ];
 
 const STATUS_LABEL = {
   supported: "Supported",
   bringup:   "Bring-up",
-  planned:   "Coming soon",
+};
+
+/* The boards the wizard offers = registry entries with a decoded protocol
+   (`drivable`). Prefers the LIVE roster the app already fetched over the
+   bridge (ctx.board.roster mirrors list_boards() — see board-context.jsx),
+   so the wizard tracks the registry with no rebuild; falls back to the static
+   mirror above. Filter is on `drivable`, NOT `connected`: a drivable board is
+   offered whether or not it's plugged in right now. */
+const drivableBoards = (ctx) => {
+  const roster = (ctx && ctx.board && Array.isArray(ctx.board.roster)) ? ctx.board.roster : [];
+  const live = roster.filter(b => b && b.drivable);
+  if (live.length) {
+    return live.map(b => ({
+      slug: b.slug, name: b.name,
+      form: b.formFactor || "", status: b.status || "bringup",
+    }));
+  }
+  return BOARDS;
+};
+
+/* Recognised-but-not-drivable boards that are attached RIGHT NOW (identity-only
+   registry entries — e.g. the 2.4GHz dongles). Not pickable, but if one is
+   plugged in the wizard says so honestly instead of silently hiding it. */
+const recognisedUndrivable = (ctx) => {
+  const roster = (ctx && ctx.board && Array.isArray(ctx.board.roster)) ? ctx.board.roster : [];
+  return roster.filter(b => b && b.connected && !b.drivable);
 };
 
 const STEPS = ["Board", "Layout", "Animations", "Import"];
@@ -63,14 +90,16 @@ const markDone = () => {
    Step 1 — Board selection.
    ============================================================ */
 function StepBoard({ board, setBoard, ctx, onClose }) {
+  const boards = drivableBoards(ctx);
+  const detected = recognisedUndrivable(ctx);
   return (
     <div>
       <h2 className="font-title" style={{ fontSize: 28, letterSpacing: "0.04em", marginBottom: 6 }}>
         SELECT YOUR BOARD
       </h2>
       <p style={{ fontSize: 12.5, opacity: 0.7, marginBottom: 16 }}>
-        Aether targets the Aula Win60 HE today. Pick your board — more are being
-        brought up. Don't see yours?{" "}
+        Every board listed here has a decoded protocol — Aether can drive it
+        today. More are being brought up. Don't see yours?{" "}
         <a href={BOARD_ISSUE_URL} target="_blank" rel="noopener noreferrer"
            style={{ color: "var(--accent)", textDecoration: "underline" }}>
           Submit your board
@@ -78,21 +107,18 @@ function StepBoard({ board, setBoard, ctx, onClose }) {
       </p>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-        {BOARDS.map(b => {
-          const selectable = b.status === "supported" || b.status === "bringup";
+        {boards.map(b => {
           const on = board === b.slug;
           return (
             <button
               key={b.slug}
-              disabled={!selectable}
-              onClick={() => selectable && setBoard(b.slug)}
+              onClick={() => setBoard(b.slug)}
               className="glass"
               style={{
                 textAlign: "left",
                 padding: "12px 14px",
                 borderRadius: 10,
-                cursor: selectable ? "pointer" : "not-allowed",
-                opacity: selectable ? 1 : 0.45,
+                cursor: "pointer",
                 outline: on ? "2px solid var(--accent)" : "1px solid var(--line)",
                 boxShadow: on ? "0 0 18px var(--accent-glow)" : "none",
                 transition: "all 150ms",
@@ -117,6 +143,20 @@ function StepBoard({ board, setBoard, ctx, onClose }) {
         })}
       </div>
 
+      {/* Honest note when a plugged-in board is recognised but not driveable yet
+          (identity-only registry entry — protocol not decoded). */}
+      {detected.length > 0 && (
+        <div className="glass" style={{ marginTop: 12, padding: "10px 14px", borderRadius: 10,
+                                        fontSize: 12, opacity: 0.8, lineHeight: 1.5 }}>
+          {detected.map(b => (
+            <div key={b.slug}>
+              Detected <strong>{b.name}</strong> ({b.vidPid}) — Aether recognises it,
+              but its protocol hasn't been decoded yet, so it can't be set up here.
+            </div>
+          ))}
+        </div>
+      )}
+
       <button className="btn" onClick={() => { onClose(); ctx && ctx.setSubmitOpen && ctx.setSubmitOpen(true); }}
         style={{ marginTop: 14 }}>
         My board isn&rsquo;t listed → Submit it
@@ -128,10 +168,11 @@ function StepBoard({ board, setBoard, ctx, onClose }) {
 /* ============================================================
    Step 2 — Board layout preview (reuse KeyboardPanel, read-only).
    ============================================================ */
-function StepLayout({ board }) {
+function StepLayout({ board, ctx }) {
   const KB = window.AetherKeyboard || {};
   const KeyboardPanel = KB.KeyboardPanel;
-  const info = BOARDS.find(b => b.slug === board) || BOARDS[0];
+  const boards = drivableBoards(ctx);
+  const info = boards.find(b => b.slug === board) || boards[0];
   // Read-only preview: a frozen empty selection + no-op setter so nothing is
   // editable and no device is needed. Only the Win60 HE layout is bundled in
   // keyboard.jsx today; other boards show the layout note instead.
@@ -323,6 +364,17 @@ function SetupWizard({ open, onClose, ctx }) {
   // Reset to first step each time the wizard is (re)opened.
   useEffect(() => { if (open) setStep(0); }, [open]);
 
+  // If the remembered board is no longer offered (e.g. an identity-only slug
+  // left over from an older build), snap to the first drivable board.
+  useEffect(() => {
+    if (!open) return;
+    const boards = drivableBoards(ctx);
+    if (boards.length && !boards.some(b => b.slug === board)) {
+      setBoardState(boards[0].slug);
+      saveBoard(boards[0].slug);
+    }
+  }, [open]);
+
   const setBoard = (slug) => { setBoardState(slug); saveBoard(slug); };
 
   const finish = () => {
@@ -342,7 +394,7 @@ function SetupWizard({ open, onClose, ctx }) {
 
   let body = null;
   if (step === 0) body = <StepBoard board={board} setBoard={setBoard} ctx={c} onClose={close} />;
-  else if (step === 1) body = <StepLayout board={board} />;
+  else if (step === 1) body = <StepLayout board={board} ctx={c} />;
   else if (step === 2) body = <StepAnimations ctx={c} />;
   else body = <StepImport ctx={c} />;
 

@@ -24,6 +24,13 @@ FPS = 60   # 120 saturated the USB pipe (8 cmd-9 pages/frame × 120 = 960 HID
 # Per-frame spawn probabilities (rain/twinkle/frenzy) were tuned at 30 fps; scale
 # them by this so spawn DENSITY stays the same regardless of frame rate.
 _SPAWN_NORM = 30.0 / FPS
+# NOTE: FPS/_SPAWN_NORM remain the engine DEFAULTS. A board may declare a lower
+# sustainable stream rate in the registry (lighting.hostEngineMaxFps — e.g. the
+# MINI 60 HE PRO's 0x32 live stream sustains 27.7 fps, HARDWARE-VERIFIED
+# 2026-07-20, so it declares 28); the engine instance then paces to that cap
+# and re-derives its own spawn normalisation so particle DENSITY is identical
+# at any rate. A cap can only LOWER the rate: the Win60 declares 120, which is
+# above the 60 fps default, so its pacing and spawn behaviour are unchanged.
 
 
 def _scale(rgb, f):
@@ -85,9 +92,20 @@ class PerKeyEffectEngine:
     physical layout (normalized over the whole board, not per-zone).
     """
 
-    def __init__(self, km, send_frame):
+    def __init__(self, km, send_frame, max_fps=None):
         self.km = km
         self._send = send_frame
+        # Per-board frame-rate cap (registry lighting.hostEngineMaxFps).
+        # None/0 -> the module default. The cap can only LOWER the rate, so a
+        # board declaring more than FPS (Win60: 120) runs exactly as before.
+        cap = float(max_fps) if max_fps else 0.0
+        self.fps = min(FPS, cap) if cap > 0 else float(FPS)
+        self._frame_interval = 1.0 / self.fps
+        # Spawn-density normalisation for THIS instance's rate (the module
+        # _SPAWN_NORM is the same formula at the default FPS): tuned at 30 fps,
+        # scaled so per-second spawn density is rate-independent — a 28 fps
+        # board gets the full intended particle count, not 28/60 of it.
+        self._spawn_norm = 30.0 / self.fps
         self._thread = None
         self._stop = threading.Event()
         self.zones = []
@@ -187,7 +205,7 @@ class PerKeyEffectEngine:
                 self._send(frame)      # palette already gamma-corrected; bg left linear
             except Exception:
                 break
-            time.sleep(1.0 / FPS)
+            time.sleep(self._frame_interval)   # == 1/FPS unless the board caps lower
 
     # ---- zone generators: (zone, t, frame) -> writes frame[idx] for idx in zone ----
     def _g_static(self, z, t, frame):
@@ -197,7 +215,7 @@ class PerKeyEffectEngine:
     def _g_twinkle(self, z, t, frame):
         life = 1.4 - z.speed
         for idx in z.indices:
-            if idx not in z.state and random.random() < (0.10 + z.speed * 0.35) / max(1, len(z.indices)) * 6 * _SPAWN_NORM:
+            if idx not in z.state and random.random() < (0.10 + z.speed * 0.35) / max(1, len(z.indices)) * 6 * self._spawn_norm:
                 z.state[idx] = (t, random.choice(z.palette))
         for idx in z.indices:
             tw = z.state.get(idx)
@@ -453,7 +471,7 @@ class PerKeyEffectEngine:
         if not bursts and not z.state.get("seeded"):
             z.state["seeded"] = True
             bursts.append((t, random.choice(z.palette), random.random(), random.random()))
-        if random.random() < (0.22 + z.speed * 0.35) * _SPAWN_NORM:
+        if random.random() < (0.22 + z.speed * 0.35) * self._spawn_norm:
             bursts.append((t, random.choice(z.palette), random.random(), random.random()))
         alive = []
         for (t0, col, bx, by) in bursts:
@@ -518,7 +536,7 @@ class PerKeyEffectEngine:
         drops = z.state.setdefault("drops", [])
         fall = 2.6 + z.speed * 7.0                          # cells / second
         TRAIL = 5.0                                         # long fading tail
-        if random.random() < (0.55 + z.speed * 0.9) * _SPAWN_NORM:   # dense curtain
+        if random.random() < (0.55 + z.speed * 0.9) * self._spawn_norm:   # dense curtain
             ck = random.choice(list(cols.keys()))
             drops.append([t, ck, random.choice(z.palette)])
         up = z.direction == 2

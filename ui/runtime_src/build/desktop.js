@@ -26,6 +26,30 @@
   const GRID = 8;
   const snap = v => Math.max(0, Math.round(v / GRID) * GRID);
 
+  /* ============================================================
+     Active-board name for the top-bar status chip (additive).
+     The chip used to be the hardcoded string "WIN 60 HE", which read wrong
+     the moment Aether became multi-board. It now shows whichever board is
+     actually selected.
+  
+     Resolved at module scope so the hook below is unconditional: if the
+     board-context module isn't loaded (or nothing is selected) we fall back
+     to a private context whose value is null, and the chip renders exactly
+     the string it always did. The Win60 keeps its historical label verbatim
+     via BOARD_CHIP_LABEL rather than a derived one, so its UI is unchanged.
+     ============================================================ */
+  const BOARD_CTX = window.AetherBoard && window.AetherBoard.BoardContext || React.createContext(null);
+  const BOARD_CHIP_LABEL = {
+    "aula-win60-he": "WIN 60 HE"
+  };
+  const boardChipName = board => {
+    if (!board) return "WIN 60 HE"; // fail-open: today's string
+    if (BOARD_CHIP_LABEL[board.slug]) return BOARD_CHIP_LABEL[board.slug];
+    return String(board.name || "").replace(/^aula\s+/i, "") // vendor prefix is noise here
+    .replace(/\s*\([^)]*\)\s*/g, " ") // drop "(wired)" / "(2.4GHz dongle)"
+    .trim().toUpperCase() || "KEYBOARD";
+  };
+
   /* ---- geometry persistence ---- */
   const geoKey = (workspace, id) => `aether-wgt:${workspace}:${id}`;
   const loadGeo = (workspace, id) => {
@@ -340,6 +364,8 @@
     setZoom
   }) {
     const defs = sections || SECTION_DEFS;
+    const bctx = React.useContext(BOARD_CTX);
+    const chipName = boardChipName(bctx && bctx.board);
     return /*#__PURE__*/React.createElement("header", {
       className: "topbar"
     }, /*#__PURE__*/React.createElement("div", {
@@ -371,8 +397,9 @@
     }, /*#__PURE__*/React.createElement("span", {
       className: "topbar-dot"
     }), /*#__PURE__*/React.createElement("span", {
-      className: "font-title"
-    }, "WIN 60 HE"), /*#__PURE__*/React.createElement("span", {
+      className: "font-title",
+      title: bctx && bctx.board && bctx.board.vidPid || ""
+    }, chipName), /*#__PURE__*/React.createElement("span", {
       className: "topbar-state"
     }, connected ? "Linked" : "Offline")), /*#__PURE__*/React.createElement("label", {
       className: "topbar-auto",

@@ -139,6 +139,285 @@
   const PRESET_PALETTES = [["#9d4edd"], ["#00f5ff"], ["#ff3d6e"], ["#39ff8a"], ["#9d4edd", "#00f5ff"], ["#ff7a59", "#ffaa1f"], ["#ff3d6e", "#ffaa1f", "#39ff8a"], ["#ff3d6e", "#ffaa1f", "#39ff8a", "#3b82f6"]];
   const BG_SWATCHES = ["#000000", "#0b0f19", "#1a0833", "#001318", "#0a1f10", "#241400", "#2a0814", "#ffffff"];
 
+  /* ============================================================
+     Board-awareness helpers (additive — PER_BOARD_PARITY_PLAN step 5).
+     Every helper falls back to today's hardcoded behaviour when the board
+     declares nothing, so the Win60 (and any unknown board) renders exactly
+     as before. ctx.board is the board-context value from
+     components/board-context.jsx (locked contract).
+     ============================================================ */
+  const boardCtxOf = ctx => ctx && ctx.board || window.AetherBoard && window.AetherBoard.UNKNOWN_BOARD || {
+    board: null,
+    lighting: null,
+    actuation: null,
+    cap: () => undefined,
+    capState: () => "unknown",
+    isSupported: () => true
+  };
+
+  /* Icons for registry-declared firmware modes today's hardcoded grid doesn't
+     know about (e.g. the HFD boards' own effect set). Fallback glyph: ▣ */
+  const DATA_MODE_ICONS = {
+    "reactive-single": "☼",
+    "extinguish-single": "◌",
+    "starry-sky": "✦",
+    "snowfall": "❆",
+    "blossoming": "✻",
+    "dynamic-breathing": "○",
+    "spectrum-cycle": "◎",
+    "color-spring": "↟",
+    "colorful-cross": "✚",
+    "drifting": "〰",
+    "twisting-path": "∿",
+    "double-tap": "◉",
+    "ripple-spread": "◎",
+    "flowing": "≈",
+    "mountain-peaks": "⋀",
+    "gentle-rain": "☂",
+    "shuttle": "⇄"
+  };
+
+  /* Per-mode control rule from the board's registry mode table (or null). */
+  const modeRuleFor = (bl, id) => bl && Array.isArray(bl.modes) && bl.modes.find(m => m.id === id) || null;
+
+  /* Build the mode grid for the active board.
+     - No board lighting data  -> today's hardcoded LIGHT_MODES (fail-open).
+     - hostEngine board (Win60 family) -> today's grid IS the product (host
+       effects + firmware modes share it); only append registry modes the grid
+       doesn't already know. For the Win60 the registry ids are a strict subset
+       of LIGHT_MODES, so this returns LIGHT_MODES unchanged.
+     - firmware-only board (hostEngine === false) -> the registry mode table is
+       the whole truth: host-animated entries (rain/comet/tide/…) are not
+       offered, because they stream per-key RGB frames from the PC and that
+       path is unproven on such boards (see the note rendered under the grid). */
+  const modeGridFor = bl => {
+    if (!bl || !Array.isArray(bl.modes) || bl.modes.length === 0) return LIGHT_MODES;
+    if (bl.hostEngine !== false) {
+      const known = new Set(LIGHT_MODES.map(m => m.id));
+      const extra = bl.modes.filter(m => !known.has(m.id)).map(m => ({
+        id: m.id,
+        label: m.name || m.id,
+        icon: DATA_MODE_ICONS[m.id] || "▣"
+      }));
+      return extra.length ? LIGHT_MODES.concat(extra) : LIGHT_MODES;
+    }
+    return bl.modes.map(m => {
+      const legacy = LIGHT_MODES.find(x => x.id === m.id);
+      return {
+        id: m.id,
+        label: m.name || legacy && legacy.label || m.id,
+        icon: DATA_MODE_ICONS[m.id] || legacy && legacy.icon || "▣"
+      };
+    });
+  };
+
+  /* ============================================================
+     Host-engine frame-rate awareness (additive).
+     The host effect engine runs at 60 fps (effects.FPS — a 120 bump was
+     reverted because it saturated the USB pipe; keep the constant below in
+     step with effects.FPS). A board that sustains the per-key stream at a
+     lower rate declares `hostEngineMaxFps` in its registry lighting block
+     (e.g. the MINI 60 HE PRO: measured 28). A MISSING hostEngineMaxFps means
+     "no cap / full speed", so a board that does not declare it — and the
+     fail-open no-board path — renders exactly as today.
+  
+     Motion-rate classification is owned HERE (the registry does not carry
+     it). Press-reactive effects need live key travel and fast response, so
+     they read as choppy on a low-fps board; the ambient/slow set looks right
+     even at ~28 fps. From CLAUDE.md + effects.py:
+       press-reactive: reactive, ripple, speedres, cross, fireworks
+       ambient/slow:   rain, aurora, autorip, striation, twinkle, breath,
+                       frenzy, comet, tide
+     wave / neon / radar are classified ambient here as well (slow sweeps /
+     pulses, no press input); static has no motion; custom is the zone
+     container (its zone modes carry the same ≈ marker in the Effect Preview
+     widget — the fps fact itself is stated ONCE, under the mode grid). */
+  const HOST_ENGINE_TARGET_FPS = 60;
+  const HOST_FX_FAST = new Set(["reactive", "ripple", "speedres", "cross", "fireworks"]);
+  /* Declared cap in fps, or null when the board declares none (= full speed). */
+  const hostFpsCapOf = bl => bl && bl.hostEngine !== false && typeof bl.hostEngineMaxFps === "number" && bl.hostEngineMaxFps > 0 ? bl.hostEngineMaxFps : null;
+  /* The cap, but only when it is meaningfully below the engine target
+     (< 75% of 60 fps) — otherwise null, i.e. nothing worth surfacing. */
+  const hostFpsLimited = bl => {
+    const cap = hostFpsCapOf(bl);
+    return cap != null && cap < HOST_ENGINE_TARGET_FPS * 0.75 ? cap : null;
+  };
+
+  /* ============================================================
+     Per-board lighting dispatch (firmware set_light vs host start_multicolor).
+  
+     THE BUG THIS FIXES: app.jsx used to decide with
+         useHost = power && !fullColor && pattern !== "static";
+         else set_light(MODE_BYTE[pattern] ?? 0, ...)
+     where MODE_BYTE is the hardcoded Win60 cmd-7 table. On any other board that
+     is wrong twice over: the board's own firmware modes (e.g. the MINI 60 HE
+     PRO's starry-sky/snowfall/...) are missing from that table, so `?? 0`
+     silently sends byte 0 — which on the MINI means LIGHTS OFF — and shared ids
+     resolve to the WRONG byte (static is 0 on the Win60 but 1 on the MINI).
+  
+     THE RULE LANDED HERE (single source of truth, used by app.jsx at send time
+     and by the verification harness against raw registry data):
+       1. Boards with a registry mode table (board.lighting.modes) resolve the
+          selected id against THAT table. While powered and not in Full-RGB, an
+          id the host engine can generate (HOST_FX_IDS == effects.py's table)
+          runs on the host when the board allows it (hostEngine !== false) —
+          the exact precedence the shipped Win60 build has always used.
+          Everything else is a firmware set_light with THIS board's byte.
+       2. An unknown id NEVER falls back to `?? 0`: it resolves to the board's
+          own declared static mode (never a byte that can mean OFF) and carries
+          a `notice` string so the UI can say so out loud.
+       3. Power-off prefers the board's declared offModeByte (MINI: 0). Boards
+          that don't declare one (Win60) keep today's byte-identical behaviour:
+          the resolved mode byte with the power flag low.
+       4. Per-mode registry rules are honoured when building the set_light args:
+          brightness/speed scale to the board's brightnessMax/speedMax (Win60
+          4 == the legacy constants, so its bytes are unchanged; MINI is 0..5),
+          and a `direction: true` rule (2-way byte) clamps the 4-way dial to 0/1.
+       5. No registry table at all (no bridge / no board data) -> call:"legacy",
+          and app.jsx falls through to exactly today's shipped code path.
+     ============================================================ */
+  /* Host-engine effect generators that exist in effects.py (its `gens` table),
+     minus the internal 'static'/'calibrate' entries — static dispatches to
+     firmware (today's rule) and calibrate is engine-internal. Keep in step with
+     effects.py; ids sent to start_multicolor MUST come from this set so the
+     engine never silently falls back on an id it doesn't know. */
+  const HOST_FX_IDS = new Set(["wave", "neon", "radar", "cross", "breath", "aurora", "ripple", "twinkle", "reactive", "striation", "fireworks", "frenzy", "autorip", "speedres", "rain", "comet", "tide"]);
+
+  /* Local copies of app.jsx's color/step helpers (this file loads first, so it
+     cannot import them; keep in step). briByteFor/spdByteFor generalise the
+     legacy briByte/spdByte to a per-board max — with max 4 they are the same
+     function, so Win60 bytes are provably unchanged. */
+  const hexToRgb = hex => {
+    const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || "");
+    return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : [0, 0, 0];
+  };
+  const briByteFor = (pct, max) => pct <= 0 ? 0 : Math.max(1, Math.min(max, Math.ceil(pct / 100 * max)));
+  const spdByteFor = (pct, max) => Math.max(1, Math.min(max, Math.round(pct / 100 * (max - 1)) + 1));
+
+  /* resolveLightDispatch(bl, {pattern, power, fullColor}) -> decision.
+     bl = board.lighting (registry block) or null. Returns one of:
+       { call:"legacy" }                          no mode table -> today's code
+       { call:"host", id }                        start_multicolor(id, ...)
+       { call:"fw", byte, rule, off? , fallback?, reason? }
+                                                  set_light(byte, ...) with THIS
+                                                  board's byte; `fallback` marks
+                                                  the honest static substitution */
+  const resolveLightDispatch = (bl, {
+    pattern,
+    power,
+    fullColor
+  }) => {
+    const modes = bl && Array.isArray(bl.modes) && bl.modes.length ? bl.modes : null;
+    if (!modes) return {
+      call: "legacy"
+    };
+    const rule = modes.find(m => m.id === pattern) || null;
+    const hostOk = bl.hostEngine !== false;
+    if (power && !fullColor && pattern !== "static" && hostOk && HOST_FX_IDS.has(pattern)) return {
+      call: "host",
+      id: pattern
+    };
+    if (!power && bl.offModeByte != null) return {
+      call: "fw",
+      byte: bl.offModeByte,
+      rule: null,
+      off: true
+    };
+    if (rule) return {
+      call: "fw",
+      byte: rule.byte,
+      rule
+    };
+    // Unknown on this board (or a host-only id while Full-RGB / host-less):
+    // NEVER guess a raw byte — 0 means OFF on some boards. Fall back to the
+    // board's own declared static mode. (On the Win60 static IS byte 0, so the
+    // legacy `?? 0` bytes are reproduced exactly there.)
+    const off = bl.offModeByte;
+    const fb = modes.find(m => m.id === "static") || modes.find(m => off == null || m.byte !== off) || modes[0];
+    return {
+      call: "fw",
+      byte: fb.byte,
+      rule: fb,
+      fallback: "static",
+      reason: `"${pattern}" is not available on this board`
+    };
+  };
+
+  /* buildLightCalls(bl, s) -> null | { dispatch, notice, calls:[[api, ...args]] }.
+     The COMPLETE per-board send for one lighting state — app.jsx executes the
+     list verbatim; the harness asserts it against every board's registry data.
+     s: { pattern, power, fullColor, colors:[hex], bgColor:hex, brightness,
+          speed, direction, striOrient }. Returns null for call:"legacy" (the
+     caller keeps today's exact MODE_BYTE code path). */
+  const buildLightCalls = (bl, s) => {
+    const d = resolveLightDispatch(bl, s);
+    if (d.call === "legacy") return null;
+    if (d.call === "host") {
+      return {
+        dispatch: d,
+        notice: null,
+        calls: [["start_multicolor", d.id, (s.colors || []).map(hexToRgb), hexToRgb(s.bgColor), s.brightness, s.speed, s.direction, s.striOrient]]
+      };
+    }
+    const briMax = bl.brightnessMax || 4;
+    const spdMax = bl.speedMax || 4;
+    const [r, g, b] = hexToRgb(s.colors && s.colors[0] || "#ffffff");
+    const [br, bg2, bb] = hexToRgb(s.bgColor);
+    // 2-way direction rule (registry `direction: true`): the firmware takes a
+    // plain 0/1 byte, so clamp the 4-way dial value. Directional *kinds*
+    // ("lr"/"all"/...) and rule-less modes pass the dial byte through untouched
+    // (the Win60's rules are all kinds or absent -> byte-identical).
+    const dirOut = d.rule && d.rule.direction === true ? s.direction === 1 ? 1 : 0 : s.direction;
+    return {
+      dispatch: d,
+      // Only the powered, non-Full-RGB substitution is worth saying out loud:
+      // power-off lands on off/static intentionally, and Full-RGB over a
+      // host-only id has always quietly used the static slot (Win60 shipped
+      // behaviour — keep it silent there too).
+      notice: d.fallback && s.power && !s.fullColor ? `${d.reason} — showing ${d.rule && d.rule.name || "Static"} instead` : null,
+      calls: [["stop_multicolor"], ["set_light", d.byte, r, g, b, briByteFor(s.brightness, briMax), spdByteFor(s.speed, spdMax), br, bg2, bb, dirOut, s.power, s.fullColor ? 1 : 0]]
+    };
+  };
+
+  /* ============================================================
+     Schematic-preview color honesty (the "yellow in my purple twinkle" fix).
+  
+     previewSimColor(bl, s, idx) -> the hex color the Live Keyboard's STATIC
+     fallback schematic paints on flat key index `idx` whenever there is no
+     live host frame to mirror (board-firmware effects, disconnected, engine
+     stopped). app.jsx's ledMap memo calls this per key.
+  
+     THE BUG THIS FIXES: the old inline sim painted EVERY non-static pattern as
+         hit ? colors[idx % colors.length] : bgColor
+     i.e. it scattered the WHOLE palette across the board. A mode that
+     dispatches to the board's own firmware (the MINI 60 HE PRO's
+     starry-sky/snowfall/... and everything on a firmware-only board) only ever
+     receives colors[0] + bgColor — set_light carries ONE foreground. So the
+     schematic showed palette slots the effect can never display; with the
+     out-of-the-box palette seed (which contains #ffd400) a purple firmware
+     twinkle over white gained a literal YELLOW key that exists nowhere on the
+     hardware. Modes whose registry rule says `color: false` are worse: the
+     firmware picks its own colors, so ANY foreground we draw is a guess —
+     only the user's background is honest.
+  
+     Legacy grid ids on host-engine boards (the whole shipped Win60 surface,
+     and the no-board fail-open path) keep the old scatter BYTE-IDENTICAL:
+     the fw branch below only fires where resolveLightDispatch sends the
+     powered pattern to firmware — ids beyond the legacy grid, or any id on a
+     hostEngine:false board — never for static/custom. */
+  const previewSimColor = (bl, s, idx) => {
+    const colors = s.colors || [];
+    if (s.pattern === "static") return colors[0];
+    const rule = modeRuleFor(bl, s.pattern);
+    const legacyId = LIGHT_MODES.some(m => m.id === s.pattern);
+    if (rule && s.pattern !== "custom" && (!legacyId || bl.hostEngine === false)) {
+      if (rule.color === false) return s.bgColor; // firmware-chosen colors — show only the user's bg
+      return idx % 6 === 0 ? colors[0] || "#ffffff" : s.bgColor; // exactly the fg byte sent (buildLightCalls)
+    }
+    const hit = idx % 6 === 0 || colors.length === 1;
+    return hit ? colors[idx % colors.length] : s.bgColor;
+  };
+
   /* PatternPreview — verbatim from sections.jsx (real RGB color prop). */
   const PatternPreview = ({
     kind,
@@ -220,13 +499,17 @@
     return "static";
   };
 
-  /* ===== Effect zones panel (custom mode) — verbatim behavior from sections.jsx ===== */
+  /* ===== Effect zones panel (custom mode) — verbatim behavior from sections.jsx.
+     `degraded` (Set|null): press-reactive mode ids to mark ≈ on fps-capped boards —
+     same marker idiom as the Mode Picker grid, whose footnote explains it. Null on
+     uncapped boards, so labels render exactly as before. ===== */
   const ZonesPanel = ({
     zones,
     selectedKeys,
     onAdd,
     onUpdate,
-    onRemove
+    onRemove,
+    degraded
   }) => /*#__PURE__*/React.createElement("div", {
     className: "glass p-4"
   }, /*#__PURE__*/React.createElement("div", {
@@ -257,7 +540,7 @@
   }, ZONE_MODES.map(m => /*#__PURE__*/React.createElement("option", {
     key: m.id,
     value: m.id
-  }, m.label))), /*#__PURE__*/React.createElement("span", {
+  }, degraded && degraded.has(m.id) ? m.label + " ≈" : m.label))), /*#__PURE__*/React.createElement("span", {
     className: "font-mono text-[10px] text-[var(--text-faint)] whitespace-nowrap"
   }, z.codes.length, " keys"), /*#__PURE__*/React.createElement("button", {
     onClick: () => onRemove(z.id),
@@ -424,6 +707,28 @@
       className: "font-mono text-[10px] text-[var(--text-faint)] mt-0.5"
     }, angle, "\xB0 \xB7 snaps to 4-way")));
   }
+
+  /* Two-way direction toggle — for firmware-only boards whose registry declares
+     `direction: true` (a plain 0/1 byte) for the current mode. Boards with a
+     directional *kind* ("lr"/"ud"/…) keep the DirectionDial. */
+  function DirectionToggle({
+    direction,
+    setDirection
+  }) {
+    return /*#__PURE__*/React.createElement("div", {
+      className: "grid grid-cols-2 gap-1.5 max-w-[260px]"
+    }, [["Forward", 0, "→"], ["Reverse", 1, "←"]].map(([lbl, val, ic]) => {
+      const active = (direction === 1 ? 1 : 0) === val;
+      return /*#__PURE__*/React.createElement("button", {
+        key: val,
+        onClick: () => setDirection(val),
+        className: `h-9 rounded-lg border text-[11px] uppercase tracking-[0.12em] flex items-center justify-center gap-1.5 transition-all
+                        ${active ? "border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)] shadow-[0_0_12px_var(--accent-glow)]" : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`
+      }, /*#__PURE__*/React.createElement("span", {
+        className: "text-[14px]"
+      }, ic), lbl);
+    }));
+  }
   function ModePickerWidget(ctx) {
     const {
       pattern,
@@ -442,6 +747,29 @@
       setStriOrient
     } = ctx;
     const fullColorOk = pattern !== "static" && pattern !== "custom";
+
+    /* Board awareness (additive). firmwareOnly === false for the Win60 (its
+       registry sets hostEngine true) and whenever no board data is available,
+       so every branch below falls back to today's exact rendering. */
+    const bctx = boardCtxOf(ctx);
+    const bl = bctx.lighting;
+    const boardName = bctx.board && bctx.board.name || "this board";
+    const modeGrid = modeGridFor(bl);
+    const firmwareOnly = !!bl && bl.hostEngine === false;
+    const rule = firmwareOnly ? modeRuleFor(bl, pattern) : null;
+    // A host-engine board's OWN firmware mode beyond the legacy grid (e.g. the
+    // MINI's starry-sky): its registry rule drives the direction control below.
+    // null for every legacy grid id and whenever there is no board data, so the
+    // Win60 (whose ids are all legacy) renders exactly as before.
+    const hfdRule = !firmwareOnly && bl && !LIGHT_MODES.some(m => m.id === pattern) ? modeRuleFor(bl, pattern) : null;
+    // Discrete firmware brightness/speed levels — only on firmware-only boards
+    // (on host-engine boards the % is genuinely continuous in the host engine).
+    const briMax = firmwareOnly && bl.brightnessMax || 0;
+    const spdMax = firmwareOnly && bl.speedMax || 0;
+    const speedOff = !!(firmwareOnly && rule && rule.speed === false);
+    // Host-engine fps cap — null unless the board declares one meaningfully
+    // below the 60fps engine rate (missing hostEngineMaxFps => null => no change).
+    const fpsCap = !firmwareOnly ? hostFpsLimited(bl) : null;
     return /*#__PURE__*/React.createElement("div", {
       className: "flex flex-col gap-5"
     }, /*#__PURE__*/React.createElement("div", {
@@ -473,11 +801,16 @@
       className: "font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)] mb-2"
     }, "Light Mode"), /*#__PURE__*/React.createElement("div", {
       className: "grid grid-cols-3 gap-1.5"
-    }, LIGHT_MODES.map(m => {
+    }, modeGrid.map(m => {
       const active = pattern === m.id;
+      // Press-reactive host effect on a low-fps board: mark it (≈) so the
+      // footnote below can be specific. degraded is always false when the
+      // board declares no cap, so nothing changes on such boards.
+      const degraded = fpsCap != null && HOST_FX_FAST.has(m.id);
       return /*#__PURE__*/React.createElement("button", {
         key: m.id,
         onClick: () => setPattern(m.id),
+        title: degraded ? `Press-reactive — ${boardName} sustains ~${fpsCap} fps, so this effect will look choppy` : undefined,
         className: `h-9 rounded-lg border font-display text-[11px] tracking-[0.06em] flex items-center justify-center gap-1.5 transition-all
                             ${active ? "border-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_14px_var(--accent-glow)]" : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`,
         style: active ? {
@@ -485,8 +818,14 @@
         } : {}
       }, /*#__PURE__*/React.createElement("span", {
         className: "text-[12px]"
-      }, m.icon), " ", m.label);
-    }))), /*#__PURE__*/React.createElement("div", {
+      }, m.icon), " ", m.label, degraded && /*#__PURE__*/React.createElement("span", {
+        className: "font-mono text-[9px] opacity-70"
+      }, "\u2248"));
+    })), firmwareOnly && /*#__PURE__*/React.createElement("div", {
+      className: "mt-2 font-mono text-[10px] text-[var(--text-faint)] leading-relaxed"
+    }, "This is ", boardName, "'s own firmware effect set. Aether's host-animated effects (Rain, Comet, Tide, Aurora and the rest) stream per-key RGB frames from the PC, and that streaming path is not yet proven on this board \u2014 so they are not offered. Static per-key painting still works."), fpsCap != null && /*#__PURE__*/React.createElement("div", {
+      className: "mt-2 font-mono text-[10px] text-[var(--text-faint)] leading-relaxed"
+    }, "Host-animated effects stream from this PC at ~", fpsCap, " fps on ", boardName, " (engine target ~", HOST_ENGINE_TARGET_FPS, " fps). Ambient effects like Rain, Aurora, Comet and Tide look right at that rate; press-reactive effects \u2014 marked \u2248 \u2014 need faster updates and will look choppy.")), /*#__PURE__*/React.createElement("div", {
       className: "grid grid-cols-2 gap-5"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
       className: "flex items-baseline justify-between mb-1.5"
@@ -494,40 +833,70 @@
       className: "font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)]"
     }, "Brightness"), /*#__PURE__*/React.createElement("span", {
       className: "font-mono text-[12px] text-[var(--accent)]"
-    }, Math.round(brightness), "%")), /*#__PURE__*/React.createElement("input", {
+    }, briMax > 0 ? `${Math.round(brightness / 100 * briMax)} / ${briMax}` : /*#__PURE__*/React.createElement(React.Fragment, null, Math.round(brightness), "%"))), /*#__PURE__*/React.createElement("input", {
       type: "range",
       className: "aether w-full",
       min: 0,
       max: 100,
-      step: 1,
+      step: briMax > 0 ? 100 / briMax : 1,
       value: brightness,
       style: {
         "--pct": brightness + "%"
       },
       onChange: e => setBrightness(parseFloat(e.target.value))
-    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    })), !speedOff ? /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
       className: "flex items-baseline justify-between mb-1.5"
     }, /*#__PURE__*/React.createElement("span", {
       className: "font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)]"
     }, "Speed"), /*#__PURE__*/React.createElement("span", {
       className: "font-mono text-[12px] text-[var(--accent)]"
-    }, Math.round(speed), "%")), /*#__PURE__*/React.createElement("input", {
+    }, spdMax > 0 ? `${Math.round(speed / 100 * spdMax)} / ${spdMax}` : /*#__PURE__*/React.createElement(React.Fragment, null, Math.round(speed), "%"))), /*#__PURE__*/React.createElement("input", {
       type: "range",
       className: "aether w-full",
       min: 0,
       max: 100,
-      step: 1,
+      step: spdMax > 0 ? 100 / spdMax : 1,
       value: speed,
       style: {
         "--pct": speed + "%"
       },
       onChange: e => setSpeed(parseFloat(e.target.value))
-    }))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    })) : /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-baseline justify-between mb-1.5"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)]"
+    }, "Speed"), /*#__PURE__*/React.createElement("span", {
+      className: "font-mono text-[10px] text-[var(--text-faint)]"
+    }, "n/a")), /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[10px] text-[var(--text-faint)] leading-relaxed"
+    }, "This mode has no speed control on ", boardName, "."))), !firmwareOnly ?
+    // Host-engine board. A board-specific firmware mode (hfdRule) honours
+    // its own registry rule: `direction: true` is a 2-way 0/1 byte ->
+    // toggle; no direction declared -> no control (the firmware ignores
+    // it). Legacy grid ids (hfdRule null) keep today's 4-way dial.
+    hfdRule ? hfdRule.direction === true ? /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)] mb-2"
+    }, "Direction"), /*#__PURE__*/React.createElement(DirectionToggle, {
+      direction: direction,
+      setDirection: setDirection
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[10px] text-[var(--text-faint)] mt-1.5"
+    }, "This effect takes a 2-way direction on ", boardName, ".")) : null : /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
       className: "font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)] mb-2"
     }, "Direction"), /*#__PURE__*/React.createElement(DirectionDial, {
       direction: direction,
       setDirection: setDirection
-    })), pattern === "striation" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    })) : rule && rule.direction ? /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)] mb-2"
+    }, "Direction"), rule.direction === true ? /*#__PURE__*/React.createElement(DirectionToggle, {
+      direction: direction,
+      setDirection: setDirection
+    }) : /*#__PURE__*/React.createElement(DirectionDial, {
+      direction: direction,
+      setDirection: setDirection
+    }), rule.direction === true && /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[10px] text-[var(--text-faint)] mt-1.5"
+    }, "This effect takes a 2-way direction on ", boardName, ".")) : null, pattern === "striation" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
       className: "font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)] mb-2"
     }, "Stripe Orientation"), /*#__PURE__*/React.createElement("div", {
       className: "grid grid-cols-3 gap-1.5 max-w-[260px]"
@@ -557,6 +926,14 @@
     } = ctx;
     const palette = colors || [];
     const [activeSlot, setActiveSlot] = useState(0);
+
+    /* Board awareness (additive): some boards' firmware forces random colors
+       for certain modes (registry rule `color: false`) — the picker cannot
+       apply. The Win60 declares no such mode, so this never triggers there. */
+    const bctx = boardCtxOf(ctx);
+    const boardName = bctx.board && bctx.board.name || "this board";
+    const colorRule = modeRuleFor(bctx.lighting, pattern);
+    const colorLocked = !!(colorRule && colorRule.color === false);
     const setSlot = (i, value) => {
       const p = [...palette];
       p[i] = value;
@@ -577,7 +954,9 @@
     };
     return /*#__PURE__*/React.createElement("div", {
       className: "flex flex-col gap-4"
-    }, pattern !== "custom" ? /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    }, pattern !== "custom" && colorLocked ? /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[11px] text-[var(--text-faint)] leading-relaxed"
+    }, "\"", colorRule && colorRule.name || pattern, "\" uses firmware-forced random colors on", " ", boardName, " \u2014 the effect color picker does not apply while it is active. The other controls still work.") : pattern !== "custom" ? /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
       className: "flex items-baseline justify-between mb-2"
     }, /*#__PURE__*/React.createElement("span", {
       className: "font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)]"
@@ -711,6 +1090,23 @@
     const palette = colors || [];
     const previewColor = palette[0] || bgColor || "#9d4edd";
     const kind = previewKindFor(pattern);
+
+    /* Board awareness (additive): Effect Zones animate via the host streaming
+       engine, so they are only offered when the board allows it (hostEngine
+       true, or no board data — fail-open, exactly today's behaviour). */
+    const bctx = boardCtxOf(ctx);
+    const hostFx = !bctx.lighting || bctx.lighting.hostEngine !== false;
+    const boardName = bctx.board && bctx.board.name || "this board";
+    // Streaming fps cap — drives the ≈ markers on zone modes (null = no cap).
+    const fpsCap = hostFx ? hostFpsLimited(bctx.lighting) : null;
+
+    /* Dispatch honesty: a mode that is one of THIS board's own firmware effects
+       (beyond the legacy host grid — e.g. the MINI's starry-sky) runs on the
+       keyboard itself, so the host-animation schematic would be a lie. Show
+       what actually happens instead. Legacy grid ids (and the no-board path)
+       render exactly today's preview. */
+    const fwRule = modeRuleFor(bctx.lighting, pattern);
+    const fwOnlyMode = !!fwRule && !LIGHT_MODES.some(m => m.id === pattern);
     return /*#__PURE__*/React.createElement("div", {
       className: "flex flex-col gap-4"
     }, /*#__PURE__*/React.createElement("div", {
@@ -721,16 +1117,21 @@
       className: "font-display text-[11px] uppercase tracking-[0.22em] text-[var(--text-dim)]"
     }, "Preview"), /*#__PURE__*/React.createElement("span", {
       className: "font-mono text-[10px] text-[var(--text-faint)] uppercase tracking-[0.16em]"
-    }, pattern)), /*#__PURE__*/React.createElement(PatternPreview, {
+    }, fwOnlyMode ? pattern + " · firmware" : pattern)), fwOnlyMode ? /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[10px] text-[var(--text-faint)] leading-relaxed mt-2"
+    }, "\"", fwRule.name || pattern, "\" is one of ", boardName, "'s built-in firmware effects \u2014 the animation runs on the keyboard itself, not through Aether's host engine, so there is no host preview to mirror here. The board plays it live.") : /*#__PURE__*/React.createElement(PatternPreview, {
       kind: kind,
       color: previewColor
-    })), pattern === "custom" && /*#__PURE__*/React.createElement(ZonesPanel, {
+    })), pattern === "custom" && (hostFx ? /*#__PURE__*/React.createElement(ZonesPanel, {
       zones: zones,
       selectedKeys: selectedKeys,
       onAdd: addZone,
       onUpdate: updateZone,
-      onRemove: removeZone
-    }), pattern !== "custom" && /*#__PURE__*/React.createElement("div", {
+      onRemove: removeZone,
+      degraded: fpsCap != null ? HOST_FX_FAST : null
+    }) : /*#__PURE__*/React.createElement("div", {
+      className: "glass p-4 font-mono text-[11px] text-[var(--text-dim)] leading-relaxed"
+    }, "Effect Zones animate through Aether's host streaming engine, and that streaming path is not yet proven on ", boardName, " \u2014 so zones are not offered. Static per-key colors still work: use the Per-key Paint widget.")), pattern !== "custom" && /*#__PURE__*/React.createElement("div", {
       className: "font-mono text-[11px] text-[var(--text-faint)]"
     }, "Switch Light Mode to \"Custom\" (Mode Picker widget) to build per-zone effects here."));
   }
@@ -843,8 +1244,17 @@
       perKeyColors,
       selectedKeys,
       setSelectedKeys,
-      connected
+      connected,
+      pattern
     } = ctx;
+    /* Board awareness (additive): a mode that runs on the BOARD's firmware has
+       no host frames to mirror, so the keyboard below shows the static
+       schematic (fg/bg only). Say so, instead of letting the still image read
+       as a broken animation. Never fires for legacy grid ids on host-engine
+       boards (the shipped Win60 surface) or without board data. */
+    const bctx = boardCtxOf(ctx);
+    const fwRule = modeRuleFor(bctx.lighting, pattern);
+    const fwLive = !!fwRule && pattern !== "static" && pattern !== "custom" && (!LIGHT_MODES.some(m => m.id === pattern) || bctx.lighting && bctx.lighting.hostEngine === false);
     if (typeof KeyboardPanel !== "function") {
       return /*#__PURE__*/React.createElement("div", {
         className: "font-mono text-[11px] text-[var(--text-faint)] p-2"
@@ -854,7 +1264,9 @@
       className: "flex flex-col gap-2"
     }, !connected && /*#__PURE__*/React.createElement("div", {
       className: "font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-faint)]"
-    }, "connect the board to see the live effect"), /*#__PURE__*/React.createElement("div", {
+    }, "connect the board to see the live effect"), fwLive && /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[10px] text-[var(--text-faint)] leading-relaxed text-center"
+    }, "\"", fwRule.name || pattern, "\" animates on the keyboard's own firmware \u2014 the board plays it live. Keys below show ", fwRule.color === false ? "your background color only (this effect uses firmware-chosen colors)" : "the exact colors sent (effect color over your background)", ", not the animation."), /*#__PURE__*/React.createElement("div", {
       className: "flex justify-center"
     }, React.createElement(KeyboardPanel, {
       mode: "lighting",
@@ -943,4 +1355,23 @@
   }];
   window.AetherWorkspaces = window.AetherWorkspaces || {};
   window.AetherWorkspaces.LIGHTING_WIDGETS = LIGHTING_WIDGETS;
+  // Pure board-awareness helpers. app.jsx reads resolveLightDispatch /
+  // buildLightCalls at send time (this file loads before app.jsx — see
+  // build_runtime.py's dependency order); the rest is for verification.
+  window.AetherWorkspaces.LIGHTING_BOARD = {
+    LIGHT_MODES,
+    modeGridFor,
+    modeRuleFor,
+    boardCtxOf,
+    HOST_ENGINE_TARGET_FPS,
+    HOST_FX_FAST,
+    hostFpsCapOf,
+    hostFpsLimited,
+    HOST_FX_IDS,
+    resolveLightDispatch,
+    buildLightCalls,
+    briByteFor,
+    spdByteFor,
+    previewSimColor
+  };
 })();

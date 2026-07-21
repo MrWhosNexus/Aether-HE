@@ -18,7 +18,8 @@ import webview
 
 from aula_device import AulaDevice
 import boards
-import protocol
+import drivers
+from drivers import UnsupportedFeature
 import effects
 import device_state
 import gamepad
@@ -39,6 +40,53 @@ else:
 _RUNTIME = os.path.join(HERE, "ui", "index_runtime.html")
 _BUNDLE = os.path.join(HERE, "ui", "index.html")
 INDEX = _RUNTIME if os.path.exists(_RUNTIME) else _BUNDLE
+
+# Travel raw unit (0.01 mm) — identical on every decoded board (Win60 cmd-33
+# values and MINI60 0x27 records both use hundredths of a millimeter), so the
+# Api can keep its accumulated per-key state in raw units without importing
+# any board's protocol module.
+_UNIT_MM = 0.01
+
+
+def _mm_to_raw(mm):
+    return max(0, round(float(mm) / _UNIT_MM))
+
+
+def _host_engine_max_fps(board):
+    """The board's `lighting.hostEngineMaxFps` — the measured sustainable
+    host-stream frame rate (MINI 60 HE PRO: 28, from the HARDWARE-VERIFIED
+    27.7 fps 0x32 benchmark; Win60: 120). None when the board declares no cap.
+
+    Read from the RAW registry JSON: boards.py's lighting validator emits a
+    whitelisted set of keys and that module is frozen (do-not-touch), so this
+    passthrough field is fetched here instead of from profile.lighting."""
+    slug = getattr(board, "slug", None)
+    if not slug:
+        return None
+    try:
+        with open(boards.REGISTRY_PATH, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+        for b in raw.get("boards", []):
+            if b.get("slug") == slug:
+                v = (b.get("lighting") or {}).get("hostEngineMaxFps")
+                return int(v) if v else None
+    except Exception as e:
+        log.warning("hostEngineMaxFps lookup failed for %s: %s", slug, e)
+    return None
+
+
+def _lighting_block(board):
+    """The JS-facing per-board lighting block: profile.lighting augmented
+    with hostEngineMaxFps so the UI reads ONE uniform field for the host
+    engine's frame-rate cap on every board."""
+    lt = getattr(board, "lighting", None)
+    if lt is None:
+        return None
+    fps = _host_engine_max_fps(board)
+    if fps:
+        lt = dict(lt)
+        lt["hostEngineMaxFps"] = fps
+    return lt
 
 
 class Api:
@@ -96,9 +144,42 @@ class Api:
                 return None
             if int(str(vid), 16) != self.board.vid or int(str(pid), 16) != self.board.pid:
                 return None
+            # Only arm when the active driver actually speaks this board's
+            # travel-test protocol — arming a foreign board would write the
+            # wrong frames at it (the exact bug this dispatch layer fixes).
+            drv = getattr(self, "driver", None)
+            if drv is not None and not drv.supports("travel_stream"):
+                return None
             return list(self.km.indices()) if self.km else None
         except Exception:
             return None
+
+    def _arm_capture(self, dev, idxs):
+        """Arm the Travel-Test stream for a capture, through the active
+        board's driver. Swallows failures (the capture then runs unarmed /
+        read-only). Legacy fallback (no driver wired, e.g. a bare test Api):
+        the historical Win60 frame on the given handle."""
+        try:
+            drv = getattr(self, "driver", None)
+            if drv is not None:
+                drv.open_trigger_test(list(idxs))
+            else:
+                import protocol
+                dev.write(protocol.build_open_trigger_test(idxs))
+        except Exception:
+            pass
+
+    def _disarm_capture(self):
+        """Disarm the Travel-Test stream armed by _arm_capture (same routing)."""
+        try:
+            drv = getattr(self, "driver", None)
+            if drv is not None:
+                drv.close_trigger_test()
+            else:
+                import protocol
+                self.dev.write(protocol.build_close_trigger_test())
+        except Exception:
+            pass
 
     def open_capture(self, path, vid=None, pid=None):
         """Stream input reports from the picked device for a board submission.
@@ -139,10 +220,7 @@ class Api:
                     except Exception: pass
                     self.reader = None
                 dev = self.dev
-                try:
-                    dev.write(protocol.build_open_trigger_test(arm_indices))
-                except Exception:
-                    pass
+                self._arm_capture(dev, arm_indices)
 
                 def loop():
                     last_arm = time.time()
@@ -158,8 +236,7 @@ class Api:
                         # streaming after a while, so held/late presses would vanish.
                         if time.time() - last_arm > 0.8:
                             last_arm = time.time()
-                            try: dev.write(protocol.build_open_trigger_test(arm_indices))
-                            except Exception: pass
+                            self._arm_capture(dev, arm_indices)
                         got = False
                         try:
                             with dev._lock:
@@ -245,10 +322,7 @@ class Api:
             if getattr(self, "_cap_shared", False):
                 # Shared app handle: disarm the stream we armed, but never close it —
                 # the app owns self.dev and keeps using it.
-                try:
-                    self.dev.write(protocol.build_close_trigger_test())
-                except Exception:
-                    pass
+                self._disarm_capture()
             else:
                 dev = getattr(self, "_cap_dev", None)
                 if dev:
@@ -263,18 +337,38 @@ class Api:
     def __init__(self):
         # Detect which registered board is connected (by VID/PID); fall back to
         # the registry default (Aula Win60 HE) so behaviour is unchanged when no
-        # board is plugged in or the registry can't be read. UI wiring comes later;
-        # for now this picks the right vendor interface + the right layout.
+        # board is plugged in or the registry can't be read.
+        #
+        # Multi-board machines: registry.detect() returns whatever HID
+        # enumeration lists first, which is arbitrary between runs — with the
+        # Win60, the MINI 60 PRO and its (deliberately non-drivable) dongle all
+        # attached it has picked different boards on different launches. We
+        # rank connected boards instead (drivers.connected_profiles: drivable
+        # first, registry order within groups); select_board() overrides.
         self.board = None
+        self._registry = None
         try:
             reg = boards.load_registry()
-            self.board = reg.detect() or reg.default
+            self._registry = reg
+            connected = drivers.connected_profiles(reg)
+            if connected:
+                self.board = connected[0]
+                if len(connected) > 1:
+                    log.info("Multiple boards connected: %s — preferring %s",
+                             [p.slug for p in connected], self.board.slug)
+            else:
+                self.board = reg.default
             log.info("Active board: %s (%s)", self.board.name, self.board.vid_pid)
         except Exception as e:
             log.warning("board registry unavailable, using Win60 defaults: %s", e)
             self.board = None
-        self.dev = AulaDevice(self.board) if self.board else AulaDevice()
         self._lock = threading.Lock()
+        self.dev = AulaDevice(self.board) if self.board else AulaDevice()
+        # Per-board protocol driver: EVERY packet the Api emits goes through
+        # this object. Boards without a wired protocol get an inert driver
+        # whose writes raise UnsupportedFeature (surfaced to the UI as
+        # {"ok": False, "unsupported": True}) — never another board's frames.
+        self.driver = drivers.get_driver(self.board, self.dev, self._lock)
         self.pad = None
         self._pad_stop = threading.Event()
         self._pad_thread = None
@@ -283,9 +377,12 @@ class Api:
         except Exception as e:
             self.km = None
             log.warning("keymap load failed: %s", e)
-        # Host-driven per-key effect engine (multi-color animated effects).
-        self.fx = effects.PerKeyEffectEngine(self.km, self._send_frame) if self.km else None
-        self._last_pkts = None    # diff cache: only re-send changed pages (latency)
+        # Host-driven per-key effect engine (multi-color animated effects),
+        # paced to the board's measured stream rate when it declares one.
+        self.fx = (effects.PerKeyEffectEngine(
+                       self.km, self._send_frame,
+                       max_fps=_host_engine_max_fps(self.board))
+                   if self.km else None)
         self.reader = None
         self._remaps = {}         # accumulated key remaps: {device_index: target_hid}
         self._pad_map = None      # custom gamepad mappings (list of gamepad.KeyMap)
@@ -304,28 +401,39 @@ class Api:
         self._deadband_state = {}  # idx -> (top_raw, bottom_raw)
 
     # ---- connection ----
+    @staticmethod
+    def _fail(e):
+        """Uniform JS-facing failure dict. UnsupportedFeature additionally
+        carries `unsupported`/`feature` so the UI can gate controls per board
+        instead of showing a generic error."""
+        out = {"ok": False, "error": str(e)}
+        if isinstance(e, UnsupportedFeature):
+            out["unsupported"] = True
+            out["feature"] = e.feature
+        return out
+
     def connect(self):
         try:
-            info = self.dev.open()
-            # device-info handshake + start live travel reader
-            try:
-                self.dev.write(protocol.build_heartbeat())
-            except Exception:
-                pass
+            # Driver-specific open + handshake (Win60: heartbeat; MINI60:
+            # 0x10 device info + LED-table seed; inert boards: open only).
+            info = self.driver.connect()
             # Snapshot the device's Fn-layer table so we can replay it after any
             # base-layer write (see _flush_remaps). Failures here are non-fatal;
             # we just won't be able to preserve the user's Fn customization.
-            # _read_keymap_layer returns None on partial reads — we treat that
+            # read_keymap_layer returns None on partial reads — we treat that
             # as "no snapshot" and skip the Fn-layer write entirely rather than
             # risk wiping the user's customisation with a half-zeroed table.
+            # Boards without a keymap protocol simply have no snapshot.
             try:
-                self._fn_layer_raw = self._read_keymap_layer(fn_layer=True)
+                self._fn_layer_raw = self.driver.read_keymap_layer(fn_layer=True)
+            except UnsupportedFeature:
+                self._fn_layer_raw = None
             except Exception as ex:
                 log.warning("Fn-layer snapshot failed (will skip Fn write): %s", ex)
                 self._fn_layer_raw = None
             return {"ok": True, "iface": info["interface_number"]}
         except Exception as e:
-            return {"ok": False, "error": str(e)}
+            return self._fail(e)
 
     def get_board(self):
         """Active board + full registered roster, for the UI's board picker/badge.
@@ -350,75 +458,100 @@ class Api:
             "slug": b.slug, "name": b.name, "vidPid": b.vid_pid,
             "formFactor": b.form_factor, "status": b.status,
             "capabilities": b.capabilities, "drivable": b.drivable,
+            # per-board data blocks (registry-driven effect table, slider scales,
+            # deadzone scope, switch list) so the UI can present exactly what THIS
+            # board supports instead of the hardcoded Win60 list. None for boards
+            # that declare no block. lighting additionally carries the uniform
+            # hostEngineMaxFps field (see _lighting_block).
+            "lighting": _lighting_block(b),
+            "actuation": getattr(b, "actuation", None),
         }
         return {"active": active, "boards": roster}
 
-    def _read_keymap_layer(self, fn_layer=False, timeout_s=1.5):
-        """Send initKeyValue and collect the device's response packets, reassembling
-        a 528-byte [code1, hidCode, code3, code4] table. Matches the driver's
-        cmd-24 [1]=128 (base) / [1]=130 (fn) read flow.
+    def list_boards(self):
+        """Every registered board with its live connection state — for the
+        board picker (wave 2). `connected` = attached right now; `active` =
+        the board this Api instance is driving."""
+        try:
+            reg = getattr(self, "_registry", None) or boards.load_registry()
+        except Exception as e:
+            return {"ok": False, "error": str(e), "boards": []}
+        try:
+            attached = {(p.vid, p.pid) for p in drivers.connected_profiles(reg)}
+        except Exception:
+            attached = set()
+        active_slug = self.board.slug if self.board else None
+        out = [
+            {"slug": p.slug, "name": p.name, "vidPid": p.vid_pid,
+             "formFactor": p.form_factor, "status": p.status,
+             "capabilities": p.capabilities, "drivable": p.drivable,
+             "connected": (p.vid, p.pid) in attached,
+             "active": p.slug == active_slug}
+            for p in reg.profiles
+        ]
+        return {"ok": True, "boards": out, "active": active_slug}
 
-        Returns the complete table only if ALL pages were received; on a partial
-        read returns None so the caller can fall back to "don't write Fn" (better
-        than writing a half-zeroed table that wipes the user's Fn customization).
-        """
-        if not self.dev.is_open():
-            return None
-        # Drain any pending packets first so we only see the response.
-        with self.dev._lock:
+    def select_board(self, slug):
+        """Explicitly switch the active board (overrides auto-detection).
+        Tears down the current session (effects, readers, capture, handle),
+        rebinds device + driver + keymap, and resets per-board caches. The
+        UI should call connect() afterwards."""
+        try:
+            reg = getattr(self, "_registry", None) or boards.load_registry()
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+        p = reg.by_slug(str(slug))
+        if p is None:
+            return {"ok": False, "error": f"unknown board: {slug}"}
+        try:
+            for teardown in (self.stop_capture, self.stop_multicolor,
+                             lambda: self.set_gamepad_capture(False)):
+                try:
+                    teardown()
+                except Exception:
+                    pass
+            if self.reader:
+                try: self.reader.stop()
+                except Exception: pass
+                self.reader = None
+            if self.calib_reader:
+                try: self.calib_reader.stop()
+                except Exception: pass
+                self.calib_reader = None
             try:
-                self.dev._dev.set_nonblocking(True)
-                while True:
-                    r = self.dev._dev.read(64)
-                    if not r:
-                        break
+                self.dev.close()
             except Exception:
                 pass
-        self._write(protocol.build_read_keymap_init(fn_layer=fn_layer))
-        want = 130 if fn_layer else 128
-        table = bytearray(528)
-        seen = set()
-        deadline = time.time() + timeout_s
-        n_pages = (528 + 55) // 56
-        while time.time() < deadline and len(seen) < n_pages:
+            self.board = p
+            self._registry = reg
+            self.dev = AulaDevice(p)
+            self.driver = drivers.get_driver(p, self.dev, self._lock)
             try:
-                with self.dev._lock:
-                    if not self.dev._dev:
-                        break
-                    self.dev._dev.set_nonblocking(True)
-                    r = self.dev._dev.read(64)
-            except Exception:
-                break
-            if not r or len(r) < 6:
-                time.sleep(0.005); continue
-            # hidapi's read on this codebase includes the report ID at r[0], so
-            # the cmd byte sits at r[1] (matching LiveReader/CalibrationReader,
-            # which empirically work). We still scan a small offset range as a
-            # safety net for hidapi variants that don't prepend the id.
-            base = None
-            for off in (1, 0, 4, 5):
-                if off + 5 >= len(r):
-                    continue
-                if r[off] == 24 and r[off + 1] == want:
-                    base = off
-                    break
-            if base is None:
-                continue
-            page = (r[base + 2] << 8) | r[base + 3]
-            ln = min(r[base + 4], 56)
-            data_off = base + 5
-            start = page * 56
-            end = start + ln
-            if end > len(table):
-                end = len(table); ln = end - start
-            if ln <= 0 or data_off + ln > len(r):
-                continue
-            table[start:end] = bytes(r[data_off:data_off + ln])
-            seen.add(page)
-        complete = len(seen) >= n_pages
-        log.info("keymap snapshot: layer=%s pages=%d/%d complete=%s",
-                 "fn" if fn_layer else "base", len(seen), n_pages, complete)
-        return bytes(table) if complete else None
+                self.km = device_state.KeyMap(p.keymap)
+            except Exception as e:
+                self.km = None
+                log.warning("keymap load failed for %s: %s", p.slug, e)
+            self.fx = (effects.PerKeyEffectEngine(
+                           self.km, self._send_frame,
+                           max_fps=_host_engine_max_fps(p))
+                       if self.km else None)
+            # per-board caches must not leak across boards
+            self._remaps = {}
+            self._trigger_state = {}
+            self._deadband_state = {}
+            self._fn_layer_raw = None
+            self._idx2code = None
+            log.info("Board selected: %s (%s)", p.name, p.vid_pid)
+            return {"ok": True, "active": {
+                "slug": p.slug, "name": p.name, "vidPid": p.vid_pid,
+                "formFactor": p.form_factor, "status": p.status,
+                "capabilities": p.capabilities, "drivable": p.drivable,
+                # keep in sync with get_board()'s `active` shape
+                "lighting": _lighting_block(p),
+                "actuation": getattr(p, "actuation", None),
+            }}
+        except Exception as e:
+            return self._fail(e)
 
     def read_live(self):
         """Real per-key travel depth (mm), keyed by key name. {} until keys move."""
@@ -433,23 +566,19 @@ class Api:
         self.dev.close()
         return {"ok": True}
 
-    def _write(self, payload):
-        with self._lock:
-            if not self.dev.is_open():
-                self.dev.open()
-            self.dev.write(payload)
-
-    # ---- lighting (exact driver layout: fg/bg/mode/brightness/speed/dir/power) ----
+    # ---- lighting (fg/bg/mode/brightness/speed/dir/power, per-board dispatch) ----
     def set_light(self, mode, r, g, b, brightness=4, speed=4,
                   bg_r=0, bg_g=0, bg_b=0, direction=0, power_on=True, full_color=0):
         try:
-            self._write(protocol.build_light(
-                int(mode), int(brightness), int(speed), (int(r), int(g), int(b)),
-                (int(bg_r), int(bg_g), int(bg_b)), int(direction), int(full_color),
-                bool(power_on)))
+            self.driver.set_lighting(
+                int(mode), (int(r), int(g), int(b)),
+                bg=(int(bg_r), int(bg_g), int(bg_b)),
+                brightness=int(brightness), speed=int(speed),
+                direction=int(direction), full_color=int(full_color),
+                power_on=bool(power_on))
             return {"ok": True}
         except Exception as e:
-            return {"ok": False, "error": str(e)}
+            return self._fail(e)
 
     # back-compat: simple static color
     def set_color(self, r, g, b, brightness=4, mode=0, speed=4):
@@ -459,11 +588,12 @@ class Api:
     def set_trigger_all(self, travel_mm, rt_press_mm=0.0, rt_release_mm=0.0,
                         key_count=64, mode=0):
         try:
-            self._write(protocol.build_trigger(int(mode), list(range(int(key_count))),
-                        float(travel_mm), float(rt_press_mm), float(rt_release_mm)))
+            self.driver.set_actuation(list(range(int(key_count))), int(mode),
+                                      float(travel_mm), float(rt_press_mm),
+                                      float(rt_release_mm))
             return {"ok": True}
         except Exception as e:
-            return {"ok": False, "error": str(e)}
+            return self._fail(e)
 
     def open_analog(self, key_count=64):
         return self.open_analog_codes([])
@@ -476,13 +606,13 @@ class Api:
                     idxs = self.km.indices()
                 if self.reader:
                     self.reader.stop()
-                self.reader = device_state.LiveReader(self.dev, self.km, idxs)
+                self.reader = self.driver.make_live_reader(self.km, idxs)
                 self.reader.start()
             else:
-                self._write(protocol.build_open_trigger_test(list(range(64))))
+                self.driver.open_trigger_test(list(range(64)))
             return {"ok": True, "keys": len(idxs) if self.km else 64}
         except Exception as e:
-            return {"ok": False, "error": str(e)}
+            return self._fail(e)
 
     def close_analog(self):
         try:
@@ -490,17 +620,18 @@ class Api:
                 self.reader.stop()
                 self.reader = None
             else:
-                self._write(protocol.build_close_trigger_test())
+                self.driver.close_trigger_test()
             return {"ok": True}
         except Exception as e:
-            return {"ok": False, "error": str(e)}
+            return self._fail(e)
 
     # ---- polling ----
     def set_poll(self, rate):
         try:
-            self._write(protocol.build_poll_rate(int(rate))); return {"ok": True}
+            self.driver.set_poll_rate(int(rate))
+            return {"ok": True}
         except Exception as e:
-            return {"ok": False, "error": str(e)}
+            return self._fail(e)
 
     # ---- per-key actuation (codes from the design's selection) ----
     def _flush_triggers(self, edited_idxs=None):
@@ -520,12 +651,12 @@ class Api:
                 continue
             mode, travel, i1, i2 = cfg
             log.info("trigger pkt: mode=%d travel=%.2fmm i1=%d i2=%d keys=%d %s",
-                     mode, travel * protocol.TRIGGER_UNIT_MM, i1, i2,
+                     mode, travel * _UNIT_MM, i1, i2,
                      len(idxs), sorted(idxs)[:8])
-            self._write(protocol.build_trigger(int(mode), list(idxs),
-                                               travel * protocol.TRIGGER_UNIT_MM,
-                                               i1 * protocol.TRIGGER_UNIT_MM,
-                                               i2 * protocol.TRIGGER_UNIT_MM))
+            self.driver.set_actuation(list(idxs), int(mode),
+                                      travel * _UNIT_MM,
+                                      i1 * _UNIT_MM,
+                                      i2 * _UNIT_MM)
             threading.Event().wait(0.005)
 
     def set_trigger_codes(self, codes, travel_mm, rt_press_mm=0.0, rt_release_mm=0.0, mode=0):
@@ -535,16 +666,16 @@ class Api:
         if not idxs:
             return {"ok": False, "error": "no keys"}
         cfg = (int(mode),
-               protocol.mm_to_raw(travel_mm),
-               protocol.mm_to_raw(rt_press_mm),
-               protocol.mm_to_raw(rt_release_mm))
+               _mm_to_raw(travel_mm),
+               _mm_to_raw(rt_press_mm),
+               _mm_to_raw(rt_release_mm))
         for i in idxs:
             self._trigger_state[i] = cfg
         try:
             self._flush_triggers(edited_idxs=idxs)
             return {"ok": True, "keys": len(idxs), "idxs": sorted(idxs)}
         except Exception as e:
-            return {"ok": False, "error": str(e)}
+            return self._fail(e)
 
     def verify_actuation(self, codes):
         """Read-back actuation for the given design codes (one cmd-33/sub-5
@@ -557,8 +688,8 @@ class Api:
         if not self.km or not self.dev.is_open():
             return {"ok": False, "error": "not connected"}
         try:
-            with self._lock:
-                vals_by_name = device_state.read_actuation(self.dev, self.km)
+            # Driver takes the outer lock itself for the whole read sweep.
+            vals_by_name = self.driver.read_actuation(self.km)
             # Build {design_code: mm} for every key we have a mapping for.
             all_by_code = {}
             for design_code, idx in self.km.index_of_code.items():
@@ -572,7 +703,7 @@ class Api:
                 out = all_by_code
             return {"ok": True, "actuation_mm": out}
         except Exception as e:
-            return {"ok": False, "error": str(e)}
+            return self._fail(e)
 
     def set_custom_colors(self, colors_by_code, brightness=4, speed=4):
         """colors_by_code: {design_code: [r,g,b]} for per-key custom RGB."""
@@ -586,35 +717,95 @@ class Api:
         if not colors_by_index:
             return {"ok": False, "error": "no colors"}
         try:
-            self._write(protocol.build_light(10, int(brightness), int(speed), (255, 255, 255)))
-            for pkt in protocol.build_custom_light(colors_by_index, slot=0):
-                self._write(pkt)
-                threading.Event().wait(0.005)
+            self.driver.set_per_key_rgb(colors_by_index,
+                                        brightness=int(brightness),
+                                        speed=int(speed))
             return {"ok": True, "keys": len(colors_by_index)}
         except Exception as e:
-            return {"ok": False, "error": str(e)}
+            return self._fail(e)
 
     # ---- dead band / switch profile ----
     def set_deadband_codes(self, codes, top_mm=0.04, bottom_mm=0.05):
         if not self.km:
             return {"ok": False, "error": "no keymap"}
         idxs = self.km.indices_for_codes(codes) if codes else []
-        if not idxs:
+        # Scope gate. On a GLOBAL-dead-zone board (MINI 60 HE PRO: the value
+        # lives in the 0x11/0x21 config table, there is no per-key record)
+        # the NORMAL case is "whole board, nothing selected" — the driver
+        # ignores the per-key map entirely and needs only top/bottom. Bailing
+        # out on an empty selection here made that case a silent no-op while
+        # the UI still flashed a success toast. Per-key boards keep the
+        # original "no keys" refusal byte-for-byte.
+        scope = getattr(self.driver, "DEADBAND_SCOPE", "per-key")
+        if not idxs and scope != "global":
             return {"ok": False, "error": "no keys"}
-        top = round(float(top_mm) / protocol.TRIGGER_UNIT_MM)
-        bottom = round(float(bottom_mm) / protocol.TRIGGER_UNIT_MM)
+        top = _mm_to_raw(top_mm)
+        bottom = _mm_to_raw(bottom_mm)
         # Preserve previously-set per-key values so applying to one selection
         # doesn't reset everything else to the default. The full-board table is
-        # rebuilt from the accumulated state on every send.
+        # rebuilt from the accumulated state on every send. Boards with a
+        # GLOBAL dead zone (driver.DEADBAND_SCOPE == "global") ignore the
+        # per-key map and apply top/bottom to the whole board.
         for i in idxs:
             self._deadband_state[i] = (top, bottom)
         try:
-            for pkt in protocol.build_deadband_table(dict(self._deadband_state)):
-                self._write(pkt)
-                threading.Event().wait(0.005)
-            return {"ok": True, "keys": len(idxs)}
+            self.driver.set_deadband(dict(self._deadband_state),
+                                     top_mm=float(top_mm),
+                                     bottom_mm=float(bottom_mm))
+            # A global write always covers the whole board, so report the
+            # board's key count when nothing was explicitly selected — the UI
+            # toast ("whole board · every key") must not claim 0 keys.
+            written = len(idxs)
+            if scope == "global" and not written:
+                try:
+                    written = len(self.km.indices())
+                except Exception:
+                    written = 0
+            return {"ok": True, "keys": written, "scope": scope}
         except Exception as e:
-            return {"ok": False, "error": str(e)}
+            return self._fail(e)
+
+    def _resolve_switch_code(self, switch_id):
+        """(firmware axis code, error) for a switch selection.
+
+        Accepts either the registry switch `id` string ("hm1") or a raw int
+        code. boards.py validates a per-switch `code` (0..255) on every
+        board's `actuation.switches` entry, but nothing ever READ it — the
+        code came from a hardcoded Win60 table with a `|| 1` fallback, so
+        the first board to declare its own axis ids would silently get
+        HM1's byte on every key. This resolves against THE ACTIVE BOARD's
+        table and fails closed:
+
+          * board declares switches -> the id must be in that table, and a
+            raw code must be one the board declares. Unknown -> error, never
+            a default byte on the wire.
+          * board declares none (Win60 today when the registry is absent,
+            legacy/test profiles) -> int codes pass through exactly as
+            before; only an unresolvable string is rejected.
+        """
+        table = (getattr(self.board, "actuation", None) or {}).get("switches") or ()
+        by_id, codes = {}, set()
+        for s in table:
+            if not isinstance(s, dict) or s.get("code") is None:
+                continue
+            codes.add(int(s["code"]))
+            if s.get("id") is not None:
+                by_id[str(s["id"])] = int(s["code"])
+        name = getattr(self.board, "name", None) or "this board"
+        if isinstance(switch_id, str) and switch_id.strip() not in by_id:
+            try:
+                switch_id = int(switch_id.strip())
+            except (TypeError, ValueError):
+                return None, f"unknown switch {switch_id!r} for {name}"
+        elif isinstance(switch_id, str):
+            return by_id[switch_id.strip()], None
+        try:
+            code = int(switch_id)
+        except (TypeError, ValueError):
+            return None, f"invalid switch id {switch_id!r}"
+        if codes and code not in codes:
+            return None, f"switch code {code} is not declared by {name}"
+        return code, None
 
     def set_switch_codes(self, codes, switch_id=1):
         if not self.km:
@@ -622,35 +813,23 @@ class Api:
         idxs = self.km.indices_for_codes(codes) if codes else self.km.indices()
         if not idxs:
             return {"ok": False, "error": "no keys"}
-        table = {idx: int(switch_id) for idx in idxs}
+        code, err = self._resolve_switch_code(switch_id)
+        if err:
+            return {"ok": False, "error": err}
+        table = {idx: code for idx in idxs}
         try:
-            for pkt in protocol.build_switch_table(table):
-                self._write(pkt)
-                threading.Event().wait(0.005)
-            return {"ok": True, "keys": len(idxs)}
+            self.driver.set_switch(table)
+            return {"ok": True, "keys": len(idxs), "code": code}
         except Exception as e:
-            return {"ok": False, "error": str(e)}
+            return self._fail(e)
 
-    # ---- key remap (cmd 24, full keymap table) ----
+    # ---- key remap (per-board keymap table) ----
     def _flush_remaps(self):
-        # Base layer with our remap overrides.
+        # Base layer with our remap overrides, then the Fn layer replayed from
+        # the connect-time snapshot (both-layer semantics live in the driver).
         defaults = {i: self.km.by_index[i]["hid"] for i in self.km.by_index}
-        for pkt in protocol.build_base_keymap_table(defaults, self._remaps,
-                                                     layer_indices=self.km.layer_indices):
-            self._write(pkt)
-            threading.Event().wait(0.005)
-        # Always follow with the Fn layer — the official driver writes both
-        # setKeyValue + setFnKeyValue on every Apply, and writing only the base
-        # leaves the firmware treating Fn as held until replug. Replay the
-        # snapshot we captured at connect; if the snapshot failed we skip the
-        # Fn write rather than risk wiping the user's existing Fn mappings with
-        # zeros (the "stuck Fn" symptom is preferable to losing customization).
-        if self._fn_layer_raw is not None and any(self._fn_layer_raw):
-            for pkt in protocol.build_fn_keymap_table(self._fn_layer_raw):
-                self._write(pkt)
-                threading.Event().wait(0.005)
-        else:
-            log.warning("skipping Fn-layer write: no snapshot captured at connect")
+        self.driver.write_keymap(defaults, dict(self._remaps),
+                                 self.km.layer_indices, self._fn_layer_raw)
 
     def set_remap(self, codes, target_hid):
         """Remap the selected keys to emit `target_hid` (USB HID usage code)."""
@@ -665,7 +844,7 @@ class Api:
             self._flush_remaps()
             return {"ok": True, "keys": len(idxs)}
         except Exception as e:
-            return {"ok": False, "error": str(e)}
+            return self._fail(e)
 
     def reset_remap(self, codes):
         """Restore the selected keys (or all, if none) to their default mapping."""
@@ -680,7 +859,7 @@ class Api:
             self._flush_remaps()
             return {"ok": True}
         except Exception as e:
-            return {"ok": False, "error": str(e)}
+            return self._fail(e)
 
     # ---- SOCD / PRCS ----
     def set_socd(self, pairs):
@@ -695,12 +874,10 @@ class Api:
                 if not key1_hid or not key2_hid:
                     return {"ok": False, "error": f"unknown SOCD key: {p}"}
                 plist.append({"model": int(p["model"]), "key1_hid": key1_hid, "key2_hid": key2_hid})
-            self._write(protocol.build_prcs_power(True))
-            for pkt in protocol.build_prcs(plist):
-                self._write(pkt)
+            self.driver.set_socd(plist)
             return {"ok": True}
         except Exception as e:
-            return {"ok": False, "error": str(e)}
+            return self._fail(e)
 
     # ---- calibration ----
     def _render_calib(self, calibrated):
@@ -715,8 +892,10 @@ class Api:
                 lit.add(idx)
         colors = {idx: ((0, 255, 0) if idx in lit else (6, 10, 8))
                   for idx in self.km.indices()}
-        for pkt in protocol.build_custom_light(colors, slot=0):
-            self._write(pkt)
+        try:
+            self.driver.stream_frame(colors, force=True)
+        except UnsupportedFeature:
+            pass
 
     def calibrate(self, start, any_key=False):
         try:
@@ -724,17 +903,17 @@ class Api:
                 # Lighting keeps running during calibration (user's choice). The
                 # calibration reader uses a short blocking read so it shares the
                 # device with the lighting engine without busy-spinning the lock.
-                self._write(protocol.build_calibration(True, bool(any_key)))
-                self.calib_reader = device_state.CalibrationReader(self.dev, self.km)
+                self.driver.set_calibration(True, bool(any_key))
+                self.calib_reader = self.driver.make_calibration_reader(self.km)
                 self.calib_reader.start()
             else:
                 if self.calib_reader:
                     self.calib_reader.stop()
                     self.calib_reader = None
-                self._write(protocol.build_calibration(False, bool(any_key)))
+                self.driver.set_calibration(False, bool(any_key))
             return {"ok": True}
         except Exception as e:
-            return {"ok": False, "error": str(e)}
+            return self._fail(e)
 
     def read_calibrated(self):
         """Design codes confirmed calibrated so far (for the on-screen highlight)."""
@@ -746,9 +925,10 @@ class Api:
     # ---- gamepad mode / win-lock ----
     def gamepad_mode(self, on):
         try:
-            self._write(protocol.build_gamepad_mode(1 if on else 0)); return {"ok": True}
+            self.driver.set_gamepad_mode(bool(on))
+            return {"ok": True}
         except Exception as e:
-            return {"ok": False, "error": str(e)}
+            return self._fail(e)
 
     def set_gamepad_capture(self, on):
         """Stream live analog depth into a Linux uinput virtual gamepad."""
@@ -763,7 +943,7 @@ class Api:
             return {"ok": True}
         try:
             if self.reader is None and self.km:
-                self.reader = device_state.LiveReader(self.dev, self.km)
+                self.reader = self.driver.make_live_reader(self.km)
                 self.reader.start()
             if self.pad is None:
                 self.pad = gamepad.VirtualGamepad(self._pad_map).open()
@@ -1009,30 +1189,19 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
-    # ---- host-driven multi-color effects (per-key, cmd 9) ----
+    # ---- host-driven multi-color effects (per-key, driver stream) ----
     def _send_frame(self, colors_by_index):
-        """Stream one per-key RGB frame. Only re-sends the 54-byte pages that
-        actually changed since the last frame — this cuts HID-OUT traffic a lot
-        for sparse effects (twinkle/reactive/fireworks), reducing input latency.
-
-        Holds the outer Api lock for the WHOLE frame (single acquire, all 8
-        pages written under it). The lock has to be respected here because
-        _write() — used by set_light / set_trigger / actuation config — also
-        takes it; if the engine doesn't, a set_light packet can slip between
-        pages and yank the board out of Custom mode mid-frame, collapsing the
-        multi-color stream back to a single firmware effect."""
+        """Stream one per-key RGB frame through the board driver. The driver
+        owns the diff cache (only changed pages are re-sent) and holds the
+        outer lock for the whole frame so a set_light can't slip between
+        pages. Failures are swallowed like before (the engine keeps running);
+        the driver resets its cache on error."""
         if not self.dev.is_open():
             return
         try:
-            pkts = protocol.build_custom_light(colors_by_index, slot=0)
-            last = self._last_pkts
-            with self._lock:
-                for i, pkt in enumerate(pkts):
-                    if last is None or i >= len(last) or pkt != last[i]:
-                        self.dev.write(pkt)
-            self._last_pkts = pkts
+            self.driver.stream_frame(colors_by_index)
         except Exception:
-            self._last_pkts = None
+            pass
 
     def _ensure_reactive(self, modes):
         """Press-reactive effects need live travel: attach a depth source (and a
@@ -1041,8 +1210,11 @@ class Api:
             return
         if any(m in ("reactive", "ripple", "speedres", "cross", "fireworks") for m in modes):
             if self.reader is None and self.km:
-                self.reader = device_state.LiveReader(self.dev, self.km)
-                self.reader.start()
+                try:
+                    self.reader = self.driver.make_live_reader(self.km)
+                    self.reader.start()
+                except UnsupportedFeature:
+                    self.reader = None
             rdr = self.reader
             km = self.km
             self.fx.get_depths = (lambda: {km.index_of_code[c]: mm
@@ -1078,9 +1250,10 @@ class Api:
             return {"ok": False, "error": "no keymap"}
         try:
             # Put the board into per-key Custom mode (full brightness — the engine
-            # bakes brightness into the per-key colors it streams).
-            self._write(protocol.build_light(10, 4, 4, (255, 255, 255)))
-            self._last_pkts = None
+            # bakes brightness into the per-key colors it streams). Boards whose
+            # high-rate channel is unproven refuse here (UnsupportedFeature)
+            # instead of pretending an animation is running.
+            self.driver.begin_host_stream()
             self._ensure_reactive([str(pattern)])
             pal = [tuple(int(c) for c in p[:3]) for p in (colors or []) if p]
             self.fx.start(str(pattern), pal or [(255, 255, 255)],
@@ -1089,7 +1262,7 @@ class Api:
                           int(direction), str(orient))
             return {"ok": True, "keys": len(self.fx.indices)}
         except Exception as e:
-            return {"ok": False, "error": str(e)}
+            return self._fail(e)
 
     def start_zones(self, zones):
         """Composite multiple effect zones at once. Each zone:
@@ -1116,18 +1289,27 @@ class Api:
                 })
             if not norm:
                 return {"ok": False, "error": "no zones"}
-            self._write(protocol.build_light(10, 4, 4, (255, 255, 255)))
-            self._last_pkts = None
+            self.driver.begin_host_stream()
             self._ensure_reactive([z["mode"] for z in norm])
             gbg = norm and norm[0].get("bg") or (0, 0, 0)
             self.fx.start_zones(norm, global_bg=gbg)
             return {"ok": True, "zones": len(norm)}
         except Exception as e:
-            return {"ok": False, "error": str(e)}
+            return self._fail(e)
 
     def stop_multicolor(self):
         if self.fx and self.fx.is_running():
             self.fx.stop()
+            # Hand the LEDs back to the board once the engine is down. The
+            # Win60's end_host_stream is the base no-op (it has no stop
+            # command — the board keeps the last frame in Custom mode,
+            # exactly as before); the MINI 60 PRO sends CLEAR_LED_DATA
+            # (0x36) to stop/clear its live 0x32 stream. Failures are
+            # swallowed: stop must always succeed from teardown paths.
+            try:
+                self.driver.end_host_stream()
+            except Exception:
+                pass
         return {"ok": True}
 
     # back-compat no-ops (the old global-effect API was removed)

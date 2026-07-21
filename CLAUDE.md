@@ -29,7 +29,9 @@ venv-web/bin/python ui/runtime_src/build_runtime.py
 - `device_state.py` — `KeyMap` (key index↔design-code↔xy), `LiveReader` (travel-test stream),
   `CalibrationReader`.
 - `effects.py` — host-driven **per-key** lighting engine (firmware effects only hold one
-  fg+bg, so multi-color animations are streamed from the host via cmd 9, ~120fps).
+  fg+bg, so multi-color animations are streamed from the host via cmd 9). `FPS = 60`: a
+  120 bump was tried and reverted because it saturated the USB pipe. Per-board caps come
+  from `lighting.hostEngineMaxFps` in the registry (MINI 60 HE PRO measured at 28).
 - `gamepad.py` — Linux uinput virtual gamepad (LINUX ONLY; self-disables elsewhere).
 - `ui/runtime_src/src/{app,sections,keyboard}.jsx` — the edited UI; `vendor/` is unmodified.
 
@@ -41,13 +43,15 @@ venv-web/bin/python ui/runtime_src/build_runtime.py
 - **Per-key RGB (cmd 9)**: 396-byte table streamed in 54-byte pages (host effect engine).
 - **Actuation/trigger (cmd 33)**: travel/RT. Trigger MODE: **0 = fixed actuation point**,
   12 = rapid-trigger single, 13 = RT separate press/release. Unit = **0.01 mm**, min 0.08, max 3.4 mm.
-  Travel-test stream = cmd33 sub5 (`r[1]==33,r[5]==5,idx=r[7]*22+r[8],depth=(r[9]|r[10]<<8)/100`).
+  Travel-test stream = cmd33 frames with body[5]==0x01 (`r[1]==33,r[6]==1`; the `r[5]==5` the reader
+  matches is the payload LENGTH byte, not a sub-command — sub 0x05 is the per-key config read;
+  `idx=r[7]*22+r[8],depth=(r[9]|r[10]<<8)/100` — offsets confirmed correct by capture).
 - **Calibration**: cmd33 sub `r[6]∈{8,15}`; `r[7]==1` → bitmask `r[8:30]` (idx=bit*22+col) of
   calibrated keys; `r[7]==0` → complete.
 - **Device interface**: prefer usage_page `0xFF1B`; Linux reports 0x0 so it falls back to the
   highest interface_number (iface 2). Windows usually reports the usage page correctly.
 
-## Effects (host engine, all multi-color over a background, time-based motion @120fps)
+## Effects (host engine, all multi-color over a background, time-based motion @60fps)
 Press-reactive (need live travel): **reactive, ripple, speedres, cross, fireworks**.
 Notable behaviors set during review: **Cross** = press lights that key's exact row+column;
 **Fireworks** = press-triggered explosion; **Frenzy** = the old automatic bursts;

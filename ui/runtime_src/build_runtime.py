@@ -96,6 +96,15 @@ def compile_jsx(manifest):
             if fn.endswith(".jsx"):
                 stem = os.path.splitext(fn)[0]
                 ws_jobs.append((f"workspaces/{fn}", f"ws_{stem}.js"))
+    # Shared UI components (src/components/*.jsx) are auto-discovered the same
+    # way — compiled before app.jsx so it can read their window.* exports.
+    comp_dir = os.path.join(HERE, "src", "components")
+    comp_jobs = []
+    if os.path.isdir(comp_dir):
+        for fn in sorted(os.listdir(comp_dir)):
+            if fn.endswith(".jsx"):
+                stem = os.path.splitext(fn)[0]
+                comp_jobs.append((f"src/components/{fn}", f"comp_{stem}.js"))
     jobs = [
         ("vendor/icons.jsx", "icons.js"),
         ("src/keyboard.jsx", "keyboard.js"),
@@ -103,6 +112,7 @@ def compile_jsx(manifest):
         ("vendor/theme.jsx", "theme.js"),
         ("src/desktop.jsx", "desktop.js"),
         *ws_jobs,
+        *comp_jobs,
         ("src/board-submit.jsx", "board-submit.js"),
         ("src/wizard.jsx", "wizard.js"),
         ("src/app.jsx", "app.js"),

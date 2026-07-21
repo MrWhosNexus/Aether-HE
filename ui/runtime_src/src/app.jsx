@@ -16,6 +16,14 @@ const { Workspace, TopBar: DesktopTopBar, SECTION_DEFS } = window.AetherDesktop;
 const SetupWizard = window.AetherWizard && window.AetherWizard.SetupWizard;
 const BoardSubmit = window.AetherBoardSubmit && window.AetherBoardSubmit.BoardSubmit;
 
+// Board awareness (PER_BOARD_PARITY_PLAN.md step 4) — all guarded so a missing
+// component file degrades to exactly the previous single-board UI.
+const AetherBoard = window.AetherBoard || {};
+const BoardContext = AetherBoard.BoardContext;
+const makeBoardContextValue = AetherBoard.makeBoardContextValue;
+const BoardPicker = window.AetherBoardPicker && window.AetherBoardPicker.BoardPicker;
+const UnsupportedNotices = window.AetherNotices && window.AetherNotices.UnsupportedNotices;
+
 // Placeholder for sections not yet built by later waves — a single
 // "coming soon" widget so the workspace surface isn't blank.
 const comingSoon = (label) => [{
@@ -52,11 +60,27 @@ const WIDGETS = {
    DOM/CSS scraping. Safely no-ops when run outside the webview.
    ============================================================ */
 const getApi = () => (window.pywebview && window.pywebview.api) || null;
+
+// Honest-failure tap: when the backend refuses an operation with
+// {ok:false, unsupported:true, feature, error} (per-board capability gating),
+// broadcast it so the App can surface the reason instead of the call failing
+// silently. Results pass through UNCHANGED, so every existing caller behaves
+// exactly as before — and on a fully-supported board (Aula Win60 HE) the
+// backend never returns `unsupported`, so this never fires there.
+const unsupportedListeners = new Set();
+const emitUnsupported = (name, res) => {
+  unsupportedListeners.forEach(fn => { try { fn(name, res); } catch {} });
+};
+const tapUnsupported = (name) => (r) => {
+  if (r && r.ok === false && r.unsupported) emitUnsupported(name, r);
+  return r;
+};
+
 const apiCall = (name, ...args) => {
   const api = getApi();
   if (!api || typeof api[name] !== "function")
     return Promise.resolve({ ok: false, error: "no bridge" });
-  try { return Promise.resolve(api[name](...args)); }
+  try { return Promise.resolve(api[name](...args)).then(tapUnsupported(name)); }
   catch (e) { return Promise.resolve({ ok: false, error: String(e) }); }
 };
 
@@ -66,9 +90,12 @@ const hexToRgbArr = (hex) => {
 };
 const rgbToHex = (rgb) =>
   "#" + (rgb || [0, 0, 0]).map(c => Math.max(0, Math.min(255, c | 0)).toString(16).padStart(2, "0")).join("");
-// Lighting %→firmware steps (AULA brightness 1..4, speed 1..4; 0% = off).
-const briByte = (pct) => (pct <= 0 ? 0 : Math.max(1, Math.min(4, Math.ceil((pct / 100) * 4))));
-const spdByte = (pct) => Math.max(1, Math.min(4, Math.round((pct / 100) * 3) + 1));
+// Lighting %→firmware steps. `max` comes from the active board's registry
+// (lighting.brightnessMax/speedMax); the default 4 is the Win60 scale and
+// makes these exactly the legacy functions (0% = off). Boards with a
+// different scale (MINI 60 HE PRO: 0..5) pass their own max.
+const briByte = (pct, max = 4) => (pct <= 0 ? 0 : Math.max(1, Math.min(max, Math.ceil((pct / 100) * max))));
+const spdByte = (pct, max = 4) => Math.max(1, Math.min(max, Math.round((pct / 100) * (max - 1)) + 1));
 // Firmware light modes (decoded from the official driver: cmd 7, byte5=mode,
 // refreshColorView() defines each mode's controls). Each entry: the firmware
 // mode byte, whether it uses a background color (2-color), a speed control, what
@@ -526,6 +553,16 @@ function App() {
   });
   const [section, setSection] = useState("actuation");
 
+  // ---- board awareness (additive; single-board path unchanged) --------------
+  // `board` mirrors get_board().active; `boardRoster` mirrors list_boards().boards
+  // (each entry carries live `connected` / `active` flags). Stays null/[] when
+  // the bridge is absent, which renders exactly the pre-board-awareness UI.
+  const [board, setBoard] = useState(null);
+  const [boardRoster, setBoardRoster] = useState([]);
+  const [boardSwitching, setBoardSwitching] = useState(false);
+  // Honest-failure notices: [{id, feature, msg}] fed by the apiCall unsupported tap.
+  const [boardNotices, setBoardNotices] = useState([]);
+
   // Dynamic profile list + the currently active id.
   const [profiles, setProfiles] = useState([{ ...SEED_PROFILE }]);
   const [activeId, setActiveId] = useState(SEED_PROFILE.id);
@@ -755,15 +792,29 @@ function App() {
     const m = {};
     // Effect color depends on pattern. For "static" all keys = colors[0].
     // For others we cycle palette across keys. bgColor underlies un-effect keys.
+    // COLOR HONESTY: previewSimColor (workspaces/lighting.jsx, shared with the
+    // verification harness) knows that a mode dispatching to the BOARD's
+    // firmware only ever receives colors[0] + bgColor — so the schematic must
+    // not scatter the rest of the palette (the out-of-the-box seed above
+    // contains #ffd400: that is the literal yellow that appeared inside a
+    // purple firmware twinkle over white). For legacy grid ids on host-engine
+    // boards (the shipped Win60 surface) and when the helper is missing, the
+    // inline sim below is byte-identical to the previous shipped code.
+    const LBH = window.AetherWorkspaces && window.AetherWorkspaces.LIGHTING_BOARD;
+    const bl = (board && board.lighting) || null;
     window.AetherKeyboard.KB_ROWS.flat().forEach(([_, __, code], idx) => {
       if (perKeyColors[code]) { m[code] = perKeyColors[code]; return; }
+      if (LBH && LBH.previewSimColor) {
+        m[code] = LBH.previewSimColor(bl, { pattern, colors, bgColor }, idx);
+        return;
+      }
       if (pattern === "static") { m[code] = colors[0]; return; }
       // Simulated effect: every nth key gets an effect color, rest = bg
       const hit = (idx % 6 === 0) || colors.length === 1;
       m[code] = hit ? colors[idx % colors.length] : bgColor;
     });
     return m;
-  }, [section, colors, bgColor, perKeyColors, pattern]);
+  }, [section, colors, bgColor, perKeyColors, pattern, board]);
 
   const selectedKey = useMemo(() => Array.from(selectedKeys)[0] || null, [selectedKeys]);
 
@@ -782,6 +833,84 @@ function App() {
         .finally(() => setConnecting(false));
     }
   };
+
+  /* ===== board awareness: fetch, switch, honest failures ===== */
+  // Refresh the active board + the live roster. Safe no-op without a bridge.
+  const refreshBoards = async () => {
+    try {
+      const g = await apiCall("get_board");
+      if (g && g.active !== undefined) setBoard(g.active || null);
+      const l = await apiCall("list_boards");
+      if (l && l.ok && Array.isArray(l.boards)) setBoardRoster(l.boards);
+    } catch {}
+  };
+
+  // Fetch once when the bridge comes up, then poll slowly so plugging in a
+  // second board (or pulling one) updates the picker without a restart.
+  useEffect(() => {
+    let alive = true, timer = null, iv = null, tries = 0;
+    const boot = () => {
+      if (!alive) return;
+      if (!getApi()) { if (tries++ < 50) timer = setTimeout(boot, 200); return; }
+      refreshBoards();
+      iv = setInterval(() => { if (alive) refreshBoards(); }, 5000);
+    };
+    boot();
+    return () => { alive = false; if (timer) clearTimeout(timer); if (iv) clearInterval(iv); };
+  }, []);
+
+  // Explicit board switch: select_board tears down the Python session and
+  // rebinds device + driver + keymap; mirror that teardown in UI state, then
+  // reconnect to the newly selected board. Only ever runs from the picker —
+  // a single-board machine can never reach this code path.
+  const selectBoard = async (slug) => {
+    if (boardSwitching) return { ok: false, error: "switch in progress" };
+    setBoardSwitching(true);
+    try {
+      const r = await apiCall("select_board", slug);
+      if (!r || !r.ok) return r || { ok: false, error: "select_board failed" };
+      setConnected(false);
+      setLiveDepths(null); setLightFrame(null);
+      setTravelTest(false); setCalibrating(false); setCalibratedKeys(new Set());
+      setPerKeyActuation({}); setGamepadOn(false);
+      if (r.active) setBoard(r.active);
+      const c = await apiCall("connect");
+      setConnected(!!(c && c.ok));
+      await refreshBoards();
+      return r;
+    } finally {
+      setBoardSwitching(false);
+    }
+  };
+
+  // Surface {unsupported:true} results (backend capability gate) as visible,
+  // auto-expiring notices with the backend's own reason string.
+  useEffect(() => {
+    const onUnsupported = (name, res) => {
+      // Prefer the backend's reason; fall back to the feature name, never the
+      // raw api method name, so the notice reads like the rest of the app.
+      const msg = (res && res.error) ||
+        `${(res && res.feature) || name} is not supported on this board`;
+      const id = Date.now() + Math.random();
+      setBoardNotices(ns => ns.some(n => n.msg === msg)
+        ? ns : [...ns.slice(-3), { id, feature: res && res.feature, msg }]);
+      setTimeout(() => setBoardNotices(ns => ns.filter(n => n.id !== id)), 6000);
+    };
+    unsupportedListeners.add(onUnsupported);
+    return () => unsupportedListeners.delete(onUnsupported);
+  }, []);
+  const dismissBoardNotice = (id) => setBoardNotices(ns => ns.filter(n => n.id !== id));
+
+  // Keep the active-board snapshot fresh across connect/disconnect (the 5s
+  // roster poll would catch it anyway; this just makes it immediate).
+  useEffect(() => { if (getApi()) refreshBoards(); }, [connected]);
+
+  // The capability context value — the locked contract for the next wave
+  // (shape documented in components/board-context.jsx). Also exposed to the
+  // current widget files as ctx.board.
+  const boardCtx = makeBoardContextValue
+    ? makeBoardContextValue({ board, roster: boardRoster, selectBoard, refreshBoards, switching: boardSwitching })
+    : null;
 
   // Polling change restarts the board, so only ever send it on an explicit click.
   const handleSetPolling = (p) => { setPolling(p); if (connected) apiCall("set_poll", p); };
@@ -891,6 +1020,22 @@ function App() {
   // distinct Striation, directional flow, etc.) regardless of color count.
   // Only Static and Full-RGB use the firmware mode. `section` is intentionally
   // NOT a dependency: switching tabs never re-sends.
+  //
+  // PER-BOARD DISPATCH: the firmware-vs-host decision and every byte of the
+  // resulting call are built by buildLightCalls (workspaces/lighting.jsx, one
+  // source of truth shared with the verification harness) from THE ACTIVE
+  // BOARD's registry mode table — never from the hardcoded Win60 MODE_BYTE
+  // table, whose `?? 0` fallback meant LIGHTS OFF on the MINI 60 HE PRO.
+  // When there is no board mode table at all (no bridge / board fetch failed)
+  // buildLightCalls returns null and the legacy branch below runs — exactly
+  // today's shipped code path, byte for byte.
+  //
+  // `board` is read through a ref and keyed by slug so the 5s roster poll
+  // (which rebuilds the object identity) never re-sends lighting; a genuine
+  // board switch (slug change) re-resolves and re-sends once.
+  const boardRef = useRef(null);
+  boardRef.current = board;
+  const boardSlug = (board && board.slug) || null;
   const lightTimer = useRef(null);
   useEffect(() => {
     if (!connected) return;
@@ -902,6 +1047,28 @@ function App() {
       // pre-scaling here would make the bg dimmer than the effect colors by
       // exactly the bgBright ratio (the two used to fight).
       const bgScaled = hexToRgbArr(bgColor);
+      const bl = (boardRef.current && boardRef.current.lighting) || null;
+      const LB = window.AetherWorkspaces && window.AetherWorkspaces.LIGHTING_BOARD;
+      const built = (LB && LB.buildLightCalls)
+        ? LB.buildLightCalls(bl, { pattern, power, fullColor, colors, bgColor,
+                                   brightness, speed, direction, striOrient })
+        : null;
+      if (built) {
+        built.calls.forEach(c => apiCall(...c));
+        // Honest fallback: the selected mode exists on neither this board's
+        // firmware nor the host engine — static was shown instead of silently
+        // sending a byte that may mean OFF. Same notice pipe as the backend's
+        // {unsupported:true} results.
+        if (built.notice) {
+          const msg = built.notice;
+          const id = Date.now() + Math.random();
+          setBoardNotices(ns => ns.some(n => n.msg === msg)
+            ? ns : [...ns.slice(-3), { id, feature: "lighting", msg }]);
+          setTimeout(() => setBoardNotices(ns => ns.filter(n => n.id !== id)), 6000);
+        }
+        return;
+      }
+      // Legacy path (no board mode table): today's shipped Win60-era code.
       // Animated effects run on the HOST per-key engine so they can show the
       // full multi-color palette (firmware effects only hold one fg+bg). Only
       // Static and Full-RGB use the firmware mode directly.
@@ -919,7 +1086,7 @@ function App() {
       }
     }, 70);
     return () => clearTimeout(lightTimer.current);
-  }, [connected, pattern, colors, bgColor, brightness, speed, power, fullColor, direction, bgBright, striOrient, lightNonce, calibrating]);
+  }, [connected, pattern, colors, bgColor, brightness, speed, power, fullColor, direction, bgBright, striOrient, lightNonce, calibrating, boardSlug]);
 
   // Custom mode: effect zones if any are defined (each key group runs its own
   // animated effect), otherwise static per-key colors.
@@ -944,9 +1111,14 @@ function App() {
       apiCall("stop_multicolor");
       const map = {};
       Object.entries(perKeyColors || {}).forEach(([code, hex]) => { map[code] = hexToRgbArr(hex); });
-      apiCall("set_custom_colors", map, briByte(brightness), spdByte(speed));
+      // Brightness/speed steps on THIS board's scale (Win60: 4 == the default,
+      // so its bytes are unchanged; MINI 60 HE PRO: 5).
+      const bl = (boardRef.current && boardRef.current.lighting) || null;
+      apiCall("set_custom_colors", map,
+              briByte(brightness, (bl && bl.brightnessMax) || 4),
+              spdByte(speed, (bl && bl.speedMax) || 4));
     }
-  }, [connected, pattern, perKeyColors, brightness, speed, zones, direction, bgColor, bgBright, lightNonce, calibrating]);
+  }, [connected, pattern, perKeyColors, brightness, speed, zones, direction, bgColor, bgBright, lightNonce, calibrating, boardSlug]);
 
   // Actuation / Rapid Trigger: EXPLICIT apply only.
   //
@@ -1045,7 +1217,7 @@ function App() {
 
   // Mirror the live host effect onto the IN-APP keyboard: poll the current frame
   // while on the Lighting tab and paint each key with its real animated color.
-  // The host engine streams cmd-9 pages to the board at 120fps under the GIL;
+  // The host engine streams cmd-9 pages to the board at 60fps under the GIL;
   // a tight polling loop here starves it and makes the board look choppy.
   // 50ms (~20fps) is plenty for the on-screen mirror and leaves the engine room.
   useEffect(() => {
@@ -1193,9 +1365,16 @@ function App() {
     // gamepad
     gamepadOn, handleGamepadToggle, gamepadMap, handleGamepadMapApply, DEFAULT_PAD_MAP,
     gamepadError, handleInstallVigem,
+    // board awareness — same object as the React BoardContext value; workspaces
+    // may read either ctx.board or window.AetherBoard.useBoard(). Contract in
+    // components/board-context.jsx. null only if board-context.jsx failed to load.
+    board: boardCtx,
   };
 
-  return (
+  // The whole existing tree, unchanged — board-awareness overlays are appended
+  // after <main> and the tree is (optionally) wrapped in the BoardContext
+  // provider below.
+  const tree = (
     <>
       <DesktopTopBar
         sections={SECTION_DEFS}
@@ -1211,6 +1390,19 @@ function App() {
         <Workspace section={section} widgets={WIDGETS[section] || []} ctx={ctx}/>
       </main>
 
+      {/* Board picker — renders null unless 2+ registered boards are connected,
+          so single-board machines see exactly the previous UI. */}
+      {BoardPicker && (
+        <BoardPicker roster={boardRoster} active={board}
+                     switching={boardSwitching} onSelect={selectBoard}/>
+      )}
+
+      {/* Honest failure surfacing for {unsupported:true} results. Renders null
+          when there are no notices (always, on fully-supported boards). */}
+      {UnsupportedNotices && (
+        <UnsupportedNotices notices={boardNotices} onDismiss={dismissBoardNotice}/>
+      )}
+
       {/* Theme Customizer popup (preserved; surfaced by the Settings workspace) */}
       <ThemePopup open={themeOpen} onClose={() => setThemeOpen(false)} theme={theme} setTheme={setTheme}/>
 
@@ -1224,6 +1416,12 @@ function App() {
       <UpdateGate gate={updGate} onChoose={chooseAutoUpdate} onDismiss={dismissUpdate}/>
     </>
   );
+
+  // Provide the capability context for the next wave of workspaces. When the
+  // context module is missing the tree renders bare — identical to before.
+  return (BoardContext && boardCtx)
+    ? <BoardContext.Provider value={boardCtx}>{tree}</BoardContext.Provider>
+    : tree;
 }
 
 const Stat = ({ label, value }) => (
