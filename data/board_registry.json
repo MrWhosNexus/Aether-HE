@@ -348,7 +348,8 @@
         "deadzoneRange": [0.0, 0.5],
         "switches": []
       },
-      "status": "bringup",
+      "_statusNote": "supported since 2026-07-21. Was 'bringup' while only the vendor's own frames had been seen over RF; every capability this entry advertises has since been round-tripped by Aether's own code against the physical receiver with the cable OUT: device info (0x10), lighting write + read-back (0x23/0x13), the full 42-page actuation table (0x27/0x17, a 1.77 mm trip written, read back, table restored byte-identical), the persistent per-key table (0x24), and macros (0x25/0x15). What stays gated is gated on evidence, not on doubt about the transport: host effects are FALSE because the RF bridge accepts 0x32 stream writes and silently drops them, and deadzone/socd/calibration remain 'wip' because they were never exercised across the bridge.",
+      "status": "supported",
       "issues": [6]
     },
     {
