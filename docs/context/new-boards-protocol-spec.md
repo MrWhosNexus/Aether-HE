@@ -7,15 +7,47 @@ This document synthesizes the protocol layer, HID descriptors, and command byte 
 ---
 
 ## 1. Aula Mini 60 HE Pro
-* **VID:PID:** `0C45:FEFE`
+* **VID:PID:** `0C45:80A2` (wired) · `0C45:FEFE` (2.4GHz dongle)
 * **Form Factor:** 60% Magnetic
-* **Controller Family:** Sonix (Inferred from `0C45` prefix)
+* **Controller Family:** Sonix (from the `0C45` prefix)
 
-### Protocol Assessment & HID Structures
-While this specific PID (`FEFE`) lacks an explicit USBPcap capture, its `0C45` vendor ID places it squarely in the **MINI 60 HE** hardware family alongside the decoded `0C45:80A1` (MINI60HE Max). Therefore, it is guaranteed to utilize the **Sonix 0xAA-framed vendor protocol**, deviating entirely from the standard Aula Win60 `2E3C` base.
+> **⚠️ CORRECTED 2026-07-20 — tested on hardware.** This section previously stated the board
+> was *"guaranteed to utilize the Sonix 0xAA-framed vendor protocol"* because it shares VID
+> `0C45` with the decoded `0C45:80A1`. **That inference was tested against the physical board
+> and falsified.** The text below it (the `0xAA` framing, cmd `0x23`/`0x27` layouts) is an
+> accurate description of the **`80A1` Max** protocol, but it is NOT confirmed for this board —
+> treat it as a hypothesis to check a capture against, not as this board's spec. The original
+> "guaranteed" claim was inference presented as fact; it survived because nobody had the
+> hardware. Now we do.
 
-* **Usage Page Configuration:** Expected vendor config collection at `Usage Page 0xFF68`, Interface 2.
-* **Transport:** 64-byte interrupt OUT frames on Endpoint `0x04`.
+### Measured HID topology (hardware, 2026-07-20)
+The board enumerates as **two different devices** depending on transport:
+
+| Transport | VID:PID | Product string | Vendor interfaces |
+|---|---|---|---|
+| USB-C cable | `0C45:80A2` | `KEYBOARD  MINI 60 HE PRO` | iface 2 `0xFF68`/`0x61`; iface 3 `0xFF67`/`0x61` |
+| 2.4GHz dongle | `0C45:FEFE` | `MINI 60 HE PRO Dongle` | iface 2 `0xFFFF`/`0x01`; iface 3 `0xFF60`/`0x61`; iface 4 `0xFF59`/`0x61` |
+
+Note the dongle exposes **no `0xFF68` at all** — the two transports do not present the same
+vendor surface, so a wired decode will not automatically yield the wireless one.
+`0xFF60`/`0x61` on the dongle is the canonical **QMK/VIA raw-HID** signature and is worth
+pulling as an independent lead.
+
+### Falsification test (wired, `80A2`, iface 2 `0xFF68`)
+The Max's decoded lighting command was driven directly at the board:
+
+* Every `protocol_sonix` cmd `0x23` frame is **accepted** by hidapi (65 bytes written, no error).
+* The board **echoes the frame back verbatim with magic `0x55` replacing the request `0xAA`**.
+* **No LED change**, across the full mode sweep `0x00..0x11` at brightness `0xFF`.
+* The echo is byte-identical to what was sent — **not one field clamped or normalized**, even
+  for nonsense mode values. Firmware that genuinely parsed the mode byte would be expected to
+  normalize at least one invalid value. This reads as a **dumb loopback, not a semantic ACK**.
+* iface 3 (`0xFF67`) rejects writes outright (`write()` returns `-1`).
+
+**Conclusion:** same-usage-page is no stronger evidence than same-VID was. `80A2` is
+`protocol: null` in the registry and stays there until it has its **own** USBPcap capture of the
+official Aula driver. Reproduce with the probe methodology in
+`docs/context/aula-win60-protocol-capture.md`.
 
 ### Exact Command Structures (0C45 Family)
 Frames are constructed *without* a standard HID Report ID. Instead, every 64-byte frame starts with a magic header:

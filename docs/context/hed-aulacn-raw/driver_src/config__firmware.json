@@ -1,0 +1,19 @@
+{
+  "device": [
+    {
+      "product": "SI2828HEARGB",
+      "version": "3.14.30",
+      "file": "GD278CKB_W669KBSI_SI2828HEARGB_V31430.zip"
+    },
+    {
+      "product": "SI2825HEARGB",
+      "version": "3.13.30",
+      "file": "YBY264CKB_W669KBSI_SI2825HEARGB_V31330.zip"
+    },
+    {
+      "product": "SI2825KZHEARGB",
+      "version": "3.17.07",
+      "file": "GD285CKB_W669KBSI_SI2825KZHEARGB_V31707.zip"
+    }
+  ]
+}

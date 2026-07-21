@@ -1,7 +1,8 @@
 # AETHER HE — Aula WIN60 HE Controller
 
 > ## 📣 We're looking for keyboards to support — submit yours!
-> Aether only speaks to the **Aula Win60 HE** today, and we want to change that.
+> Aether fully drives the **Aula Win60 HE** and the **Aula MINI 60 HE PRO** (wired and
+> over its 2.4 GHz dongle) today, and we want that list to keep growing.
 > **Own a different Hall-effect or RGB keyboard? Send us its data and we'll add it.**
 > It takes a few minutes, needs **no coding**, and gets your board onto the roadmap
 > with its layout drawn in the app.
@@ -9,7 +10,8 @@
 > ### → [**Submit your keyboard**](https://github.com/MrWhosNexus/Aether-HE/issues/new?template=add-a-board.yml) · [How it works](docs/SUBMIT_A_BOARD.md)
 
 Cross-platform desktop controller for the Aula Win60 HE Hall-effect keyboard
-(VID `0x2E3C`, PID `0xC365`). React/Tailwind UI rendered natively
+(VID `0x2E3C`, PID `0xC365`) and the Aula MINI 60 HE PRO (`0x0C45:0x80A2` wired,
+`0x0C45:0xFEFE` over its 2.4 GHz receiver). React/Tailwind UI rendered natively
 (Edge WebView2 on Windows, GTK/WebKit on Linux); HID is bridged to Python.
 
 Features: per-key & multi-color animated lighting (host streaming, 60 fps),
@@ -33,14 +35,15 @@ Aether is built to grow beyond one board. If your keyboard isn't supported yet,
 <!-- BOARDS:START -->
 | Keyboard | Switches | Lighting | Actuation | Status |
 |----------|----------|----------|-----------|--------|
-| Aula Win60 HE | Hall-effect | ✅ | ✅ | Fully supported |
-| Aula MINI60HE Max | Hall-effect | 🚧 | 🚧 | Bring-up — protocol decoded (#4) |
-| Aula Mini 60 HE Pro | Hall-effect | — | — | Layout added — needs captures (#6) |
-| Aula Win60 HE Max | Hall-effect | — | — | Layout added — needs captures (#5) |
-| Aula win68 HE Max | Hall-effect | — | — | Layout added (65%) — needs captures (#7) |
-| Aula WIN 60 HE Pro | Hall-effect | — | — | Layout added — SayoDevice, needs captures (#3) |
-| Aula F75 Tri-Mode | Mechanical | — | — | Added to registry — needs captures (#8) |
+| Aula Win60 HE | Hall-effect | ✅ | ✅ | Fully supported — hardware-verified |
+| Aula MINI 60 HE PRO (wired) | Hall-effect | ✅ | ✅ | Fully supported — hardware-verified (#6) |
+| Aula MINI 60 HE PRO (2.4 GHz dongle) | Hall-effect | ✅ | ✅ | Supported over RF — firmware effects only, no host streaming (#6) |
+| Aula WIN 68 HE | Hall-effect | 🚧 | 🚧 | Bring-up — auto-detected, shares the Win60 protocol; not yet verified on hardware |
+| Aula KP-TE153 | Hall-effect | 🚧 | 🚧 | Bring-up — as WIN 68 HE (UK ISO); not yet verified on hardware |
+| Aula WIN 60 HE Pro | Hall-effect | 🚧 | — | Bring-up — SayoDevice, lighting decoded from captures (#3) |
 | **Your board?** | — | — | — | **[Submit it →](https://github.com/MrWhosNexus/Aether-HE/issues/new?template=add-a-board.yml)** |
+
+**Recognised, but not drivable yet.** Aether identifies these boards, names them and draws their layout, but has no verified protocol for them — lighting and actuation stay switched off and they are not offered as selectable options anywhere in the app: **Aula MINI60HE Max** (protocol decoded from a capture but never proven on hardware (#4)), **Aula MINI 60 HE PRO (alt PID 0x80B2)** (second hardware revision, no capture of its own (#6)), **Aula MINI 68 HE** (listed by the vendor driver, no capture), **Aula MINI 68 HE PRO** (listed by the vendor driver, no capture), **Aula MINI68 HE MAX** (listed by the vendor driver, no capture), **AULA F75 HE** (listed by the vendor driver, no capture), **Aula MINI60HE / MINI68HE MAX (2.4 GHz dongle)** (different transport from the decoded wired boards, no capture), **Aula Win60 HE Max** (layout added, needs captures (#5)), **Aula win68 HE Max** (layout added (65%), needs captures (#7)), **Aula F75 Tri-Mode** (in the registry, needs captures (#8)).
 <!-- BOARDS:END -->
 
 > This table is generated from [`data/boards.json`](data/boards.json) — it grows
