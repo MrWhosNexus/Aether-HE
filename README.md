@@ -1,15 +1,19 @@
 # AETHER HE — Aula WIN60 HE Controller
 
-> ## ⚠️ On v0.3.1 or earlier? The in-app update button doesn't work — update by hand once
-> In v0.3.1 and earlier, **Settings → Check for Updates** always reported *"You're up to
-> date"*, even when a new release existed. It cannot fix itself, because the bug is in the
-> installed app. Install the latest version manually, one time:
+> ## ⚠️ Please reinstall — v0.4.3 fixes the board selector
+> The board selector listed a board that was never offered (KP-TE153) and hid both **Aula
+> MINI 60 HE PRO** entries (wired and 2.4 GHz). Fixed in **v0.4.3**.
 >
 > ### → [**Download the latest release**](https://github.com/MrWhosNexus/Aether-HE/releases/latest)
 >
 > Windows: `AetherHE-Setup.exe` (installs over your current version, keeps your settings).
-> Linux: `AetherHE.flatpak`. Fixed in **v0.4.1**; from v0.4.0 onward Aether updates itself
-> on launch, so this is the last manual step.
+> Linux: `AetherHE.flatpak`.
+>
+> **On v0.3.1 or earlier you must reinstall by hand** — *Settings → Check for Updates* in
+> those builds always reported *"You're up to date"* and cannot fix itself
+> ([#14](https://github.com/MrWhosNexus/Aether-HE/issues/14)). **On v0.4.0+** just reopen
+> Aether; it updates itself on launch, and since v0.4.2 it verifies the download's SHA-256
+> before running it.
 
 > ## 📣 We're looking for keyboards to support — submit yours!
 > Aether fully drives the **Aula Win60 HE** and the **Aula MINI 60 HE PRO** (wired and
