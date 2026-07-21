@@ -1047,11 +1047,35 @@ class Api:
             return {"ok": False, "error": str(e)}
 
     def save_settings(self, settings):
+        """Persist the UI's settings blob, PRESERVING top-level keys it doesn't own.
+
+        The UI sends the whole blob *it* manages (profiles, theme, sections).
+        Writing that verbatim silently dropped keys written by other paths:
+        `autoUpdate`, set by set_auto_update() when the user answers the
+        first-run prompt, was erased by the next profile/theme save, so the app
+        treated them as first-run again and re-prompted on every launch.
+
+        Merging instead of replacing fixes that key and the whole class — any
+        future setting written by a different code path survives a UI save.
+        A missing or corrupt file is treated as empty rather than failing the
+        save, matching the updater's own tolerance for a damaged settings.json.
+        """
         try:
             import json
-            with open(self._settings_path(), "w", encoding="utf-8") as f:
-                json.dump(settings, f, indent=2)
-            return {"ok": True, "path": self._settings_path()}
+            path = self._settings_path()
+            existing = {}
+            try:
+                with open(path, encoding="utf-8") as f:
+                    loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    existing = loaded
+            except (OSError, ValueError):
+                existing = {}
+            merged = dict(existing)
+            merged.update(settings or {})
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(merged, f, indent=2)
+            return {"ok": True, "path": path}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
