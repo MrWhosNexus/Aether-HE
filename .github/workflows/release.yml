@@ -68,8 +68,15 @@ jobs:
           if-no-files-found: error
 
   # ------------------------------------------------------------------- Linux --
+  # Linux is built here in CI (ubuntu runner, Flathub container) — it costs no
+  # local effort, so it stays. But it is NOT allowed to hold up a release: the
+  # Windows installer is the shipping artifact, and a Flatpak breakage (runtime
+  # bump, Flathub image change) must never block it. continue-on-error keeps a
+  # failure from failing the run, and the release job below publishes whatever
+  # assets actually exist.
   linux:
     runs-on: ubuntu-latest
+    continue-on-error: true
     timeout-minutes: 45
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-48
@@ -94,17 +101,36 @@ jobs:
   release:
     needs: [windows, linux]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    # Publish as long as WINDOWS succeeded. always() is required because `needs`
+    # would otherwise skip this job when linux failed; the explicit windows
+    # check keeps the Windows installer a hard requirement rather than
+    # degrading the whole gate.
+    if: always() && startsWith(github.ref, 'refs/tags/') && needs.windows.result == 'success'
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+      - name: Collect assets that were actually built
+        id: assets
+        run: |
+          set -euo pipefail
+          # Windows assets are mandatory — a missing one is a real failure and
+          # must not be silently skipped by fail_on_unmatched_files: false.
+          for f in artifacts/windows/AetherHE-Setup.exe artifacts/windows/AetherHE-windows.zip; do
+            if [ ! -f "$f" ]; then
+              echo "::error::required Windows asset missing: $f"; exit 1
+            fi
+          done
+          FILES=$'artifacts/windows/AetherHE-Setup.exe\nartifacts/windows/AetherHE-windows.zip'
+          if [ -f artifacts/linux/AetherHE.flatpak ]; then
+            FILES="$FILES"$'\nartifacts/linux/AetherHE.flatpak'
+          else
+            echo "::warning::Linux Flatpak was not produced — publishing Windows assets only."
+          fi
+          { echo "files<<__EOF__"; echo "$FILES"; echo "__EOF__"; } >> "$GITHUB_OUTPUT"
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           fail_on_unmatched_files: true
-          files: |
-            artifacts/windows/AetherHE-Setup.exe
-            artifacts/windows/AetherHE-windows.zip
-            artifacts/linux/AetherHE.flatpak
+          files: ${{ steps.assets.outputs.files }}
