@@ -1,5 +1,16 @@
 # AETHER HE — Aula WIN60 HE Controller
 
+> ## ⚠️ On v0.3.1 or earlier? The in-app update button doesn't work — update by hand once
+> In v0.3.1 and earlier, **Settings → Check for Updates** always reported *"You're up to
+> date"*, even when a new release existed. It cannot fix itself, because the bug is in the
+> installed app. Install the latest version manually, one time:
+>
+> ### → [**Download the latest release**](https://github.com/MrWhosNexus/Aether-HE/releases/latest)
+>
+> Windows: `AetherHE-Setup.exe` (installs over your current version, keeps your settings).
+> Linux: `AetherHE.flatpak`. Fixed in **v0.4.1**; from v0.4.0 onward Aether updates itself
+> on launch, so this is the last manual step.
+
 > ## 📣 We're looking for keyboards to support — submit yours!
 > Aether fully drives the **Aula Win60 HE** and the **Aula MINI 60 HE PRO** (wired and
 > over its 2.4 GHz dongle) today, and we want that list to keep growing.
