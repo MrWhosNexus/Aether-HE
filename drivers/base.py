@@ -217,6 +217,82 @@ class BoardDriver:
         """Clear key-table record `key_index` back to UNASSIGNED."""
         self._unsupported("macros")
 
+    # ---- plain key remap, one record at a time (feature key "key_remap") ----
+    # DELIBERATELY a separate feature key from "remap" (write_keymap /
+    # read_keymap_layer above): that pair is the Win60's whole-layer keymap
+    # upload, this is a single record in a board's key table. A board can have
+    # one without the other — the MINI 60 HE PRO has no whole-layer upload
+    # command at all — so gating them on one key would let a caller that
+    # checked supports("remap") call an op the driver refuses.
+    def read_key_records(self):
+        """The board's key table decoded per record:
+        {record index: {"type": ..., ...}} (see the board protocol module's
+        record parser). Read-only — the input side of every remap/advanced-key
+        read-modify-write."""
+        self._unsupported("key_remap")
+
+    def set_key_remap(self, key_index, hid_usage, modifiers=0):
+        """Bind key-table record `key_index` to a plain HID keyboard usage
+        with an optional modifier bitmask, leaving every other record
+        byte-identical."""
+        self._unsupported("key_remap")
+
+    # ---- advanced keys (feature key "advanced_keys") ----
+    # The five vendor "Advanced Key" types. All of them are key-table records
+    # like a remap, so they share the read-modify-write path, but they are
+    # gated separately: a board can support plain remap without any of these.
+    def read_dks_slots(self):
+        """The board's DKS travel table decoded per populated slot:
+        {slot index: {"points_mm": [...], ...}}."""
+        self._unsupported("advanced_keys")
+
+    def set_advanced_dks(self, key_index, slot, points_mm,
+                         actions=(), trigger_masks=(0, 0, 0, 0)):
+        """Dynamic Keystroke on `key_index`, pointing at DKS entry `slot`.
+        `points_mm` are the four travel points in mm, in wire order
+        (press / bottom-out / release / reset), and are written to the
+        board's separate DKS travel table."""
+        self._unsupported("advanced_keys")
+
+    def set_advanced_mt(self, key_index, delay, tap_hid=0, hold_hid=0):
+        """Mod-Tap on `key_index`.
+
+        `delay` is the RAW firmware delay byte, deliberately NOT named
+        `delay_ms`: its unit is UNVERIFIED (one captured sample). Drivers
+        pass it straight through rather than inventing a conversion."""
+        self._unsupported("advanced_keys")
+
+    def set_advanced_tgl(self, key_index, hid_usage=0):
+        """Toggle (press-on / press-off) on `key_index`. The parameterless
+        form (hid_usage 0) is the captured one."""
+        self._unsupported("advanced_keys")
+
+    def set_advanced_socd(self, key_index_a, key_index_b,
+                          hid_a, hid_b, mode):
+        """SOCD on the PAIR (`key_index_a`, `key_index_b`) — one operation,
+        both records, because the vendor writes the identical record into
+        both slots and a half-applied pair is a broken board state.
+
+        `mode` is the raw behaviour byte and is a caller parameter on
+        purpose: the boards this exists for accept several values but only
+        one has ever been observed on the wire, so no driver may present a
+        named-mode vocabulary as if it were decoded."""
+        self._unsupported("advanced_keys")
+
+    def set_advanced_rs(self, key_index_a, key_index_b, hid_a, hid_b):
+        """Rapid Snap / Swift on the PAIR (`key_index_a`, `key_index_b`) —
+        one operation, both records (same pairing rule as SOCD)."""
+        self._unsupported("advanced_keys")
+
+    def clear_advanced_key(self, key_index):
+        """Clear ONE advanced-key/remap record back to UNASSIGNED.
+
+        Distinct from unbind_key() above, which is the macro feature's
+        clear: a board may implement advanced keys without macros (or the
+        reverse), and a caller must not have to hold the macro feature to
+        undo an advanced key."""
+        self._unsupported("advanced_keys")
+
 
 class NullDriver(BoardDriver):
     """Deliberately-inert driver for boards with no decoded/wired protocol

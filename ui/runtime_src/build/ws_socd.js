@@ -274,6 +274,51 @@
     }, "unconfigured")))));
   };
 
+  /* ============================================================
+     Board-aware dispatch (ADDITIVE — the Win60 path is untouched).
+  
+     The three widget bodies above are the Aula Win60 HE's SOCD UI, driven by
+     that board's own cmd-36 PRCS mechanism. Boards that instead keep their
+     bindings in a 512-byte key table (the MINI 60 HE PRO's advanced keys:
+     DKS/MT/TGL/SOCD/RS + plain remap) get a different body, supplied by
+     src/components/advanced-keys.jsx.
+  
+     The switch is a capability gate. It resolves to show:false for the
+     Win60 AND for the no-board / plain-browser fail-open path, so those
+     render exactly the same element tree as before this file changed — the
+     only difference is one extra pass-through component layer, which emits
+     no DOM of its own.
+  
+     Lookups are done at RENDER time (not module-eval time) because
+     build_runtime.py compiles workspaces/ before src/components/, so
+     window.AetherAdvancedKeys / window.AetherBoard do not exist yet when
+     this file is evaluated.
+     ============================================================ */
+  const FALLBACK_BOARD_CTX = React.createContext(null);
+  const useBoardSafe = () => {
+    const B = window.AetherBoard;
+    const val = React.useContext(B && B.BoardContext || FALLBACK_BOARD_CTX);
+    return val || B && B.UNKNOWN_BOARD || null;
+  };
+  const boardAware = (Win60Body, advBodyName) => {
+    const Dispatcher = ctx => {
+      const board = useBoardSafe();
+      const A = window.AetherAdvancedKeys;
+      const gate = A ? A.advancedKeysGate(board) : {
+        show: false
+      };
+      if (gate.show && A && A[advBodyName]) {
+        return React.createElement(A[advBodyName], {
+          ctx,
+          gate
+        });
+      }
+      return /*#__PURE__*/React.createElement(Win60Body, ctx);
+    };
+    Dispatcher.displayName = `BoardAware(${advBodyName})`;
+    return Dispatcher;
+  };
+
   /* ===== Widget Array Export ===== */
   window.AetherWorkspaces = window.AetherWorkspaces || {};
   window.AetherWorkspaces.SOCD_WIDGETS = [{
@@ -289,7 +334,7 @@
       w: 320,
       h: 400
     },
-    render: PairEditorWidget
+    render: boardAware(PairEditorWidget, "AdvancedKeyEditor")
   }, {
     id: "hotkey",
     title: "Hotkey",
@@ -303,7 +348,7 @@
       w: 280,
       h: 120
     },
-    render: HotkeyWidget
+    render: boardAware(HotkeyWidget, "AdvancedKeyStatus")
   }, {
     id: "active-pairs",
     title: "Active Pairs",
@@ -317,6 +362,6 @@
       w: 280,
       h: 240
     },
-    render: ActivePairsWidget
+    render: boardAware(ActivePairsWidget, "AdvancedKeyBindings")
   }];
 })();

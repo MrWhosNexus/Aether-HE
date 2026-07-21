@@ -732,7 +732,11 @@ def test_key_record_helpers_validate_and_parse():
     assert pm.parse_key_record([6, 3, 2, 9]) == {
         "type": "macro", "macro_index": 3, "play_mode": 2, "loop_count": 9}
     assert pm.parse_key_record([0, 0, 0, 0]) == {"type": "unassigned"}
-    assert pm.parse_key_record([11, 2, 0x31, 0x38])["type"] == "raw"
+    # pageType 11 (SOCD) used to fall through to "raw"; it is decoded since
+    # the 2026-07-21 advanced-key captures (see the advanced-key section).
+    assert pm.parse_key_record([11, 2, 0x31, 0x38])["type"] == "socd"
+    # a pageType with no builder here still falls through to raw
+    assert pm.parse_key_record([13, 1, 2, 3])["type"] == "raw"
     for bad in (lambda: pm.key_record_macro(100),
                 lambda: pm.key_record_macro(0, 5),
                 lambda: pm.key_record_macro(0, 0, 300)):
@@ -1291,6 +1295,451 @@ def test_registry_mode_byte_10_is_native_and_not_the_win60_custom_alias():
     # the captured frame for byte 10 is a firmware effect, not a per-key gate
     (f, b), = outs(pm.CMD_LIGHTING, "LIGHT_MODE: %s" % LIGHT_LABELS[9])
     assert b[8] == 10 and pm.build_light(10) == b
+
+
+# =====================================================================
+# ADVANCED KEYS + REMAP (2026-07-21) — golden against REAL captures taken
+# over the 2.4GHz dongle with the vendor driver:
+#
+#   webhid-capture-FULL-SUITE-wireless.json    the complete sweep (SOCD,
+#       DKS, RS, TGL, MT and a plain remap, saved one after another)
+#   webhid-capture-advkeys-all-wireless.json   all five advanced types
+#   webhid-capture-socd-wireless.json          SOCD isolated
+#
+# These captures contain OUT frames only (no 0x55 replies), so every
+# assertion below is against the driver's OUT traffic. The vendor UI
+# rewrites the WHOLE 504-byte key table on every save, so the FULL-SUITE
+# capture is a CUMULATIVE sequence: each labelled save adds exactly one new
+# record on top of the previous ones. That is what attributes a record to
+# its pageType instead of to a coincidence of position.
+#
+# Verification tiers, restated for this section:
+#   golden      — byte-for-byte against literal captured frames, including
+#                 assertions pinned to ABSOLUTE frame byte offsets (a
+#                 build<->parse round trip cannot catch an off-by-one).
+#   structural  — layout asserted where the capture cannot discriminate.
+#   UNVERIFIED  — explicitly NOT asserted; see
+#                 test_advanced_key_unknowns_are_not_guessed_at.
+# =====================================================================
+CAPTURE_FULL_SUITE = os.path.join(ROOT, "docs", "context",
+                                  "issue-6-mini60-pro-raw",
+                                  "webhid-capture-FULL-SUITE-wireless.json")
+CAPTURE_ADVKEYS = os.path.join(ROOT, "docs", "context",
+                               "issue-6-mini60-pro-raw",
+                               "webhid-capture-advkeys-all-wireless.json")
+CAPTURE_SOCD = os.path.join(ROOT, "docs", "context",
+                            "issue-6-mini60-pro-raw",
+                            "webhid-capture-socd-wireless.json")
+
+FRAMES_FS = _load_capture(CAPTURE_FULL_SUITE)
+FRAMES_AK = _load_capture(CAPTURE_ADVKEYS)
+FRAMES_SO = _load_capture(CAPTURE_SOCD)
+
+# labels the vendor session recorded, in save order
+LBL_SOCD = "SOCD: behavior = Key 1 Priority"
+LBL_DKS = ("DKS SAVE: trigger W, press 1.6 / bottomOut 3.0 / release 3.0 "
+           "/ reset 1.6, action W")
+LBL_RS = "RS SAVE: Q + E"
+LBL_TGL = "TGL SAVE: trigger Z, no action key pressed"
+LBL_MT = "MT SAVE: trigger X, default delay"
+LBL_REMAP = "REMAP: APP -> F12"
+
+
+def a_outs(cmd=None, label=None, frames=None):
+    """OUT frames of one of the advanced-key captures, as byte lists."""
+    return [b for _, b in d_outs(cmd, label,
+                                 frames=frames if frames is not None else FRAMES_FS)]
+
+
+def _reassemble(frames, size):
+    """Fold a paged write pass ([2]=len, [3..4]=LE16 offset, data from
+    byte 8) into a flat table image."""
+    table = [0] * size
+    for b in frames:
+        off = b[3] | (b[4] << 8)
+        for j in range(min(b[2], len(b) - 8)):
+            if off + j < size:
+                table[off + j] = b[8 + j]
+    return table
+
+
+# ---- the record bytes this section is pinned to (literal, from the wire) ----
+REC_RS = [0x0C, 0x00, 0x14, 0x08]      # Q (HID 0x14) + E (HID 0x08)
+REC_DKS = [0x08, 0x01, 0x00, 0x00]     # DKS slot 1
+REC_SOCD = [0x0B, 0x03, 0x04, 0x07]    # mode 3, A (0x04) + D (0x07)
+REC_TGL = [0x0A, 0x00, 0x00, 0x00]
+REC_MT = [0x09, 0x00, 0x00, 0x28]
+REC_REMAP_F12 = [0x02, 0x00, 0x45, 0x00]
+REC_REMAP_84 = [0x02, 0x00, 0x36, 0x00]   # pre-existing bind, replayed verbatim
+KEY_IDX = {"rs_a": 33, "dks": 34, "rs_b": 35, "socd_a": 49, "socd_b": 51,
+           "tgl": 65, "mt": 66, "remap84": 84, "remap_f12": 86}
+
+
+def test_advanced_key_records_are_golden_at_absolute_frame_offsets():
+    """golden — each advanced-key record pinned to the LITERAL frame byte
+    it occupies in the captured 0x22 write pass. Chunk = 0x18, so record
+    `idx` lives in the chunk at offset (idx*4 // 24)*24 at frame byte
+    8 + (idx*4 % 24). These offsets are spelled out as constants rather
+    than recomputed, because a build<->parse round trip cannot catch an
+    off-by-one and that bug has already happened in this project."""
+    pass_frames = a_outs(pm.CMD_KEY_TABLE_WRITE, LBL_REMAP)
+    assert len(pass_frames) == 21                    # 21 x 0x18 = 504
+    at = {b[3] | (b[4] << 8): b for b in pass_frames}
+
+    # (table offset of the chunk, frame byte, expected record) — literals
+    assert at[0x0078][20:24] == REC_RS               # key idx 33
+    assert at[0x0078][24:28] == REC_DKS              # key idx 34
+    assert at[0x0078][28:32] == REC_RS               # key idx 35 (mirror)
+    assert at[0x00C0][12:16] == REC_SOCD             # key idx 49
+    assert at[0x00C0][20:24] == REC_SOCD             # key idx 51 (mirror)
+    assert at[0x00F0][28:32] == REC_TGL              # key idx 65
+    assert at[0x0108][8:12] == REC_MT                # key idx 66
+    assert at[0x0150][16:20] == REC_REMAP_F12        # key idx 86
+
+    # the builders must produce exactly those literal bytes
+    assert pm.key_record_rs(0x14, 0x08) == REC_RS
+    assert pm.key_record_dks(1) == REC_DKS
+    assert pm.key_record_socd(0x04, 0x07, 0x03) == REC_SOCD
+    assert pm.key_record_tgl() == REC_TGL
+    assert pm.key_record_mt(0x28) == REC_MT
+    assert pm.key_record_remap(0x45) == REC_REMAP_F12
+
+
+def test_advanced_key_write_pass_is_reproduced_byte_for_byte():
+    """golden — build the whole 504-byte key table from the builders and
+    reproduce all 21 captured 0x22 frames of the final (cumulative) save."""
+    table = [0] * pm.KEY_TABLE_WRITE_SIZE
+    table = pm.apply_paired_key_record(table, KEY_IDX["rs_a"], KEY_IDX["rs_b"],
+                                       pm.key_record_rs(0x14, 0x08))
+    table = pm.apply_key_record(table, KEY_IDX["dks"], pm.key_record_dks(1))
+    table = pm.apply_paired_key_record(table, KEY_IDX["socd_a"],
+                                       KEY_IDX["socd_b"],
+                                       pm.key_record_socd(0x04, 0x07, 0x03))
+    table = pm.apply_key_record(table, KEY_IDX["tgl"], pm.key_record_tgl())
+    table = pm.apply_key_record(table, KEY_IDX["mt"], pm.key_record_mt(0x28))
+    table = pm.apply_key_record(table, KEY_IDX["remap84"],
+                                pm.key_record_remap(0x36))
+    table = pm.apply_key_record(table, KEY_IDX["remap_f12"],
+                                pm.key_record_remap(0x45))
+
+    captured = a_outs(pm.CMD_KEY_TABLE_WRITE, LBL_REMAP)
+    assert pm.build_key_table_write_frames(table, frame_len=W) == captured
+    # and the reassembled image is exactly the table we built
+    assert _reassemble(captured, pm.KEY_TABLE_WRITE_SIZE) == table
+
+
+def test_paired_types_write_one_record_to_both_keys_of_the_pair():
+    """golden — THE paired-type fact: SOCD and RS write the byte-IDENTICAL
+    record to two key indices. Asserted from the reassembled captured
+    table, not from the builders."""
+    table = _reassemble(a_outs(pm.CMD_KEY_TABLE_WRITE, LBL_REMAP),
+                        pm.KEY_TABLE_WRITE_SIZE)
+    groups = pm.find_paired_key_records(table)
+    assert groups == {tuple(REC_SOCD): [49, 51], tuple(REC_RS): [33, 35]}
+    for rec, idxs in groups.items():
+        assert len(idxs) == 2
+        a, b = idxs
+        assert table[a * 4:a * 4 + 4] == table[b * 4:b * 4 + 4] == list(rec)
+
+    # the helper reproduces the mirroring, and refuses to mirror a
+    # non-paired record
+    built = pm.apply_paired_key_record([0] * pm.KEY_TABLE_WRITE_SIZE, 49, 51,
+                                       pm.key_record_socd(0x04, 0x07))
+    assert built[49 * 4:49 * 4 + 4] == built[51 * 4:51 * 4 + 4] == REC_SOCD
+    for bad in (lambda: pm.apply_paired_key_record([0] * 504, 1, 2,
+                                                   pm.key_record_remap(4)),
+                lambda: pm.apply_paired_key_record([0] * 504, 7, 7,
+                                                   pm.key_record_rs(1, 2))):
+        try:
+            bad()
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("paired-record misuse accepted")
+
+
+def test_advanced_key_saves_are_cumulative_and_each_adds_one_record():
+    """golden — the attribution argument itself: walking the labelled 0x22
+    save passes in order, each one adds EXACTLY the record its label names
+    and changes nothing else. This is why record 0B... is SOCD and not a
+    coincidence of key position."""
+    expected = [
+        (LBL_SOCD, {49: REC_SOCD, 51: REC_SOCD, 84: REC_REMAP_84}),
+        (LBL_DKS, {34: REC_DKS}),
+        (LBL_RS, {33: REC_RS, 35: REC_RS}),
+        (LBL_TGL, {65: REC_TGL}),
+        (LBL_MT, {66: REC_MT}),
+        (LBL_REMAP, {86: REC_REMAP_F12}),
+    ]
+    prev = {}
+    for label, added in expected:
+        frames = a_outs(pm.CMD_KEY_TABLE_WRITE, label)
+        table = _reassemble(frames, pm.KEY_TABLE_WRITE_SIZE)
+        recs = {i: table[i * 4:i * 4 + 4]
+                for i in range(pm.KEY_WRITABLE_RECORDS)
+                if any(table[i * 4:i * 4 + 4])}
+        assert {k: v for k, v in recs.items() if k not in prev} == added, label
+        assert all(recs[k] == v for k, v in prev.items()), label
+        prev = recs
+    # the last cumulative state holds all nine records
+    assert sorted(prev) == [33, 34, 35, 49, 51, 65, 66, 84, 86]
+
+
+def test_advanced_key_records_parse_back_to_named_types():
+    """golden — parse_key_record decodes every captured advanced record to
+    its named type with the right fields."""
+    table = _reassemble(a_outs(pm.CMD_KEY_TABLE_WRITE, LBL_REMAP),
+                        pm.KEY_TABLE_WRITE_SIZE)
+    recs = pm.parse_key_table(table)
+    assert recs[33] == {"type": "rs", "page_type": 12,
+                        "hid_a": 0x14, "hid_b": 0x08, "paired": True}
+    assert recs[35] == recs[33]
+    assert recs[34] == {"type": "dks", "page_type": 8, "slot": 1}
+    assert recs[49] == {"type": "socd", "page_type": 11, "mode": 3,
+                        "hid_a": 0x04, "hid_b": 0x07, "paired": True,
+                        "mode_confirmed": True}
+    assert recs[51] == recs[49]
+    assert recs[65] == {"type": "tgl", "page_type": 10, "hid_usage": 0}
+    assert recs[66] == {"type": "mt", "page_type": 9, "tap_hid": 0,
+                        "hold_hid": 0, "delay": 0x28}
+    assert recs[86] == {"type": "keyboard", "modifiers": 0, "hid_usage": 0x45}
+    assert recs[0] == {"type": "unassigned"}
+
+
+def test_page_type_constants_match_the_captured_page_type_bytes():
+    """golden — the pageType constants are the literal byte 0 of the
+    captured records, and the PAGE_TYPE_* names alias the KEY_PAGE_* ones."""
+    assert pm.PAGE_TYPE_REMAP == REC_REMAP_F12[0] == 2
+    assert pm.PAGE_TYPE_DKS == REC_DKS[0] == 8
+    assert pm.PAGE_TYPE_MT == REC_MT[0] == 9
+    assert pm.PAGE_TYPE_TGL == REC_TGL[0] == 10
+    assert pm.PAGE_TYPE_SOCD == REC_SOCD[0] == 11
+    assert pm.PAGE_TYPE_RS == REC_RS[0] == 12
+    assert (pm.PAGE_TYPE_REMAP, pm.PAGE_TYPE_DKS, pm.PAGE_TYPE_MT,
+            pm.PAGE_TYPE_TGL, pm.PAGE_TYPE_SOCD, pm.PAGE_TYPE_RS) == (
+        pm.KEY_PAGE_KEYBOARD, pm.KEY_PAGE_DKS, pm.KEY_PAGE_MOD_TAP,
+        pm.KEY_PAGE_TOGGLE, pm.KEY_PAGE_SOCD, pm.KEY_PAGE_RS)
+    assert pm.PAIRED_PAGE_TYPES == {11, 12}
+    assert pm.CMD_KEY_TABLE_READ == 0x12 and pm.CMD_KEY_TABLE_WRITE == 0x22
+    assert pm.CMD_DKS_TRAVEL_READ == 0x18 and pm.CMD_DKS_TRAVEL_WRITE == 0x28
+
+
+def test_socd_isolated_capture_agrees_with_the_full_suite():
+    """golden — the SOCD-only session (a different capture file) writes the
+    same record to the same two key indices. Independent confirmation that
+    the pair is not an artifact of the combined session."""
+    passes = {}
+    for b in a_outs(pm.CMD_KEY_TABLE_WRITE, frames=FRAMES_SO):
+        passes.setdefault(b[3] | (b[4] << 8), b)
+    table = _reassemble(list(passes.values()), pm.KEY_TABLE_WRITE_SIZE)
+    assert pm.find_paired_key_records(table)[tuple(REC_SOCD)] == [49, 51]
+    # and the all-advanced-types capture holds every record too
+    ak = _reassemble(a_outs(pm.CMD_KEY_TABLE_WRITE, LBL_MT, frames=FRAMES_AK),
+                     pm.KEY_TABLE_WRITE_SIZE)
+    for idx, rec in ((33, REC_RS), (34, REC_DKS), (35, REC_RS),
+                     (49, REC_SOCD), (51, REC_SOCD), (65, REC_TGL),
+                     (66, REC_MT)):
+        assert ak[idx * 4:idx * 4 + 4] == rec, idx
+
+
+def test_wireless_key_table_read_and_write_paging_is_golden():
+    """golden — the 32-byte 0x12 read sweep and 0x22 write pass, which the
+    module previously documented as 'never observed on the dongle'."""
+    r12 = a_outs(pm.CMD_KEY_TABLE_READ)
+    starts = [i for i, b in enumerate(r12) if (b[3] | (b[4] << 8)) == 0]
+    sweep = r12[starts[1]:starts[1] + 22]            # one complete sweep
+    assert pm.build_key_table_read_frames(frame_len=W) == sweep
+    assert [b[2] for b in sweep] == [0x18] * 21 + [0x08]
+    assert [b[6] for b in sweep] == [0] * 21 + [1]
+    assert (sweep[-1][3] | (sweep[-1][4] << 8)) == 0x01F8
+
+    writes = a_outs(pm.CMD_KEY_TABLE_WRITE, LBL_REMAP)
+    assert [b[2] for b in writes] == [0x18] * 21
+    assert [b[6] for b in writes] == [0] * 20 + [1]
+    assert (writes[-1][3] | (writes[-1][4] << 8)) == 0x01E0
+    assert all(len(b) == W for b in writes)
+
+
+# ---------------- DKS travel table (0x18 / 0x28) ----------------
+# Captured payload, verbatim:
+#   slot 0 @0x0000  10 1E 1E 10 00 00 00 00 00 00 00 00 00 00 00 00
+#   slot 1 @0x0010  10 1E 1E 10 00 1A 00 00 00 00 00 00 01 01 01 01
+# The vendor UI values were press 1.6 / bottom-out 3.0 / release 3.0 /
+# reset 1.6 mm and action key W (HID 0x1A).
+DKS_POINTS_MM = [1.6, 3.0, 3.0, 1.6]
+DKS_POINTS_RAW = [0x10, 0x1E, 0x1E, 0x10]
+
+
+def test_dks_travel_points_are_golden_at_absolute_frame_offsets():
+    """golden — the four travel points pinned to LITERAL frame bytes of the
+    captured 0x28 page-0 frame, which is what fixes the 0.1 mm unit AND the
+    order of the four points."""
+    pass_frames = a_outs(pm.CMD_DKS_TRAVEL_WRITE, LBL_DKS)
+    assert len(pass_frames) == 43
+    page0 = pass_frames[0]
+    assert (page0[3] | (page0[4] << 8)) == 0x0000
+
+    # slot 0 occupies frame bytes 8..23, slot 1 bytes 24..31 (+ next frame)
+    assert page0[8:12] == DKS_POINTS_RAW            # slot 0 travel points
+    assert page0[12:24] == [0] * 12                 # slot 0: no actions
+    assert page0[24:28] == DKS_POINTS_RAW           # slot 1 travel points
+    assert page0[28] == 0x00
+    assert page0[29] == 0x1A                        # slot 1 action1 = W
+    assert page0[30:32] == [0, 0]
+    # slot 1's trigger masks land in the NEXT chunk (@0x0018), frame
+    # bytes 12..15 == table bytes 28..31
+    page1 = pass_frames[1]
+    assert (page1[3] | (page1[4] << 8)) == 0x0018
+    assert page1[8:12] == [0, 0, 0, 0]              # slot 1 actions 2..4
+    assert page1[12:16] == [0x01, 0x01, 0x01, 0x01]  # per-trigger-point masks
+
+    # the unit: 1.6 mm -> 0x10, 3.0 mm -> 0x1E
+    assert [pm.dks_mm_to_raw(v) for v in DKS_POINTS_MM] == DKS_POINTS_RAW
+    assert pm.DKS_TRAVEL_UNIT_MM == 0.1
+    # and it is NOT the actuation table's 0.01 mm unit
+    assert pm.mm_to_raw(1.6) == 160 != pm.dks_mm_to_raw(1.6)
+
+
+def test_dks_travel_write_pass_is_reproduced_byte_for_byte():
+    """golden — all 43 captured 0x28 frames from the builders."""
+    table = pm.build_dks_table({
+        0: pm.dks_slot_record(DKS_POINTS_MM),
+        1: pm.dks_slot_record(DKS_POINTS_MM, actions=[0x1A],
+                              trigger_masks=[1, 1, 1, 1]),
+    })
+    captured = a_outs(pm.CMD_DKS_TRAVEL_WRITE, LBL_DKS)
+    assert pm.build_dks_travel_write_frames(table, frame_len=W) == captured
+    assert _reassemble(captured, pm.DKS_TABLE_SIZE) == table
+
+    # build_dks_travel_frames(points) is the one-slot convenience form: it
+    # reproduces the capture's slot-0 half exactly (slot 1 zeroed)
+    solo = pm.build_dks_travel_frames(DKS_POINTS_MM, frame_len=W)
+    assert len(solo) == 43
+    assert solo[0][8:12] == DKS_POINTS_RAW
+    assert solo[0][24:32] == [0] * 8               # slot 1 left empty
+
+
+def test_dks_table_geometry_and_paging_are_golden():
+    """golden — 1024 bytes paged 42 x 0x18 + a 0x10 tail at 0x03F0 with the
+    last-chunk flag, identical for the 0x18 read and the 0x28 write."""
+    assert pm.DKS_TABLE_SIZE == 0x400 == pm.DKS_SLOT_COUNT * pm.DKS_SLOT_SIZE
+    assert (pm.DKS_SLOT_COUNT, pm.DKS_SLOT_SIZE) == (64, 16)
+
+    writes = a_outs(pm.CMD_DKS_TRAVEL_WRITE, LBL_DKS)
+    assert [b[2] for b in writes] == [0x18] * 42 + [0x10]
+    assert [b[6] for b in writes] == [0] * 42 + [1]
+    assert [(b[3] | (b[4] << 8)) for b in writes][-1] == 0x03F0
+    assert all(len(b) == W for b in writes)
+
+    reads = a_outs(pm.CMD_DKS_TRAVEL_READ)
+    sweep = reads[:43]
+    assert pm.build_dks_travel_read_frames(frame_len=W) == sweep
+    assert [b[2] for b in sweep] == [0x18] * 42 + [0x10]
+    assert [b[6] for b in sweep] == [0] * 42 + [1]
+
+
+def test_dks_travel_parses_back_from_the_captured_table():
+    """golden — parse_dks_travel / parse_dks_table decode the reassembled
+    captured 0x28 table back to the vendor UI's own numbers."""
+    table = _reassemble(a_outs(pm.CMD_DKS_TRAVEL_WRITE, LBL_DKS),
+                        pm.DKS_TABLE_SIZE)
+    slot1 = pm.parse_dks_travel(table, 1)
+    assert slot1 == {"slot": 1,
+                     "points_raw": DKS_POINTS_RAW,
+                     "points_mm": DKS_POINTS_MM,
+                     "actions": [0x1A, 0, 0, 0],
+                     "trigger_masks": [1, 1, 1, 1]}
+    assert pm.parse_dks_travel(table, 0)["actions"] == [0, 0, 0, 0]
+    assert sorted(pm.parse_dks_table(table)) == [0, 1]
+    # a bare 16-byte slot record is accepted too
+    assert pm.parse_dks_travel(table[16:32], 1) == slot1
+    # the key record points at the slot the 0x28 pass populated
+    key_table = _reassemble(a_outs(pm.CMD_KEY_TABLE_WRITE, LBL_DKS),
+                            pm.KEY_TABLE_WRITE_SIZE)
+    assert pm.parse_key_record(key_table[34 * 4:34 * 4 + 4])["slot"] == 1
+
+
+def test_dks_and_key_record_builders_validate_their_inputs():
+    """structural — range checks."""
+    for bad in (lambda: pm.key_record_dks(64),
+                lambda: pm.key_record_dks(-1),
+                lambda: pm.key_record_mt(256),
+                lambda: pm.key_record_socd(4, 7, 0),
+                lambda: pm.key_record_socd(4, 7, 5),
+                lambda: pm.dks_slot_record([1.0, 2.0, 3.0]),
+                lambda: pm.dks_slot_record(DKS_POINTS_MM, actions=[1] * 5),
+                lambda: pm.dks_slot_record(DKS_POINTS_MM, trigger_masks=[0]),
+                lambda: pm.dks_mm_to_raw(30.0),
+                lambda: pm.build_dks_table({64: [0] * 16}),
+                lambda: pm.build_dks_travel_write_frames([0] * 100),
+                lambda: pm.parse_dks_travel([0] * 17),
+                lambda: pm.apply_key_record([0] * 504, 200, [0, 0, 0, 0])):
+        try:
+            bad()
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("invalid advanced-key input accepted")
+
+
+def test_advanced_key_unknowns_are_not_guessed_at():
+    """The explicit NOT-PINNED list. These are the places where a plausible
+    guess would be indistinguishable from evidence, so the module must
+    expose the raw byte and say so rather than inventing a mapping.
+
+      * SOCD behaviour: only 0x03 ("Key 1 Priority") was ever on the wire.
+        The UI offers four behaviours; the SDK lists values 3/1/2/4 but the
+        label<->value mapping for 1/2/4 is UNVERIFIED.
+      * MT delay: 0x28 = 40 is ONE sample at the UI default. The unit is
+        SOURCE-ONLY (SDK: sliderValue/10, 400 ms default).
+    """
+    # exactly one SOCD mode byte exists across ALL THREE captures
+    modes = set()
+    for frames in (FRAMES_FS, FRAMES_AK, FRAMES_SO):
+        for b in a_outs(pm.CMD_KEY_TABLE_WRITE, frames=frames):
+            off = b[3] | (b[4] << 8)
+            for j in range(0, min(b[2], len(b) - 8), 4):
+                if (off + j) % 4 == 0 and b[8 + j] == pm.PAGE_TYPE_SOCD:
+                    modes.add(b[9 + j])
+    assert modes == {pm.SOCD_MODE_KEY1_PRIORITY} == {0x03}
+
+    # the module says so: 3 is confirmed, 1/2/4 are accepted but flagged
+    assert pm.SOCD_MODE_KEY1_PRIORITY == 3
+    assert set(pm.SOCD_MODES_UNVERIFIED) == {1, 2, 4}
+    assert pm.SOCD_MODES_KNOWN == {1, 2, 3, 4}
+    assert pm.parse_key_record([11, 3, 4, 7])["mode_confirmed"] is True
+    for m in pm.SOCD_MODES_UNVERIFIED:
+        # accepted (the driver must be able to send them) but never
+        # advertised as confirmed
+        assert pm.key_record_socd(4, 7, m) == [11, m, 4, 7]
+        assert pm.parse_key_record([11, m, 4, 7])["mode_confirmed"] is False
+
+    # MT: one delay sample, and NO mm/ms conversion helper is offered
+    delays = set()
+    for b in a_outs(pm.CMD_KEY_TABLE_WRITE, frames=FRAMES_FS):
+        off = b[3] | (b[4] << 8)
+        for j in range(0, min(b[2], len(b) - 8), 4):
+            if (off + j) % 4 == 0 and b[8 + j] == pm.PAGE_TYPE_MT:
+                delays.add(b[11 + j])
+    assert delays == {pm.MT_DELAY_CAPTURED_DEFAULT} == {0x28}
+    assert not hasattr(pm, "mt_delay_to_ms")
+    assert "mt_ms_to_raw" not in dir(pm)
+    # key_record_mt takes the RAW byte — no unit conversion happens
+    assert pm.key_record_mt(0x28)[3] == 0x28
+
+    # TGL byte 1 and MT bytes 1..2 were 0 on the wire; the defaults
+    # reproduce that and non-zero values stay SOURCE-ONLY
+    assert pm.key_record_tgl() == [10, 0, 0, 0]
+    assert pm.key_record_mt(0x28) == [9, 0, 0, 0x28]
+
+
+def test_advanced_key_captures_send_nothing_dangerous():
+    """No 0x4F / 0x0F / 0x64 anywhere in the new captures."""
+    for frames in (FRAMES_FS, FRAMES_AK, FRAMES_SO):
+        for f in frames:
+            b = fbytes(f)
+            if len(b) >= 2:
+                assert b[1] not in pm.DANGEROUS_CMDS
 
 
 if __name__ == "__main__":

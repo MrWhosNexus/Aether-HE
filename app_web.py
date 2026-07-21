@@ -485,6 +485,13 @@ class Api:
             {"slug": p.slug, "name": p.name, "vidPid": p.vid_pid,
              "formFactor": p.form_factor, "status": p.status,
              "capabilities": p.capabilities, "drivable": p.drivable,
+             # `offered` is the registry's own answer to "may the UI advertise
+             # this board as selectable?" — a board can be fully drivable and
+             # still deliberately not offered (e.g. decoded from a contributor's
+             # capture but never run on the physical hardware by anyone). Every
+             # UI surface must filter on THIS, not re-derive the rule from
+             # `drivable`, or the two drift apart.
+             "offered": p.offered,
              "connected": (p.vid, p.pid) in attached,
              "active": p.slug == active_slug}
             for p in reg.profiles
@@ -1085,6 +1092,92 @@ class Api:
         p = self._settings_path()
         return {"ok": True, "path": p, "exists": os.path.exists(p)}
 
+    # ---- advanced keys + per-key remap (MINI 60 HE PRO family) ----
+    #
+    # These are the JS-facing bridge for the driver's key-table operations. The
+    # driver already does strict read-modify-write and refuses boards that lack
+    # the capability, so this layer only translates arguments and shapes errors
+    # the way the rest of the Api does.
+    #
+    # Key INDEX, not HID usage: a record's position in the 512-byte key table is
+    # the physical matrix slot, and an unbound record reads back all-zero — so
+    # there is no way to search the table for "the key that currently sends
+    # 0x04". The UI passes design codes; we resolve them through the active
+    # board's keymap here, and refuse loudly if that resolution fails rather
+    # than writing to a guessed slot.
+    def _key_indices(self, codes):
+        """Design codes -> firmware key indices via the active board's keymap."""
+        if not self.km:
+            raise ValueError("no keymap loaded for the active board")
+        idxs = self.km.indices_for_codes(codes if isinstance(codes, (list, tuple)) else [codes])
+        if not idxs or len(idxs) != len(codes if isinstance(codes, (list, tuple)) else [codes]):
+            raise ValueError(f"could not resolve every key: {codes!r}")
+        return idxs
+
+    def _adv(self, fn, *args, **kwargs):
+        """Run a driver op, mapping failures to the Api's usual result shape."""
+        drv = getattr(self, "driver", None)
+        if drv is None:
+            return {"ok": False, "error": "not connected"}
+        try:
+            result = fn(drv, *args, **kwargs)
+            return {"ok": True, "result": result}
+        except UnsupportedFeature as e:
+            return {"ok": False, "error": str(e), "unsupported": True,
+                    "feature": getattr(e, "feature", None)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def read_key_records(self):
+        """Every non-empty key-table record, decoded (remaps + advanced keys)."""
+        return self._adv(lambda d: d.read_key_records())
+
+    def set_key_remap(self, code, hid_usage, modifiers=0):
+        try:
+            idx = self._key_indices([code])[0]
+        except ValueError as e:
+            return {"ok": False, "error": str(e)}
+        return self._adv(lambda d: d.set_key_remap(idx, int(hid_usage), int(modifiers)))
+
+    def set_advanced_socd(self, code_a, code_b, hid_a, hid_b, mode=3):
+        """SOCD pair. `mode` is a RAW byte: only 0x03 has ever been observed on
+        the wire, so the UI offers only that one — see the registry note."""
+        try:
+            ia, ib = self._key_indices([code_a, code_b])
+        except ValueError as e:
+            return {"ok": False, "error": str(e)}
+        return self._adv(lambda d: d.set_advanced_socd(ia, ib, int(hid_a), int(hid_b), int(mode)))
+
+    def set_advanced_rs(self, code_a, code_b, hid_a, hid_b):
+        try:
+            ia, ib = self._key_indices([code_a, code_b])
+        except ValueError as e:
+            return {"ok": False, "error": str(e)}
+        return self._adv(lambda d: d.set_advanced_rs(ia, ib, int(hid_a), int(hid_b)))
+
+    def set_advanced_mt(self, code, delay, tap_hid=0, hold_hid=0):
+        """`delay` is the RAW byte — its unit is unverified (one sample, 0x28),
+        so nothing here converts it to milliseconds."""
+        try:
+            idx = self._key_indices([code])[0]
+        except ValueError as e:
+            return {"ok": False, "error": str(e)}
+        return self._adv(lambda d: d.set_advanced_mt(idx, int(delay), int(tap_hid), int(hold_hid)))
+
+    def set_advanced_tgl(self, code, hid_usage=0):
+        try:
+            idx = self._key_indices([code])[0]
+        except ValueError as e:
+            return {"ok": False, "error": str(e)}
+        return self._adv(lambda d: d.set_advanced_tgl(idx, int(hid_usage)))
+
+    def clear_advanced_key(self, code):
+        try:
+            idx = self._key_indices([code])[0]
+        except ValueError as e:
+            return {"ok": False, "error": str(e)}
+        return self._adv(lambda d: d.clear_advanced_key(idx))
+
     # ---- board submission (schema-validated file write) ----
     def _submissions_dir(self):
         base = os.path.dirname(self._settings_path())   # <root>/AetherHE
@@ -1414,7 +1507,20 @@ def main():
         width=1340, height=900, min_size=(1160, 800),
         background_color="#07080d",
     )
-    webview.start(_on_start, window)
+    # Never pop a DevTools window at launch. pywebview ships
+    # OPEN_DEVTOOLS_IN_DEBUG=True, and its Edge/Chromium backend does
+    # `if _state['debug'] and OPEN_DEVTOOLS_IN_DEBUG: OpenDevToolsWindow()`,
+    # so anything that flips debug on — a stray env var, a future edit, a
+    # packaged build — silently gives every user a debugger window next to the
+    # app. Turn the setting off and pass debug explicitly rather than relying on
+    # the default staying False.
+    try:
+        webview.settings['OPEN_DEVTOOLS_IN_DEBUG'] = False
+    except Exception:
+        pass  # older pywebview without the settings dict
+    # AETHER_DEBUG=1 re-enables the inspector for development.
+    debug = os.environ.get("AETHER_DEBUG") == "1"
+    webview.start(_on_start, window, debug=debug)
 
 
 if __name__ == "__main__":

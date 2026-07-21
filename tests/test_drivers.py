@@ -67,11 +67,16 @@ class FakeMiniBoard:
         self.config = bytearray(pm.CONFIG_TABLE_SIZE)
         self.led_table = bytearray(pm.CUSTOM_LED_TABLE_SIZE)
         self.key_table = bytearray(pm.KEY_TABLE_SIZE)      # 0x12/0x22
+        self.dks_table = bytearray(pm.DKS_TABLE_SIZE)      # 0x18/0x28
         self.macro_table = bytearray(2048)                 # 0x15/0x25
         self.light = pm.build_light(pm.LIGHT_MODE_STATIC,
                                     frame_len=frame_len)   # stored 0x23 block
         self.prefix = prefix_report_id
         self.fail_reads_from = None   # table offset: stop answering (timeout test)
+        # Restrict fail_reads_from to ONE read command. Needed by the DKS
+        # tests: that op reads two different tables (0x18 then 0x12) and the
+        # point of them is which read failed, not that some read failed.
+        self.fail_read_cmd = None
 
     def _wrap(self, frame):
         return ([0x00] + list(frame)) if self.prefix else list(frame)
@@ -87,9 +92,11 @@ class FakeMiniBoard:
         off = frame[3] | (frame[4] << 8)
         read_tables = {0x17: self.act_table, 0x11: self.config,
                        0x14: self.led_table, 0x12: self.key_table,
-                       0x15: self.macro_table}
+                       0x15: self.macro_table, 0x18: self.dks_table}
         if cmd in read_tables:
-            if self.fail_reads_from is not None and off >= self.fail_reads_from:
+            if self.fail_reads_from is not None \
+                    and off >= self.fail_reads_from \
+                    and self.fail_read_cmd in (None, cmd):
                 return []
             t = read_tables[cmd]
             r = [0] * self.frame_len
@@ -118,7 +125,7 @@ class FakeMiniBoard:
         # writes: apply to the table and echo-ack like the firmware
         write_tables = {0x27: self.act_table, 0x21: self.config,
                         0x24: self.led_table, 0x22: self.key_table,
-                        0x25: self.macro_table}
+                        0x25: self.macro_table, 0x28: self.dks_table}
         if cmd in write_tables:
             t = write_tables[cmd]
             for j in range(min(ln, self.frame_len - pm.PAYLOAD_START)):
@@ -726,10 +733,336 @@ def test_mini60_bind_aborts_on_partial_read_and_validates_index():
     assert dev2.writes == []
 
 
+# ------------------------------------- mini60 remap + advanced keys (0x22) ----
+# All CONFIRMED-BY-CAPTURE 2026-07-21: the wired sweep (FULL_APP_CAPTURE_NOTES
+# .md sections 1+3) and the full wireless sweep over the dongle
+# (webhid-capture-FULL-SUITE-wireless.json) both carry plain remap and all five
+# advanced-key types as 4-byte records in the 512-byte key table. The literal
+# records asserted below are the ones those captures contain.
+
+def _key_rec(board, index):
+    return list(board.key_table[index * 4:index * 4 + 4])
+
+
+def test_mini60_supports_remap_and_advanced_key_features():
+    """Two SEPARATE feature keys, and neither is the Win60's "remap".
+
+    "remap" gates write_keymap/read_keymap_layer — a whole-layer keymap
+    upload this board has no command for. Folding the per-record ops into it
+    would let a caller that checked supports("remap") call an op the driver
+    still refuses."""
+    d, _, _ = _mini()
+    assert d.supports("key_remap") and d.supports("advanced_keys")
+    assert not d.supports("remap")
+
+
+def test_mini60_set_key_remap_is_strict_rmw():
+    """02 00 48 00 = Pause on index 86, straight from the wired capture."""
+    board = FakeMiniBoard()
+    board.key_table[5 * 4:5 * 4 + 4] = bytes(pm.key_record_macro(1, 0, 1))
+    d, dev, _ = _mini(board)
+    d.set_key_remap(86, 0x48)
+    assert _key_rec(board, 86) == [0x02, 0x00, 0x48, 0x00]
+    assert _key_rec(board, 5) == [0x06, 0x01, 0x00, 0x01]   # untouched
+    cmds = [f[1] for f in _frames(dev) if f[1] in (0x12, 0x22)]
+    assert cmds == [0x12] * 10 + [0x22] * 9, "read sweep must precede the write"
+
+
+def test_mini60_set_key_remap_carries_the_modifier_bitmask():
+    """Byte 1 is a modifier MASK (the stock Fn table's 02 40 00 00), so a
+    modifier-only bind must survive the driver unchanged."""
+    board = FakeMiniBoard()
+    d, _, _ = _mini(board)
+    d.set_key_remap(3, 0x00, modifiers=0x40)
+    assert _key_rec(board, 3) == [0x02, 0x40, 0x00, 0x00]
+
+
+def test_mini60_advanced_single_key_types_write_captured_records():
+    """TGL / MT / plain-DKS-record bytes, exactly as captured."""
+    board = FakeMiniBoard()
+    d, _, _ = _mini(board)
+    d.set_advanced_tgl(65)
+    assert _key_rec(board, 65) == [0x0A, 0x00, 0x00, 0x00]
+    d.set_advanced_mt(66, 0x28)
+    assert _key_rec(board, 66) == [0x09, 0x00, 0x00, 0x28]
+    assert _key_rec(board, 65) == [0x0A, 0x00, 0x00, 0x00], "MT clobbered TGL"
+
+
+def test_mini60_mt_delay_is_a_raw_byte_with_no_unit_conversion():
+    """The delay byte's UNIT is unverified (one sample per transport), so the
+    driver must pass the caller's byte through untouched — inventing a ms
+    conversion would encode a guess as a fact."""
+    board = FakeMiniBoard()
+    d, _, _ = _mini(board)
+    for raw in (0x00, 0x19, 0x28, 0xFF):
+        d.set_advanced_mt(4, raw)
+        assert _key_rec(board, 4) == [0x09, 0x00, 0x00, raw]
+
+
+def test_mini60_socd_writes_the_identical_record_to_both_keys():
+    """The vendor SOCD save wrote 0B 03 04 07 to key indices 49 AND 51."""
+    board = FakeMiniBoard()
+    d, dev, _ = _mini(board)
+    d.set_advanced_socd(49, 51, 0x04, 0x07, mode=0x03)
+    assert _key_rec(board, 49) == [0x0B, 0x03, 0x04, 0x07]
+    assert _key_rec(board, 51) == [0x0B, 0x03, 0x04, 0x07]
+    # ONE read-modify-write pass, not two: a per-key pass would leave the
+    # pair half-configured if the second one failed.
+    cmds = [f[1] for f in _frames(dev) if f[1] in (0x12, 0x22)]
+    assert cmds == [0x12] * 10 + [0x22] * 9
+
+
+def test_mini60_rs_writes_the_identical_record_to_both_keys():
+    """The vendor RS save wrote 0C 00 14 08 to key indices 33 AND 35."""
+    board = FakeMiniBoard()
+    d, dev, _ = _mini(board)
+    d.set_advanced_rs(33, 35, 0x14, 0x08)
+    assert _key_rec(board, 33) == [0x0C, 0x00, 0x14, 0x08]
+    assert _key_rec(board, 35) == [0x0C, 0x00, 0x14, 0x08]
+    assert _key_rec(board, 34) == [0, 0, 0, 0], "the key between the pair"
+    assert [f[1] for f in _frames(dev) if f[1] == 0x22].__len__() == 9
+
+
+def test_mini60_socd_mode_is_a_pass_through_parameter():
+    """Only 0x03 was ever observed; the SDK's other three values are ACCEPTED
+    (a caller may know more than the capture) but nothing outside the SDK's
+    set is, and the driver never renames them into a decoded-looking
+    vocabulary."""
+    board = FakeMiniBoard()
+    d, _, _ = _mini(board)
+    for mode in sorted(pm.SOCD_MODES_KNOWN):
+        d.set_advanced_socd(49, 51, 0x04, 0x07, mode=mode)
+        assert _key_rec(board, 49)[1] == mode
+    for bad in (0, 5, 0xFF):
+        with pytest.raises(ValueError):
+            d.set_advanced_socd(49, 51, 0x04, 0x07, mode=bad)
+
+
+def test_mini60_paired_ops_validate_before_touching_the_wire():
+    d, dev, _ = _mini()
+    with pytest.raises(ValueError):
+        d.set_advanced_socd(49, 49, 0x04, 0x07)      # same key twice
+    with pytest.raises(ValueError):
+        d.set_advanced_rs(33, 126, 0x14, 0x08)       # 126/127 never writable
+    with pytest.raises(ValueError):
+        d.set_advanced_rs(-1, 35, 0x14, 0x08)
+    assert dev.writes == [], "a rejected pair must cost zero frames"
+
+
+def test_mini60_paired_write_aborts_on_partial_read():
+    board = FakeMiniBoard()
+    board.fail_reads_from = 3 * pm.PAGE
+    d, dev, _ = _mini(board)
+    with pytest.raises(IOError):
+        d.set_advanced_socd(49, 51, 0x04, 0x07)
+    assert _frames(dev, 0x22) == []
+    assert _key_rec(board, 49) == [0, 0, 0, 0]
+
+
+def test_mini60_clear_advanced_key_clears_only_that_record():
+    board = FakeMiniBoard()
+    d, _, _ = _mini(board)
+    d.set_advanced_socd(49, 51, 0x04, 0x07)
+    d.clear_advanced_key(49)
+    assert _key_rec(board, 49) == [0, 0, 0, 0]
+    # The partner is deliberately NOT inferred — a paired binding is undone
+    # one key at a time and the docstring says so.
+    assert _key_rec(board, 51) == [0x0B, 0x03, 0x04, 0x07]
+    d.clear_advanced_key(51)
+    assert _key_rec(board, 51) == [0, 0, 0, 0]
+
+
+def test_mini60_read_key_records_decodes_every_captured_type():
+    """The full wireless sweep's reassembled table, decoded back."""
+    board = FakeMiniBoard()
+    captured = {33: [0x0C, 0x00, 0x14, 0x08], 34: [0x08, 0x01, 0x00, 0x00],
+                35: [0x0C, 0x00, 0x14, 0x08], 49: [0x0B, 0x03, 0x04, 0x07],
+                51: [0x0B, 0x03, 0x04, 0x07], 65: [0x0A, 0x00, 0x00, 0x00],
+                66: [0x09, 0x00, 0x00, 0x28], 84: [0x02, 0x00, 0x36, 0x00]}
+    for i, rec in captured.items():
+        board.key_table[i * 4:i * 4 + 4] = bytes(rec)
+    d, dev, _ = _mini(board)
+    recs = d.read_key_records()
+    assert recs[33]["type"] == "rs" and recs[35]["type"] == "rs"
+    assert recs[34]["type"] == "dks" and recs[34]["slot"] == 1
+    assert recs[49]["type"] == "socd" and recs[49]["mode"] == 3
+    assert recs[65]["type"] == "tgl"
+    assert recs[66]["type"] == "mt" and recs[66]["delay"] == 0x28
+    assert recs[84]["type"] == "keyboard" and recs[84]["hid_usage"] == 0x36
+    assert recs[0]["type"] == "unassigned"
+    assert _frames(dev, 0x22) == [], "a read must never write"
+
+
+def test_mini60_dks_writes_travel_table_then_key_record():
+    """The captured DKS save: 10 1E 1E 10 (1.6/3.0/3.0/1.6 mm in 0.1 mm
+    units) into the travel table, then 08 <slot> 00 00 into the key record —
+    in THAT order, which is the vendor's."""
+    board = FakeMiniBoard()
+    d, dev, _ = _mini(board)
+    d.set_advanced_dks(28, 0, [1.6, 3.0, 3.0, 1.6])
+    assert list(board.dks_table[0:4]) == [0x10, 0x1E, 0x1E, 0x10]
+    assert _key_rec(board, 28) == [0x08, 0x00, 0x00, 0x00]
+    ordered = [f[1] for f in _frames(dev) if f[1] in (0x18, 0x28, 0x12, 0x22)]
+    # both reads first, then the travel write, then the key write
+    assert ordered[:ordered.count(0x18)] == [0x18] * ordered.count(0x18)
+    assert set(ordered[:ordered.count(0x18) + 10]) == {0x18, 0x12}
+    assert ordered.index(0x28) > max(i for i, c in enumerate(ordered)
+                                     if c in (0x18, 0x12))
+    assert ordered.index(0x22) > ordered.index(0x28)
+
+
+def test_mini60_dks_patches_one_slot_and_preserves_the_others():
+    board = FakeMiniBoard()
+    other = bytes(pm.dks_slot_record([0.5, 1.0, 1.0, 0.5]))
+    board.dks_table[3 * pm.DKS_SLOT_SIZE:4 * pm.DKS_SLOT_SIZE] = other
+    d, _, _ = _mini(board)
+    d.set_advanced_dks(28, 1, [1.6, 3.0, 3.0, 1.6])
+    assert list(board.dks_table[1 * pm.DKS_SLOT_SIZE:
+                                1 * pm.DKS_SLOT_SIZE + 4]) == \
+        [0x10, 0x1E, 0x1E, 0x10]
+    assert bytes(board.dks_table[3 * pm.DKS_SLOT_SIZE:
+                                 4 * pm.DKS_SLOT_SIZE]) == other
+    assert _key_rec(board, 28) == [0x08, 0x01, 0x00, 0x00]
+
+
+def test_mini60_dks_aborts_before_any_write_if_either_read_fails():
+    """The op reads TWO tables. Whichever one fails, NOTHING may be written —
+    a 0x28 that lands before a failed 0x12 leaves a populated DKS slot with
+    no key pointing at it."""
+    for failing in (0x18, 0x12):
+        board = FakeMiniBoard()
+        board.fail_read_cmd = failing
+        board.fail_reads_from = 3 * pm.PAGE
+        d, dev, _ = _mini(board)
+        with pytest.raises(IOError):
+            d.set_advanced_dks(28, 0, [1.6, 3.0, 3.0, 1.6])
+        assert _frames(dev, 0x28) == [], f"0x28 sent after a failed {failing:#x}"
+        assert _frames(dev, 0x22) == []
+        assert not any(board.dks_table) and not any(board.key_table)
+
+
+def test_mini60_dks_validates_slot_and_points_before_the_wire():
+    d, dev, _ = _mini()
+    with pytest.raises(ValueError):
+        d.set_advanced_dks(28, pm.DKS_USABLE_SLOTS, [1.6, 3.0, 3.0, 1.6])
+    with pytest.raises(ValueError):
+        d.set_advanced_dks(28, -1, [1.6, 3.0, 3.0, 1.6])
+    with pytest.raises(ValueError):
+        d.set_advanced_dks(28, 0, [1.6, 3.0])        # needs four points
+    with pytest.raises(ValueError):
+        d.set_advanced_dks(126, 0, [1.6, 3.0, 3.0, 1.6])
+    assert dev.writes == []
+
+
+def test_mini60_read_dks_slots_decodes_populated_slots_only():
+    board = FakeMiniBoard()
+    board.dks_table[16:20] = bytes([0x10, 0x1E, 0x1E, 0x10])
+    d, _, _ = _mini(board)
+    slots = d.read_dks_slots()
+    assert set(slots) == {1}
+    assert slots[1]["points_mm"] == [1.6, 3.0, 3.0, 1.6]
+
+
+def test_mini60_advanced_keys_work_over_the_dongle_at_32_byte_frames():
+    """The full-suite capture that decoded these records was taken WIRELESSLY,
+    so the dongle path is the primary evidence, not an extrapolation. Frame
+    size must come from the profile — a 64-byte frame here is silently
+    truncated by hidapi and reads exactly like "wrong protocol"."""
+    d, dev, board = _mini_dongle()
+    d.set_advanced_socd(49, 51, 0x04, 0x07)
+    d.set_advanced_dks(34, 1, [1.6, 3.0, 3.0, 1.6])
+    assert all(len(f) == 32 for f in _frames(dev))
+    assert _key_rec(board, 49) == [0x0B, 0x03, 0x04, 0x07]
+    assert _key_rec(board, 51) == [0x0B, 0x03, 0x04, 0x07]
+    assert _key_rec(board, 34) == [0x08, 0x01, 0x00, 0x00]
+    assert list(board.dks_table[16:20]) == [0x10, 0x1E, 0x1E, 0x10]
+
+
+def test_null_driver_refuses_remap_and_advanced_key_ops():
+    """Boards without a decoded key table must REFUSE, never silently
+    no-op — the whole point of putting these on the interface."""
+    dev = StubDevice()
+    d = NullDriver(DONGLE, dev)
+    ops = [
+        (lambda: d.read_key_records(), "key_remap"),
+        (lambda: d.set_key_remap(0, 0x29), "key_remap"),
+        (lambda: d.read_dks_slots(), "advanced_keys"),
+        (lambda: d.set_advanced_dks(0, 0, [1, 2, 3, 4]), "advanced_keys"),
+        (lambda: d.set_advanced_mt(0, 0x28), "advanced_keys"),
+        (lambda: d.set_advanced_tgl(0), "advanced_keys"),
+        (lambda: d.set_advanced_socd(0, 1, 4, 7, 3), "advanced_keys"),
+        (lambda: d.set_advanced_rs(0, 1, 4, 7), "advanced_keys"),
+        (lambda: d.clear_advanced_key(0), "advanced_keys"),
+    ]
+    for op, feature in ops:
+        with pytest.raises(UnsupportedFeature) as ei:
+            op()
+        assert ei.value.feature == feature
+    assert dev.writes == []
+
+
+def test_win60_refuses_mini_advanced_keys_without_emitting_frames():
+    """Cross-protocol guard: the Win60 driver has no key-table records at
+    all, so these must raise rather than fall through to its packet
+    builders. Byte-identical behaviour for the shipped board."""
+    d, dev = _win()
+    for op in (lambda: d.set_key_remap(0, 0x29),
+               lambda: d.set_advanced_socd(0, 1, 4, 7, 3),
+               lambda: d.set_advanced_rs(0, 1, 4, 7),
+               lambda: d.set_advanced_dks(0, 0, [1, 2, 3, 4]),
+               lambda: d.set_advanced_mt(0, 0x28),
+               lambda: d.set_advanced_tgl(0),
+               lambda: d.read_key_records()):
+        with pytest.raises(UnsupportedFeature):
+            op()
+    assert dev.writes == []
+
+
+def test_mini60_board_neutral_set_socd_maps_onto_the_key_table():
+    """Api.set_socd's existing entry point reaches this board too. The Win60
+    builds a cmd-36 PRCS packet from HID usages alone; this board has no such
+    command, so the pair's key-table matrix positions must ride along."""
+    board = FakeMiniBoard()
+    d, dev, _ = _mini(board)
+    d.set_socd([{"model": 3, "key1_hid": 0x04, "key2_hid": 0x07,
+                 "key1_index": 49, "key2_index": 51}])
+    assert _key_rec(board, 49) == [0x0B, 0x03, 0x04, 0x07]
+    assert _key_rec(board, 51) == [0x0B, 0x03, 0x04, 0x07]
+    assert [f[1] for f in _frames(dev) if f[1] in (0x12, 0x22)] == \
+        [0x12] * 10 + [0x22] * 9
+
+
+def test_mini60_set_socd_applies_every_pair_in_one_pass():
+    """Partially applied SOCD is a broken board state across pairs just as
+    much as across the two keys of one pair — so one read, one write sweep."""
+    board = FakeMiniBoard()
+    d, dev, _ = _mini(board)
+    d.set_socd([{"model": 3, "key1_hid": 0x04, "key2_hid": 0x07,
+                 "key1_index": 49, "key2_index": 51},
+                {"model": 3, "key1_hid": 0x14, "key2_hid": 0x08,
+                 "key1_index": 33, "key2_index": 35}])
+    for i in (49, 51):
+        assert _key_rec(board, i) == [0x0B, 0x03, 0x04, 0x07]
+    for i in (33, 35):
+        assert _key_rec(board, i) == [0x0B, 0x03, 0x14, 0x08]
+    assert len(_frames(dev, 0x22)) == 9, "one write sweep, not two"
+
+
+def test_mini60_set_socd_refuses_rather_than_guessing_a_key_index():
+    """A HID usage does NOT identify a matrix position on this board (an
+    unbound record reads back all-zero), so a missing index must be a loud
+    refusal — the alternative is writing SOCD onto the wrong key."""
+    d, dev, _ = _mini()
+    with pytest.raises(ValueError):
+        d.set_socd([{"model": 3, "key1_hid": 0x04, "key2_hid": 0x07}])
+    with pytest.raises(ValueError):
+        d.set_socd([])           # no 'clear all' packet exists on this board
+    assert dev.writes == []
+
+
 def test_mini60_unwired_features_refuse_loudly():
     d, dev, _ = _mini()
     ops = [
-        lambda: d.set_socd([]),
         lambda: d.set_calibration(True),
         lambda: d.set_poll_rate(1),
         lambda: d.set_switch({0: 1}),

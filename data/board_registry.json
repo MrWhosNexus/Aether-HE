@@ -138,7 +138,8 @@
     },
     {
       "slug": "aula-kp-te153",
-      "offerInUi": true,
+      "_offerNote": "offerInUi false (2026-07-21, user request): 69-key UK ISO variant sharing 2E3C:C365 with the Win60 HE. Its layout is the vendor's own and its protocol is the Win60's, but no KP-TE153 has ever been driven by Aether, and the ISO PRCS hidCode remap (0x31->0x32) leaves SOCD in particular unverified for it. Detected and drawn, not offered.",
+      "offerInUi": false,
       "name": "Aula KP-TE153",
       "vid": "0x2E3C",
       "pid": "0xC365",
@@ -225,6 +226,7 @@
       "keymap": "ui/layouts/aula-mini60he-pro.json",
       "protocol": "protocol_mini60",
       "frameLen": 64,
+      "_advancedKeysNote": "socd 'wip' -> TRUE, and the new remap / advancedKeys flags TRUE, on 2026-07-21. EVIDENCE: a full sweep of the vendor app over the 2.4GHz dongle (docs/context/issue-6-mini60-pro-raw/webhid-capture-FULL-SUITE-wireless.json, decoded by analyze_full_suite.py) plus the earlier wired sweep (webhid-capture-macros.json, FULL_APP_CAPTURE_NOTES.md sections 1 and 3) put ALL FIVE advanced-key types and plain remap on the wire as decoded 4-byte records in the SAME 512-byte key table this driver already read-modify-writes for macro binds (0x12 read / 0x22 write, a path that is separately HARDWARE-VERIFIED 2026-07-20). The wireless sweep reassembles 504 bytes from 147 0x22 frames and yields: idx 49 and 51 = 0B 03 04 07 (SOCD, mode 3, HID usages A/D), idx 33 and 35 = 0C 00 14 08 (Rapid Snap pair), idx 34 = 08 01 00 00 (DKS slot 1), idx 65 = 0A 00 00 00 (Toggle), idx 66 = 09 00 00 28 (Mod-Tap), idx 84/86 = 02 00 36 00 / 02 00 45 00 (plain remaps). That is a DECODED RECORD, not an inference from the SDK source, so 'wip' (defined in this registry as SOURCE-ONLY) would now misstate the evidence — which is exactly the failure mode the macros flag hit twice. socd is flagged on THIS wired entry as well because the wired board runs the same protocol at 64-byte frames and the wired capture carries the identical pageType-11/12 records; the framing difference is chunk size only. WHAT IS STILL NOT KNOWN, and must not be claimed: (1) only ONE SOCD mode byte was ever observed (0x03, 'Key 1 Priority' in the wireless sweep; the wired sweep shows 0x02) while the vendor UI offers four modes — the driver takes mode as a caller parameter and validates nothing beyond a byte, because the remaining values are genuinely unknown; (2) the Mod-Tap delay byte (0x28 = 40) has an UNKNOWN unit from a single sample — the wired notes read it as 10 ms units from a different single sample (0x19 = 25 at a UI setting of 250 ms), which is consistent but is still one sample per transport; (3) the DKS and Mod-Tap ACTION slots (which function fires at each travel point / on long vs short press) were never filled in by the vendor UI and their encoding is NOT CAPTURED — this driver writes the record and the DKS travel points only; (4) DKS byte 1 as a slot index is consistent across the two captures (wired slot 0, wireless slot 1) but only one DKS key existed in each, so it is not proven. calibration deliberately stays 'wip': it was never exercised because the vendor app WIPES stored calibration before starting it, and 0x64/0x65 are on the protocol module's NEVER-SEND list.",
       "_macrosNote": "macros TRUE, HARDWARE-VERIFIED 2026-07-21: a 10-event macro composed by OUR encoder (not a replay of a captured vendor frame — varied delays 0..100 ms, H/E/L/L/O HID usages) was written to slot 5 via 0x25, read back byte-for-byte identical via 0x15, and the slot restored to empty. The key-table binding path (0x12 read / 0x22 write, pageType 6) was separately hardware-verified when 11 records were cleared and all 117 others preserved byte-identical. This flag previously read 'wip' from before that verification, which left the driver implementing macros while the capability gate claimed source-only — a cross-board sweep caught the disagreement (list_macros returned instead of raising).",
       "capabilities": {
         "lighting": true,
@@ -232,7 +234,9 @@
         "perKeyRgb": true,
         "rapidTrigger": true,
         "deadzone": true,
-        "socd": "wip",
+        "socd": true,
+        "remap": true,
+        "advancedKeys": true,
         "macros": true,
         "calibration": "wip",
         "gamepad": false
@@ -295,6 +299,7 @@
       "keymap": "ui/layouts/aula-mini60he-pro.json",
       "protocol": "protocol_mini60",
       "frameLen": 32,
+      "_advancedKeysNote": "socd 'wip' -> TRUE, and the new remap / advancedKeys flags TRUE, on 2026-07-21 — and this entry is where the evidence actually comes from. The full vendor-app sweep that decoded them was captured OVER THIS 2.4GHz TRANSPORT (docs/context/issue-6-mini60-pro-raw/webhid-capture-FULL-SUITE-wireless.json; analyze_full_suite.py reassembles 504 key-table bytes from 147 0x22 frames at 32-byte framing): SOCD idx 49/51 = 0B 03 04 07 (the identical record in BOTH keys of the pair, mode 0x03), Rapid Snap idx 33/35 = 0C 00 14 08, DKS idx 34 = 08 01 00 00, Toggle idx 65 = 0A 00 00 00, Mod-Tap idx 66 = 09 00 00 28, plain remaps idx 84/86 = 02 00 36 00 / 02 00 45 00. Per the gating rule on this entry — true only for commands observed working over the RF bridge — these are the strongest form of that evidence available short of an Aether-side round trip: the vendor's own app committed real bindings through the bridge and the records decode. Contrast the 0x32 stream, which the bridge ACCEPTS AND DROPS: acceptance is not evidence, but a decoded write pass from the app that owns the board is. UNKNOWNS that stay unknown (see the wired entry's _advancedKeysNote for the full list): only one SOCD mode value (0x03) was ever seen against four in the UI, so mode is a pass-through parameter and the other three are NOT claimed; the Mod-Tap delay byte 0x28 has an unknown unit from one sample; DKS/MT action-slot encodings are NOT CAPTURED; DKS byte 1 as a slot index is consistent but unproven with a single DKS key. calibration stays 'wip' deliberately — the vendor wipes stored calibration before starting it, so it was never exercised on purpose.",
       "_macrosNote": "macros TRUE over RF, HARDWARE-VERIFIED 2026-07-21: with the cable OUT, a 10-event macro composed by OUR encoder was written to slot 5 via 0x25 at 32-byte frames, read back byte-for-byte identical via 0x15, and the slot restored to empty. Previously 'wip' on the reasoning that nothing had been exercised wirelessly — true at the time, but the flag outlived the evidence. A cross-board hardware sweep caught it: list_macros returned instead of raising, i.e. the driver implemented a feature the gate still called SOURCE-ONLY. Note this is the OPPOSITE of the 0x32 stream, which the RF bridge accepts and silently drops — capability over this transport has to be tested per command, never inferred from the wired result.",
       "capabilities": {
         "lighting": true,
@@ -302,7 +307,9 @@
         "perKeyRgb": true,
         "rapidTrigger": true,
         "deadzone": "wip",
-        "socd": "wip",
+        "socd": true,
+        "remap": true,
+        "advancedKeys": true,
         "macros": true,
         "calibration": "wip",
         "gamepad": false
@@ -472,7 +479,8 @@
     },
     {
       "slug": "aula-win60he-pro",
-      "offerInUi": true,
+      "_offerNote": "offerInUi false (2026-07-21, user request): SayoDevice 8089:0009. protocol_sayo reproduces the contributor's captures byte-for-byte, but nobody working on Aether owns this board and no frame from Aether has ever reached one. It stays in the registry so a plugged-in board is still detected, named and drawn with an honest explanation \u2014 it is simply never advertised as something you can pick and drive.",
+      "offerInUi": false,
       "name": "Aula WIN 60 HE Pro",
       "vid": "0x8089",
       "pid": "0x0009",

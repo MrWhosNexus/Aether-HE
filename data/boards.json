@@ -32,25 +32,14 @@
       "lighting": "wip",
       "actuation": "wip",
       "status": "Bring-up — auto-detected, shares the Win60 protocol; not yet verified on hardware"
-    },
-    {
-      "slug": "aula-kp-te153",
-      "name": "Aula KP-TE153",
-      "switches": "Hall-effect",
-      "lighting": "wip",
-      "actuation": "wip",
-      "status": "Bring-up — as WIN 68 HE (UK ISO); not yet verified on hardware"
-    },
-    {
-      "slug": "aula-win60he-pro",
-      "name": "Aula WIN 60 HE Pro",
-      "switches": "Hall-effect",
-      "lighting": "wip",
-      "actuation": false,
-      "status": "Bring-up — SayoDevice, lighting decoded from captures (#3)"
     }
   ],
   "recognized": [
+    {
+      "slug": "aula-kp-te153",
+      "name": "Aula KP-TE153",
+      "reason": "Recognised and drawn from the vendor's own 69-key UK ISO layout, and it shares the Win60's protocol by USB identity — but no physical KP-TE153 has ever been driven by Aether, and the ISO PRCS hidCode remap leaves SOCD unverified for it. Not offered as a selectable board."
+    },
     {
       "slug": "aula-mini60he-max",
       "name": "Aula MINI60HE Max",
@@ -95,6 +84,11 @@
       "slug": "aula-win68he-max",
       "name": "Aula win68 HE Max",
       "reason": "layout added (65%), needs captures (#7)"
+    },
+    {
+      "slug": "aula-win60he-pro",
+      "name": "Aula WIN 60 HE Pro",
+      "reason": "SayoDevice silicon (8089:0009). protocol_sayo reproduces the contributor's captures byte-for-byte, but nobody working on Aether owns this board, so no frame from Aether has ever reached one. Recognised, named and drawn; not offered."
     },
     {
       "slug": "aula-f75-tri-mode",

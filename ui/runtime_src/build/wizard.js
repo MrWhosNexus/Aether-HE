@@ -28,12 +28,18 @@
   const LS_BOARD = "aether-board";
   const LS_DONE = "aether-setup-done";
 
-  /* Static fallback list — mirrors the data/board_registry.json entries whose
-     protocol is DECODED (drivable), used only when the live roster isn't up yet
-     (no bridge, plain-browser preview). The wizard offers ONLY boards Aether can
-     actually drive; identity-only registry entries (dongles, un-captured PIDs)
-     stay in the registry so a plugged-in board is still recognised, but they are
-     never pickable here. */
+  /* Static fallback list — mirrors the data/board_registry.json entries the
+     registry marks OFFERED (`offerInUi`), used only when the live roster isn't up
+     yet (no bridge, plain-browser preview). Keep it in step with the registry:
+     the live roster is authoritative, this is just what shows before it loads.
+  
+     Offered is stricter than drivable. Boards deliberately NOT offered, each for
+     a stated reason in the registry's `_offerNote`:
+       aula-kp-te153     — decoded by family, never run on a physical KP-TE153
+       aula-win60he-pro  — SayoDevice; captures decode, but nobody owns the board
+       aula-mini60he-max — decoded from a contributor capture, never hardware-run
+     They stay in the registry so a plugged-in board is still detected, named and
+     drawn with an honest explanation — they are simply never pickable here. */
   const BOARDS = [{
     slug: "aula-win60-he",
     name: "Aula Win60 HE",
@@ -45,40 +51,40 @@
     form: "65%",
     status: "bringup"
   }, {
-    slug: "aula-kp-te153",
-    name: "Aula KP-TE153",
-    form: "65%",
-    status: "bringup"
-  }, {
-    slug: "aula-mini60he-max",
-    name: "Aula MINI60HE Max",
-    form: "60%",
-    status: "bringup"
-  }, {
     slug: "aula-mini60he-pro",
     name: "Aula Mini 60 HE Pro (wired)",
     form: "60%",
     status: "supported"
   }, {
-    slug: "aula-win60he-pro",
-    name: "Aula WIN 60 HE Pro",
+    slug: "aula-mini60he-pro-24g",
+    name: "Aula Mini 60 HE Pro (2.4GHz)",
     form: "60%",
-    status: "bringup"
+    status: "supported"
   }];
   const STATUS_LABEL = {
     supported: "Supported",
     bringup: "Bring-up"
   };
 
-  /* The boards the wizard offers = registry entries with a decoded protocol
-     (`drivable`). Prefers the LIVE roster the app already fetched over the
-     bridge (ctx.board.roster mirrors list_boards() — see board-context.jsx),
-     so the wizard tracks the registry with no rebuild; falls back to the static
-     mirror above. Filter is on `drivable`, NOT `connected`: a drivable board is
-     offered whether or not it's plugged in right now. */
+  /* The boards the wizard offers = registry entries the registry says may be
+     OFFERED (`offered`, resolved from `offerInUi`), which is a stricter thing
+     than `drivable`. A board can have a fully decoded protocol and still not
+     belong in a picker — e.g. decoded from a contributor's capture but never
+     run on physical hardware by anyone. Reading `offered` keeps that judgement
+     in the registry as data instead of re-deriving it at each UI site, where
+     the two inevitably drift.
+  
+     `offered` is undefined on older payloads, so fall back to `drivable` — that
+     preserves today's behaviour for any board that declares nothing.
+  
+     Prefers the LIVE roster the app already fetched over the bridge
+     (ctx.board.roster mirrors list_boards() — see board-context.jsx), so the
+     wizard tracks the registry with no rebuild; falls back to the static mirror
+     above. Filter is NOT on `connected`: an offered board appears whether or not
+     it is plugged in right now. */
   const drivableBoards = ctx => {
     const roster = ctx && ctx.board && Array.isArray(ctx.board.roster) ? ctx.board.roster : [];
-    const live = roster.filter(b => b && b.drivable);
+    const live = roster.filter(b => b && (b.offered !== undefined ? b.offered : b.drivable));
     if (live.length) {
       return live.map(b => ({
         slug: b.slug,

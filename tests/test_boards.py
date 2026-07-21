@@ -273,7 +273,8 @@ def test_mini60_pro_24g_drivable_with_honest_gating():
                             0x80A2 over the dongle);
       deadzone              'wip' — its 0x21 WRITE was never observed
                             over the bridge (only the 0x11 read answers);
-      socd/macros/calibration 'wip' — never exercised wirelessly;
+      socd/remap/advancedKeys  TRUE since 2026-07-21 — see below;
+      calibration           'wip' — deliberately never exercised;
       gamepad               false — no board-side command exists.
     hostEngine MUST be false: the RF bridge accepts 0x32 stream writes and
     silently drops them (HARDWARE-VERIFIED negative — 23.8 fps of no-ops,
@@ -295,8 +296,25 @@ def test_mini60_pro_24g_drivable_with_honest_gating():
     # drops — capability over this transport is per-command evidence, never
     # inherited from the wired board.
     assert p.cap("macros") is True
-    for flag in ("socd", "calibration"):
-        assert p.cap(flag) == "wip", f"dongle {flag} must stay 'wip'"
+    # socd moved 'wip' -> True and remap/advancedKeys arrived True on
+    # 2026-07-21, and THIS transport is where the evidence came from — the
+    # full vendor-app sweep that decoded them (webhid-capture-FULL-SUITE-
+    # wireless.json) was captured over the 2.4GHz dongle at 32-byte frames.
+    # Its 147 0x22 frames reassemble into decoded records: SOCD 0B 03 04 07
+    # mirrored on key indices 49 and 51, RS 0C 00 14 08 on 33 and 35, DKS
+    # 08 01 00 00, TGL 0A 00 00 00, MT 09 00 00 28, plain remaps 02 00 36 00
+    # / 02 00 45 00. Per this entry's own gating rule (true only for what was
+    # observed working over the RF bridge) that qualifies: the vendor's own
+    # app committed real bindings THROUGH the bridge and they decode. Note
+    # the contrast with 0x32 streaming, which the bridge accepts and silently
+    # drops — write acceptance is not evidence, a decoded vendor write pass
+    # is. 'wip' means SOURCE-ONLY in this registry and would now understate
+    # it.
+    for flag in ("socd", "remap", "advancedKeys"):
+        assert p.cap(flag) is True, f"dongle {flag} is capture-decoded over RF"
+    assert p.cap("calibration") == "wip", (
+        "calibration stays SOURCE-ONLY: it was deliberately never exercised "
+        "because the vendor wipes stored calibration before starting it")
     assert p.cap("gamepad") is False
     # host streaming does not exist over 2.4GHz — hard false, no fps cap
     assert p.lighting is not None
@@ -383,12 +401,38 @@ def test_mini60pro_capabilities():
     implementing macros while the gate still claimed SOURCE-ONLY — a
     cross-board hardware sweep caught the disagreement (list_macros returned
     instead of raising UnsupportedFeature).
+
+    `socd` moved 'wip' -> True, and `remap`/`advancedKeys` arrived True, on
+    2026-07-21. JUSTIFICATION: 'wip' is defined in this registry as
+    SOURCE-ONLY, and SOCD is no longer source-only. A full sweep of the vendor
+    app was captured (webhid-capture-FULL-SUITE-wireless.json over the dongle,
+    webhid-capture-macros.json wired) and the 0x22 write passes reassemble
+    into DECODED records: SOCD 0B 03 04 07 mirrored onto key indices 49 and
+    51, RS 0C 00 14 08 onto 33 and 35, DKS 08 01 00 00, TGL 0A 00 00 00, MT
+    09 00 00 28, plain remaps 02 00 36 00 / 02 00 45 00. All of them ride the
+    SAME 512-byte key table (0x12 read / 0x22 write) whose read-modify-write
+    path is already HARDWARE-VERIFIED on this board from the macro binds, so
+    the framing is proven and only the record CONTENT is new — and the content
+    is what the capture decodes. Leaving socd at 'wip' would repeat the exact
+    failure the macros flag hit twice: a driver implementing a feature while
+    the gate still calls it source-only.
+
+    What deliberately did NOT move: `calibration` stays 'wip'. It was never
+    exercised on purpose — the vendor app WIPES stored calibration before
+    starting it — and 0x64/0x65 are on the protocol module's NEVER-SEND list.
+    Nor does any flag here claim the parts that stayed unknown: only ONE SOCD
+    behaviour byte was ever observed (0x03) against four in the UI, the MT
+    delay byte's unit rests on one sample per transport, and the DKS/MT action
+    slots were never captured at all. A capability flag says "this board can
+    be driven for this feature", not "every parameter of it is decoded".
     """
     p = boards.load_registry().by_slug("aula-mini60he-pro")
-    for flag in ("lighting", "actuation", "perKeyRgb", "rapidTrigger", "deadzone", "macros"):
+    for flag in ("lighting", "actuation", "perKeyRgb", "rapidTrigger",
+                 "deadzone", "macros", "socd", "remap", "advancedKeys"):
         assert p.cap(flag) is True, f"mini60pro {flag} should be True"
-    for flag in ("socd", "calibration"):
-        assert p.cap(flag) == "wip", f"mini60pro {flag} is SOURCE-ONLY -> 'wip'"
+    assert p.cap("calibration") == "wip", (
+        "calibration was deliberately never exercised (the vendor wipes "
+        "stored calibration before starting it) — it stays SOURCE-ONLY")
     assert p.cap("gamepad") is False
     assert p.deadzone_scope == "global", (
         "MINI 60 HE PRO dead zones live in the global 0x11/0x21 table — "
@@ -640,18 +684,36 @@ def test_offer_in_ui_declared_on_every_board():
             f"{b['slug']} must declare offerInUi explicitly (true|false)")
 
 
-def test_offer_in_ui_matches_evidence():
-    """offerInUi is true exactly when the board is drivable AND at least one
-    capability is proven true. A board whose every capability is false or 'wip'
-    (SOURCE-ONLY) has nothing working to offer, so it is identified but never
-    advertised — e.g. aula-mini60he-max, whose protocol_sonix decode has never
-    been proven on hardware."""
+def test_offer_in_ui_requires_evidence():
+    """Offering a board is a ONE-WAY implication, not an equivalence.
+
+    Necessary: a board may only be offered if it is drivable AND has at least
+    one capability proven true. A board whose every capability is false or
+    'wip' (SOURCE-ONLY) has nothing working to offer.
+
+    NOT sufficient: passing that bar does not oblige us to offer it. Whether a
+    board belongs in a picker is a product judgement — 'has anyone actually run
+    this on the physical hardware?' is not derivable from capability data.
+    aula-kp-te153 and aula-win60he-pro are both drivable with proven flags and
+    are deliberately not offered, because no such board has ever been driven by
+    Aether; their reasons are recorded in the registry's `_offerNote`.
+
+    An earlier version of this test asserted the equivalence, which would have
+    forced those two back into the wizard.
+    """
+    raw = {b["slug"]: b for b in _raw_registry()["boards"]}
     for p in boards.load_registry().profiles:
         has_proven = any(v is True for v in p.capabilities.values())
-        expected = bool(p.drivable and has_proven)
-        assert p.offered is expected, (
-            f"{p.slug}: offerInUi={p.offered} but drivable={p.drivable}, "
-            f"proven capabilities={has_proven}")
+        if p.offered:
+            assert p.drivable, f"{p.slug} is offered but has no decoded protocol"
+            assert has_proven, (
+                f"{p.slug} is offered but every capability is false/'wip' — "
+                f"there is nothing working to offer")
+        elif p.drivable and has_proven:
+            # deliberately withheld: the decision must be written down, not implicit
+            assert raw[p.slug].get("_offerNote"), (
+                f"{p.slug} is drivable with proven capabilities but not offered, "
+                f"and gives no _offerNote saying why")
 
 
 def test_unsupported_boards_are_never_offered():
@@ -661,9 +723,11 @@ def test_unsupported_boards_are_never_offered():
     flagged rather than deleted)."""
     reg = boards.load_registry()
     offered = {p.slug for p in reg.profiles if p.offered}
-    assert offered == {"aula-win60-he", "aula-win68-he", "aula-kp-te153",
-                       "aula-mini60he-pro", "aula-mini60he-pro-24g",
-                       "aula-win60he-pro"}
+    # kp-te153 and win60he-pro were removed from the offered set on 2026-07-21:
+    # both are drivable by family/capture, but no physical example of either has
+    # ever been driven by Aether. mini60he-max is out for the same reason.
+    assert offered == {"aula-win60-he", "aula-win68-he",
+                       "aula-mini60he-pro", "aula-mini60he-pro-24g"}
     for p in reg.profiles:
         if not p.drivable:
             assert p.offered is False, f"{p.slug} has no protocol but is offered"

@@ -48,16 +48,30 @@ module:
     Macro writes and key binds are strictly read-modify-write, same as
     actuation: read the whole table, patch only the targeted slots,
     write everything back; a failed read ABORTS.
+  * key remap + all five advanced-key types: the SAME 0x12/0x22 key table,
+    one 4-byte record per key, keyed by pageType (remap 2, DKS 8, MT 9,
+    TGL 10, SOCD 11, RS 12). CONFIRMED-BY-CAPTURE 2026-07-21 over BOTH
+    transports — the wired sweep (webhid-capture-macros.json) and a full
+    sweep of the vendor app over the 2.4GHz dongle
+    (webhid-capture-FULL-SUITE-wireless.json). SOCD and RS are PAIRED: the
+    identical record goes to BOTH keys of the pair, in ONE read-modify-
+    write pass. DKS additionally points at a slot of the separate 1024-byte
+    travel table (0x18 read / 0x28 write, 0.1 mm units) — that op reads
+    BOTH tables before writing EITHER. What is NOT known is enumerated at
+    the section itself: the SOCD behaviour byte (one value observed of
+    four), the MT delay byte's unit (one sample), and the DKS/MT action
+    slots (never captured).
 
 Features deliberately NOT implemented (raise UnsupportedFeature, per the
 parity plan — each needs its own decode/capture before it may land here):
-full remap
-(only the macro-bind/unbind records of the 0x22 table are wired here),
-SOCD/advanced keys (pageTypes 8-12 captured but not implemented),
-poll rate (game-mode reportRate byte now capture-decoded but not wired),
-calibration (0x64 is on the protocol module's NEVER-SEND list), travel
-stream (0x60 unimplemented), board-side gamepad mode (no such command in
-the HFD SDK).
+whole-layer keymap upload (write_keymap / read_keymap_layer — a Win60
+command with no equivalent here; per-record remap IS wired, under the
+separate "key_remap" feature key), the Fn layer (0x16/0x26, a second key
+table, captured but not wired), poll rate (game-mode reportRate byte now
+capture-decoded but not wired), calibration (0x64 is on the protocol
+module's NEVER-SEND list, and the vendor wipes stored calibration before
+starting it so it was never exercised), travel stream (0x60
+unimplemented), board-side gamepad mode (no such command in the HFD SDK).
 
 INFERRED (not hardware-verified) items in this file are marked inline:
   * the 0x13 reply field offsets (mirror of the CONFIRMED 0x23 write block;
@@ -180,7 +194,7 @@ class Mini60Driver(BoardDriver):
     FEATURES = frozenset({
         "lighting", "lighting_read", "actuation", "actuation_read",
         "per_key_rgb", "device_info", "deadband", "macros",
-        "host_effects",
+        "host_effects", "key_remap", "advanced_keys", "socd",
     })
     # Dead zones live in the global 0x11/0x21 config table — per-key
     # semantics are impossible on this hardware.
@@ -641,20 +655,46 @@ class Mini60Driver(BoardDriver):
             self._send(f)
             time.sleep(0.005)
 
-    def _patch_key_record(self, key_index, record):
-        """Strict read-modify-write of ONE key-table record: read all 512
-        bytes, patch the 4 bytes of `key_index`, write the table back
-        (vendor-shaped 504-byte write). A failed read aborts the write."""
+    def _check_key_index(self, key_index):
+        """Validate a key-table record index. Deliberately called BEFORE any
+        read so a bad index costs zero frames on the wire."""
         k = int(key_index)
         if not 0 <= k < pm.KEY_WRITABLE_RECORDS:
             raise ValueError(
                 f"key index must be 0..{pm.KEY_WRITABLE_RECORDS - 1} "
                 f"(records 126..127 are readable but the vendor write path "
                 f"never writes them)")
+        return k
+
+    def _patch_key_records(self, records_by_index):
+        """Strict read-modify-write of ANY number of key-table records in
+        ONE pass: validate every index, read all 512 bytes, patch only the
+        listed records, write the table back (vendor-shaped 504-byte
+        write). A failed read aborts before a single write frame is sent.
+
+        Multi-record in one pass is what makes the PAIRED advanced types
+        (SOCD, RS) safe: their two keys carry the identical record and must
+        land in the same 0x22 sweep, because two sequential single-record
+        passes leave the board half-configured if the second one fails."""
+        patches = {}
+        for k, rec in records_by_index.items():
+            rec = list(rec)
+            if len(rec) != pm.KEY_RECORD_SIZE:
+                raise ValueError(f"a key record is {pm.KEY_RECORD_SIZE} bytes")
+            patches[self._check_key_index(k)] = rec
+        if not patches:
+            raise ValueError("no key records to write")
         table = list(self._read_key_table())   # raises on partial read
-        base = k * pm.KEY_RECORD_SIZE
-        table[base:base + pm.KEY_RECORD_SIZE] = record
+        for k, rec in patches.items():
+            base = k * pm.KEY_RECORD_SIZE
+            table[base:base + pm.KEY_RECORD_SIZE] = rec
         self._write_key_table(table)
+
+    def _patch_key_record(self, key_index, record):
+        """Strict read-modify-write of ONE key-table record (see
+        _patch_key_records — this is the single-record spelling of it and
+        emits the identical frames it always did)."""
+        self._patch_key_records({key_index: record})
 
     def bind_macro(self, key_index, macro_index, play_mode=0, loop_count=1):
         """Bind macro slot `macro_index` to key-table record `key_index`
@@ -729,3 +769,214 @@ class Mini60Driver(BoardDriver):
         for f in pm.build_macro_write_frames(table, self.frame_len):
             self._send(f)
             time.sleep(0.005)
+
+    # ---- key remap + advanced keys (0x12 read / 0x22 write; DKS also
+    #      0x18 read / 0x28 write) ----
+    # CONFIRMED-BY-CAPTURE 2026-07-21 over BOTH transports: the wired sweep
+    # (webhid-capture-macros.json, FULL_APP_CAPTURE_NOTES.md sections 1+3) and
+    # the full wireless sweep over the 2.4GHz dongle
+    # (webhid-capture-FULL-SUITE-wireless.json, decoded by analyze_full_suite
+    # .py) both put plain remap AND all five advanced-key types on the wire as
+    # 4-byte records in the SAME 512-byte key table the macro binds already
+    # use. Nothing new is invented here: the record builders live in
+    # protocol_mini60 with their own capture provenance, and this layer only
+    # orchestrates the read-modify-write — the identical pattern as actuation,
+    # per-key RGB and macros. A failed read ABORTS before any write.
+    #
+    # WHAT IS NOT KNOWN, and is therefore not claimed anywhere below:
+    #   * SOCD `mode` — only 0x03 ("Key 1 Priority") was ever observed on the
+    #     wire (the wired capture separately shows 0x02). The SDK offers four
+    #     values for four UI behaviours but the label<->value mapping is
+    #     UNVERIFIED, so mode is a raw pass-through parameter and this driver
+    #     offers NO named-mode vocabulary that would imply otherwise;
+    #   * the MT delay byte's UNIT — one sample per transport (0x28 = 40
+    #     wireless, 0x19 = 25 wired at a UI setting of 250 ms). Consistent
+    #     with 10 ms units, still one sample: the parameter is named `delay`,
+    #     not `delay_ms`, and no conversion happens here;
+    #   * DKS and MT ACTION slots — the vendor UI never filled them in
+    #     (it demands a physical key press), so their encoding is NOT
+    #     CAPTURED. They are accepted as pass-through and default to the
+    #     captured empty form;
+    #   * DKS byte 1 as a slot index is consistent across two captures
+    #     (wired slot 0, wireless slot 1) but only one DKS key existed in
+    #     each, so it is not proven.
+
+    def read_key_records(self):
+        """{record index: parsed record dict} for the whole 0x12 key table
+        (see pm.parse_key_record). The read side of every remap and
+        advanced-key edit; also the honest way to show what is bound,
+        because undecoded pageTypes come back as raw bytes rather than
+        being guessed at."""
+        return pm.parse_key_table(self._read_key_table())
+
+    def set_key_remap(self, key_index, hid_usage, modifiers=0):
+        """Bind `key_index` to a plain HID keyboard usage (pageType 2),
+        preserving every other record byte-for-byte. `modifiers` is the
+        record's modifier bitmask — CONFIRMED-BY-CAPTURE as a bitmask, not
+        padding, by the stock Fn table's modifier-only 02 40 00 00."""
+        self._patch_key_record(
+            key_index, pm.key_record_remap(hid_usage, modifiers))
+
+    def clear_advanced_key(self, key_index):
+        """Clear ONE key-table record back to UNASSIGNED (00 00 00 00).
+
+        Same wire effect as unbind_key(), exposed under the advanced-keys
+        feature so undoing a remap or an advanced key never requires the
+        caller to hold the macro feature. NOTE for paired types: this
+        clears the ONE index given. Undoing a SOCD/RS pair means calling it
+        for both keys — the driver cannot infer the partner from a single
+        record, and pm.find_paired_key_records() over read_key_records()'s
+        table is the honest way to discover it."""
+        self._patch_key_record(key_index, pm.key_record_unassigned())
+
+    def set_advanced_tgl(self, key_index, hid_usage=0):
+        """Toggle (pageType 10) on `key_index`. The captured form is
+        parameterless (0A 00 00 00); a non-zero `hid_usage` in byte 1 is
+        SOURCE-ONLY from the SDK and never observed."""
+        self._patch_key_record(key_index, pm.key_record_tgl(hid_usage))
+
+    def set_advanced_mt(self, key_index, delay, tap_hid=0, hold_hid=0):
+        """Mod-Tap (pageType 9) on `key_index` with the RAW firmware delay
+        byte. See the section header: the delay UNIT is unverified and the
+        tap/hold action slots are NOT CAPTURED — both are passed through
+        untouched rather than converted or defaulted to a guess."""
+        self._patch_key_record(
+            key_index, pm.key_record_mt(delay, tap_hid, hold_hid))
+
+    def _patch_paired_record(self, key_index_a, key_index_b, record):
+        """Write one paired-type record onto both keys in a SINGLE 0x22
+        sweep. Validation and the pairing rules (distinct indices, pageType
+        must actually be a paired type) run BEFORE the 0x12 read, so a bad
+        pair costs zero frames; the read then gates the write as usual."""
+        a = self._check_key_index(key_index_a)
+        b = self._check_key_index(key_index_b)
+        # Runs the protocol module's paired-type + distinct-index checks on a
+        # throwaway table so they fire before anything touches the wire.
+        pm.apply_paired_key_record([0] * pm.KEY_TABLE_SIZE, a, b, record)
+        self._patch_key_records({a: record, b: record})
+
+    def set_advanced_socd(self, key_index_a, key_index_b, hid_a, hid_b,
+                          mode=pm.SOCD_MODE_KEY1_PRIORITY):
+        """SOCD (pageType 11) on the PAIR (`key_index_a`, `key_index_b`).
+
+        ONE read-modify-write pass writes the IDENTICAL record into BOTH
+        slots — CONFIRMED-BY-CAPTURE (the vendor's SOCD save put
+        0B 03 04 07 on key indices 49 AND 51). Mirroring is delegated to
+        pm.apply_paired_key_record so it cannot be forgotten and so a
+        non-paired pageType can never be duplicated by accident.
+
+        `mode` defaults to the ONLY value ever seen on the wire; other
+        values are accepted but NOT decoded (see the section header)."""
+        self._patch_paired_record(key_index_a, key_index_b,
+                                  pm.key_record_socd(hid_a, hid_b, mode))
+
+    def set_socd(self, prcs_list):
+        """The BOARD-NEUTRAL SOCD entry point (the shape Api.set_socd already
+        sends), mapped onto this board's key table.
+
+        The Win60 sends SOCD as its own cmd-36 PRCS packet built from HID
+        usages alone. This board has no such command: SOCD is a record in the
+        512-byte key table at the pair's MATRIX POSITIONS, so each entry
+        needs two extra fields beyond {model, key1_hid, key2_hid} —
+        `key1_index` and `key2_index`.
+
+        Those indices are NOT derivable here and are not guessed at. A HID
+        usage does not identify a matrix position on this board: an unbound
+        key's record reads back 00 00 00 00, so the table cannot be searched
+        for "the key that sends 0x04". The index is layout data the caller
+        owns. Missing it is a loud ValueError, never a silent wrong-key write.
+
+        `model` is the raw SOCD behaviour byte and defaults to the ONLY value
+        ever observed (see set_advanced_socd) — it is deliberately the same
+        pass-through parameter, not a decoded vocabulary.
+
+        EVERY pair lands in ONE read-modify-write pass: partially applied
+        SOCD is a broken board state, and that is just as true across pairs
+        as it is across the two keys of one pair."""
+        entries = list(prcs_list or ())
+        if not entries:
+            raise ValueError(
+                f"{self.name}: no SOCD pairs given (this board stores SOCD "
+                f"per key record — there is no 'clear all' packet; clear a "
+                f"pair with clear_advanced_key on both of its keys)")
+        patches = {}
+        for e in entries:
+            try:
+                a = self._check_key_index(e["key1_index"])
+                b = self._check_key_index(e["key2_index"])
+                hid_a = int(e["key1_hid"])
+                hid_b = int(e["key2_hid"])
+            except (KeyError, TypeError):
+                raise ValueError(
+                    f"{self.name}: an SOCD pair needs key1_index/key2_index "
+                    f"(this board's key-table matrix positions) as well as "
+                    f"key1_hid/key2_hid — got {e!r}")
+            mode = int(e.get("model", pm.SOCD_MODE_KEY1_PRIORITY))
+            rec = pm.key_record_socd(hid_a, hid_b, mode)
+            # the protocol module's paired-type + distinct-index checks, run
+            # on a throwaway table so they fire before anything is written
+            pm.apply_paired_key_record([0] * pm.KEY_TABLE_SIZE, a, b, rec)
+            patches[a] = rec
+            patches[b] = rec
+        self._patch_key_records(patches)
+
+    def set_advanced_rs(self, key_index_a, key_index_b, hid_a, hid_b):
+        """Rapid Snap / Swift (pageType 12) on the PAIR
+        (`key_index_a`, `key_index_b`) — same both-slots rule as SOCD
+        (CONFIRMED-BY-CAPTURE: 0C 00 14 08 on key indices 33 AND 35).
+        Byte 1 is a constant 0 in every captured RS record, so there is no
+        mode parameter to expose."""
+        self._patch_paired_record(key_index_a, key_index_b,
+                                  pm.key_record_rs(hid_a, hid_b))
+
+    # ---- DKS travel table (0x18 read / 0x28 write) ----
+    def _read_dks_table(self):
+        """The full 1024-byte DKS travel table. All-or-nothing (raises on a
+        partial read — callers must NOT write after a failure)."""
+        return self._read_table(
+            pm.build_dks_travel_read_frames(self.frame_len),
+            pm.DKS_TABLE_SIZE)
+
+    def read_dks_slots(self):
+        """{slot index: decoded DKS slot} for every populated slot (see
+        pm.parse_dks_travel: points_mm, actions, raw trigger masks)."""
+        return pm.parse_dks_table(self._read_dks_table())
+
+    def set_advanced_dks(self, key_index, slot, points_mm,
+                         actions=(), trigger_masks=(0, 0, 0, 0)):
+        """Dynamic Keystroke (pageType 8) on `key_index`, pointing at DKS
+        entry `slot`, with the four travel points in mm (wire order: press /
+        bottom-out / release / reset, 0.1 mm units on the wire).
+
+        TWO tables, both strictly read-modify-write, in the vendor's
+        CONFIRMED-BY-CAPTURE order: the 1024-byte DKS travel table first
+        (0x18 read -> patch this slot only -> 0x28 write), then the key
+        record (0x12 read -> patch -> 0x22 write).
+
+        BOTH reads happen BEFORE EITHER write. That ordering is deliberate:
+        the naive read/write/read/write sequence can leave a DKS slot
+        populated with no key pointing at it if the second read fails, and
+        this driver's rule everywhere is that a failed read aborts before
+        any write at all.
+
+        `actions` and `trigger_masks` are pass-through: the vendor UI never
+        assigned an action during either capture, so their meaning is NOT
+        CAPTURED — the defaults reproduce the captured empty form."""
+        k = self._check_key_index(key_index)
+        s = int(slot)
+        if not 0 <= s < pm.DKS_USABLE_SLOTS:
+            raise ValueError(f"DKS slot must be 0..{pm.DKS_USABLE_SLOTS - 1}")
+        record = pm.dks_slot_record(points_mm, actions, trigger_masks)
+        key_record = pm.key_record_dks(s)
+        # --- both reads first; either failure aborts with nothing written ---
+        dks_table = list(self._read_dks_table())
+        key_table = list(self._read_key_table())
+        base = s * pm.DKS_SLOT_SIZE
+        dks_table[base:base + pm.DKS_SLOT_SIZE] = record
+        key_table[k * pm.KEY_RECORD_SIZE:
+                  (k + 1) * pm.KEY_RECORD_SIZE] = key_record
+        # --- vendor write order: travel table (0x28) then key record (0x22) ---
+        for f in pm.build_dks_travel_write_frames(dks_table, self.frame_len):
+            self._send(f)
+            time.sleep(0.005)
+        self._write_key_table(key_table)
