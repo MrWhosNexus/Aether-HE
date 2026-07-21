@@ -20,9 +20,10 @@
     </p>
   </description>
   <launchable type="desktop-id">io.github.mrwhosnexus.AetherHE.desktop</launchable>
-  <url type="homepage">https://github.com/MrWhosNexus/aether-linux-app</url>
+  <url type="homepage">https://github.com/MrWhosNexus/Aether-HE</url>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.3.1" date="2026-07-16"/>
     <release version="0.3.0" date="2026-07-06"/>
     <release version="0.2.0" date="2026-07-05"/>
     <release version="0.1.14" date="2026-07-05"/>

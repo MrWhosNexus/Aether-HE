@@ -7,7 +7,7 @@
 #define MyAppName        "AETHER HE"
 #define MyAppVersion     "0.4.0"
 #define MyAppPublisher   "MrWhosNexus"
-#define MyAppURL         "https://github.com/MrWhosNexus/aether-linux-app"
+#define MyAppURL         "https://github.com/MrWhosNexus/Aether-HE"
 #define MyAppExeName     "AetherHE.exe"
 #define MyOutputDir      "dist"
 

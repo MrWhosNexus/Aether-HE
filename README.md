@@ -90,7 +90,7 @@ Setup: add a repo secret **`MINIMAX_API_KEY`** (Settings → Secrets → Actions
 **Fastest path — real installer (recommended):**
 
 1. Download **`AetherHE-Setup.exe`** from
-   [Releases](https://github.com/MrWhosNexus/aether-linux-app/releases)
+   [Releases](https://github.com/MrWhosNexus/Aether-HE/releases)
    (or grab `dist/AetherHE-Setup.exe` from a local build).
 2. Run it. The wizard installs to `Program Files\AetherHE`, creates
    Start Menu + Desktop shortcuts, registers an entry in Add/Remove

@@ -192,8 +192,10 @@ class PerKeyEffectEngine:
             "calibrate": self._g_calibrate,
         }
         t0 = time.time()
+        frame_time = 1.0 / FPS
         while not self._stop.is_set():
-            t = time.time() - t0
+            t_start = time.time()
+            t = t_start - t0
             # Live key-travel (mm) for press-reactive effects (reactive). Cheap no-op
             # callable returning {device_index: mm}; empty when no reader is attached.
             self._depths = self.get_depths() if self.get_depths else {}
@@ -205,7 +207,14 @@ class PerKeyEffectEngine:
                 self._send(frame)      # palette already gamma-corrected; bg left linear
             except Exception:
                 break
-            time.sleep(self._frame_interval)   # == 1/FPS unless the board caps lower
+            # Merge of two independent fixes, both needed:
+            #   main  — subtract the time the frame actually took, so generator
+            #           cost doesn't accumulate as drift and slow the animation.
+            #   here  — pace to the BOARD's interval, not a hardcoded 1/FPS: the
+            #           MINI 60 HE PRO sustains ~28 fps where the engine targets 60.
+            # Using either alone loses the other's property.
+            elapsed = time.time() - t_start
+            time.sleep(max(0.0, self._frame_interval - elapsed))
 
     # ---- zone generators: (zone, t, frame) -> writes frame[idx] for idx in zone ----
     def _g_static(self, z, t, frame):

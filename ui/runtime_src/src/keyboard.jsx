@@ -100,7 +100,7 @@ const Key = React.memo(({
       data-code={code}
       className={`relative rounded-[5px] border text-left
                   px-1.5 pt-1 pb-0.5 h-[46px] overflow-hidden
-                  transition-all duration-150
+                  transition-[border-color,box-shadow] duration-150
                   ${calibrated
                     ? "border-emerald-400 shadow-[0_0_0_1px_#10b981,0_0_14px_rgba(16,185,129,0.6)]"
                     : calibrating

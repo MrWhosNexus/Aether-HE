@@ -1520,7 +1520,10 @@ def main():
         pass  # older pywebview without the settings dict
     # AETHER_DEBUG=1 re-enables the inspector for development.
     debug = os.environ.get("AETHER_DEBUG") == "1"
-    webview.start(_on_start, window, debug=debug)
+    # private_mode=False comes from main: it gives the webview a persistent
+    # profile so localStorage survives a restart. Kept — only `debug` is
+    # overridden here, because debug=True is what pops the DevTools window.
+    webview.start(_on_start, window, debug=debug, private_mode=False)
 
 
 if __name__ == "__main__":

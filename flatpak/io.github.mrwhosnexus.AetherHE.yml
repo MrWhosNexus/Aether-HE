@@ -42,8 +42,15 @@ modules:
     build-commands:
       # App source -> /app/share/aether
       - install -d /app/share/aether
-      - cp -r app_web.py aula_device.py protocol.py effects.py device_state.py
-        gamepad.py theme.py version.py updater.py ui /app/share/aether/
+      # Every module app_web.py can reach at import time must be listed here —
+      # omitting one is a ModuleNotFoundError at boot, not a missing feature
+      # (that is exactly what broke 0.3.0 on Linux). drivers/ and
+      # protocol_mini60.py are new in 0.4.0: drivers/__init__.py imports every
+      # protocol module to build the dispatch table, so a missing one crashes
+      # the app before the window opens.
+      - cp -r app_web.py aula_device.py protocol.py protocol_sonix.py protocol_sayo.py
+        protocol_mini60.py boards.py drivers effects.py device_state.py gamepad.py
+        theme.py version.py updater.py tools data ui /app/share/aether/
       # Launcher
       - install -Dm755 flatpak/aether.sh /app/bin/aether
       # Desktop integration
