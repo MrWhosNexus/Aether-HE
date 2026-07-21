@@ -295,6 +295,7 @@
       "keymap": "ui/layouts/aula-mini60he-pro.json",
       "protocol": "protocol_mini60",
       "frameLen": 32,
+      "_macrosNote": "macros TRUE over RF, HARDWARE-VERIFIED 2026-07-21: with the cable OUT, a 10-event macro composed by OUR encoder was written to slot 5 via 0x25 at 32-byte frames, read back byte-for-byte identical via 0x15, and the slot restored to empty. Previously 'wip' on the reasoning that nothing had been exercised wirelessly — true at the time, but the flag outlived the evidence. A cross-board hardware sweep caught it: list_macros returned instead of raising, i.e. the driver implemented a feature the gate still called SOURCE-ONLY. Note this is the OPPOSITE of the 0x32 stream, which the RF bridge accepts and silently drops — capability over this transport has to be tested per command, never inferred from the wired result.",
       "capabilities": {
         "lighting": true,
         "actuation": true,
@@ -302,7 +303,7 @@
         "rapidTrigger": true,
         "deadzone": "wip",
         "socd": "wip",
-        "macros": "wip",
+        "macros": true,
         "calibration": "wip",
         "gamepad": false
       },

@@ -288,7 +288,14 @@ def test_mini60_pro_24g_drivable_with_honest_gating():
     assert p.cap("actuation") is True
     assert p.cap("rapidTrigger") is True
     assert p.cap("deadzone") == "wip"
-    for flag in ("socd", "macros", "calibration"):
+    # macros moved 'wip' -> True on 2026-07-21: with the cable OUT, a macro
+    # composed by our own encoder round-tripped byte-for-byte over RF (0x25
+    # write / 0x15 read at 32-byte frames) and the slot restored. Note this is
+    # the opposite result to the 0x32 stream below, which the bridge accepts and
+    # drops — capability over this transport is per-command evidence, never
+    # inherited from the wired board.
+    assert p.cap("macros") is True
+    for flag in ("socd", "calibration"):
         assert p.cap(flag) == "wip", f"dongle {flag} must stay 'wip'"
     assert p.cap("gamepad") is False
     # host streaming does not exist over 2.4GHz — hard false, no fps cap
