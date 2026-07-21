@@ -260,9 +260,13 @@
       setSubmitOpen
     } = ctx;
     const [version, setVersion] = useState("—");
+    // `info` holds the check_update() result — apply_update REQUIRES the asset
+    // url/name from it (Api.apply_update(asset_url, asset_name)); calling it bare
+    // raises a missing-argument TypeError.
     const [updateState, setUpdateState] = useState({
       phase: "idle",
-      msg: ""
+      msg: "",
+      info: null
     });
     useEffect(() => {
       const api = window.pywebview?.api;
@@ -276,60 +280,85 @@
       if (!api?.check_update) return;
       setUpdateState({
         phase: "checking",
-        msg: "Checking for updates…"
+        msg: "Checking for updates…",
+        info: null
       });
       try {
         const r = await api.check_update();
-        if (r?.ok) {
-          if (r.available) {
-            setUpdateState({
-              phase: "available",
-              msg: `Update available: v${r.version}`
-            });
-          } else {
-            setUpdateState({
-              phase: "uptodate",
-              msg: "You're up to date"
-            });
-          }
-        } else {
+        if (!r?.ok) {
+          // Surface the real reason (rate limit, offline, DNS) instead of a bare
+          // "Check failed" — this is the only place the user can see it.
           setUpdateState({
             phase: "error",
-            msg: "Check failed"
+            msg: `Check failed: ${r?.error || "unknown error"}`,
+            info: null
+          });
+          return;
+        }
+        // updater.check_for_update() returns `update` / `latest` / `asset_url`.
+        // (It has never returned `available` or `version`: reading those meant
+        // this button reported "You're up to date" even when a release existed.)
+        if (r.update) {
+          setUpdateState({
+            phase: "available",
+            msg: `Update available: v${r.latest}`,
+            info: r
+          });
+        } else if (r.newer) {
+          // Newer release exists but ships no asset this OS can install.
+          setUpdateState({
+            phase: "uptodate",
+            msg: `v${r.latest} available, but no installer for this platform`,
+            info: null
+          });
+        } else {
+          setUpdateState({
+            phase: "uptodate",
+            msg: "You're up to date",
+            info: null
           });
         }
       } catch (e) {
         setUpdateState({
           phase: "error",
-          msg: "Check failed"
+          msg: `Check failed: ${e}`,
+          info: null
         });
       }
     };
     const applyUpdate = async () => {
       const api = window.pywebview?.api;
-      if (!api?.apply_update) return;
-      setUpdateState({
+      const info = updateState.info;
+      if (!api?.apply_update || !info?.asset_url) return;
+      setUpdateState(s => ({
+        ...s,
         phase: "installing",
         msg: "Downloading…"
-      });
+      }));
       try {
-        const r = await api.apply_update();
-        if (r?.ok) {
-          setUpdateState({
-            phase: "installed",
-            msg: "Update complete"
-          });
-        } else {
-          setUpdateState({
+        const r = await api.apply_update(info.asset_url, info.asset_name);
+        if (!r?.ok) {
+          setUpdateState(s => ({
+            ...s,
             phase: "error",
-            msg: "Installation failed"
-          });
+            msg: `Installation failed: ${r?.error || "unknown error"}`
+          }));
+          return;
         }
+        // Windows launches the installer and the app must quit; Flatpak installs
+        // in place and needs a manual restart. Say which one happened.
+        const msg = r.quit ? "Installer launched — Aether will close and reopen." : r.restart ? "Update installed — quit and reopen Aether to apply it." : r.path ? `Downloaded to ${r.path}` : "Update complete";
+        setUpdateState(s => ({
+          ...s,
+          phase: "installed",
+          msg
+        }));
       } catch (e) {
-        setUpdateState({
+        setUpdateState(s => ({
+          ...s,
           phase: "error",
-          msg: "Installation failed"
-        });
+          msg: `Installation failed: ${e}`
+        }));
       }
     };
     const openWizard = () => {
@@ -353,7 +382,7 @@
       onClick: checkUpdate,
       disabled: updateState.phase === "checking",
       className: "h-9 rounded-md border border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] font-display text-[11px] uppercase tracking-[0.16em] hover:bg-[var(--accent)]/25 disabled:opacity-50 transition-all"
-    }, IRefresh ? "↻" : "Check", " Check for Updates"), (updateState.phase === "available" || updateState.phase === "installed") && /*#__PURE__*/React.createElement("button", {
+    }, IRefresh ? "↻" : "Check", " Check for Updates"), (updateState.phase === "available" || updateState.phase === "installing") && /*#__PURE__*/React.createElement("button", {
       onClick: applyUpdate,
       disabled: updateState.phase === "installing",
       className: "h-9 rounded-md border border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)] font-display text-[11px] uppercase tracking-[0.16em] hover:bg-[var(--accent)]/25 disabled:opacity-50 transition-all"

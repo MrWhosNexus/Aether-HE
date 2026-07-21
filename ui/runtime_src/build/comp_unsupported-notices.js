@@ -25,7 +25,7 @@
       className: "fixed bottom-5 left-1/2 -translate-x-1/2 z-[70] flex flex-col items-center gap-2 pointer-events-none"
     }, notices.map(n => /*#__PURE__*/React.createElement("div", {
       key: n.id,
-      className: "pointer-events-auto flex items-center gap-3 pl-3.5 pr-2 py-2 rounded-xl border bg-[color-mix(in_srgb,var(--ink)_90%,transparent)] backdrop-blur-md shadow-2xl animate-[fadeIn_140ms_ease-out]",
+      className: "pointer-events-auto flex items-center gap-3 pl-3.5 pr-2 py-2 rounded-xl\r border bg-[color-mix(in_srgb,var(--ink)_90%,transparent)] backdrop-blur-md shadow-2xl\r animate-[fadeIn_140ms_ease-out]",
       style: {
         borderColor: "color-mix(in srgb, var(--warn) 45%, transparent)"
       }

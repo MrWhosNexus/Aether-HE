@@ -57,7 +57,7 @@
     if (selectable) {
       return /*#__PURE__*/React.createElement("button", {
         onClick: () => onSelect(b.slug),
-        className: "w-full flex items-center gap-2 px-2.5 h-9 rounded-lg text-left transition-colors hover:bg-white/[0.04]"
+        className: "w-full flex items-center gap-2 px-2.5 h-9 rounded-lg text-left transition-colors\r hover:bg-white/[0.04]"
       }, inner);
     }
     return /*#__PURE__*/React.createElement("div", {
@@ -104,7 +104,7 @@
       onClick: () => setOpen(o => !o),
       disabled: !!switching,
       title: "Multiple boards are connected \u2014 choose which one Aether drives",
-      className: "flex items-center gap-2 h-[34px] pl-3 pr-2.5 rounded-[11px] border border-[var(--line)] bg-[color-mix(in_srgb,var(--ink)_70%,transparent)] backdrop-blur-xl text-[var(--text)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] transition-colors disabled:opacity-60"
+      className: "flex items-center gap-2 h-[34px] pl-3 pr-2.5 rounded-[11px] border border-[var(--line)]\r bg-[color-mix(in_srgb,var(--ink)_70%,transparent)] backdrop-blur-xl text-[var(--text)]\r hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] transition-colors\r disabled:opacity-60"
     }, /*#__PURE__*/React.createElement("span", {
       className: "w-1.5 h-1.5 rounded-full shrink-0",
       style: {
