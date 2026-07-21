@@ -1239,10 +1239,19 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
-    def apply_update(self, asset_url, asset_name=None):
+    def update_progress(self):
+        """Download progress for the in-flight update: {phase, done, total, pct}.
+        Polled by the UI while apply_update() runs — the installer asset is ~20 MB,
+        and without this the window looks frozen for the whole download."""
+        return {"ok": True, **updater.get_progress()}
+
+    def apply_update(self, asset_url, asset_name=None, asset_size=None, asset_sha256=None):
         """Download + install the update for this OS. On success the caller
-        should quit (Windows) or prompt a restart (Flatpak)."""
-        res = updater.apply_update(asset_url, asset_name)
+        should quit (Windows) or prompt a restart (Flatpak).
+
+        asset_size/asset_sha256 come from check_update(); updater re-fetches them
+        if omitted, so the download is verified either way."""
+        res = updater.apply_update(asset_url, asset_name, asset_size, asset_sha256)
         if res.get("ok") and res.get("quit"):
             # Let the bridge return first, then exit so the installer can replace
             # files that are otherwise locked by the running process.

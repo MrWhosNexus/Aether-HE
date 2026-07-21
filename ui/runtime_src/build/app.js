@@ -826,8 +826,38 @@
         info: chk,
         msg: `Updating Aether to v${chk.latest}…`
       });
+      // Poll download progress so the launch overlay reports movement rather than
+      // sitting on one line for a ~20 MB download.
+      let poll = null;
+      if (api.update_progress) {
+        poll = setInterval(async () => {
+          try {
+            const p = await api.update_progress();
+            if (!p?.ok) return;
+            const mb = n => (n / 1048576).toFixed(1);
+            if (p.phase === "downloading" && p.total) {
+              setUpdGate(g => g.phase === "updating" ? {
+                ...g,
+                msg: `Downloading v${chk.latest}… ${p.pct}%  (${mb(p.done)} / ${mb(p.total)} MB)`
+              } : g);
+            } else if (p.phase === "verified") {
+              setUpdGate(g => g.phase === "updating" ? {
+                ...g,
+                msg: "Verifying download…"
+              } : g);
+            }
+          } catch {}
+        }, 400);
+      }
+      const stopPoll = () => {
+        if (poll) {
+          clearInterval(poll);
+          poll = null;
+        }
+      };
       try {
-        const r = await api.apply_update(chk.asset_url, chk.asset_name);
+        const r = await api.apply_update(chk.asset_url, chk.asset_name, chk.asset_size, chk.asset_sha256);
+        stopPoll();
         if (!r || !r.ok) {
           setUpdGate({
             phase: "error",
@@ -850,6 +880,7 @@
           msg: r.path ? `Downloaded to ${r.path}` : "Downloaded."
         });
       } catch (e) {
+        stopPoll();
         setUpdGate({
           phase: "error",
           info: chk,

@@ -335,8 +335,43 @@
         phase: "installing",
         msg: "Downloading…"
       }));
+      // The installer is ~20 MB; poll so the window isn't silently frozen. The
+      // timer is cleared in every exit path below (including the throw).
+      let poll = null;
+      if (api.update_progress) {
+        poll = setInterval(async () => {
+          try {
+            const p = await api.update_progress();
+            if (!p?.ok) return;
+            if (p.phase === "downloading" && p.total) {
+              const mb = n => (n / 1048576).toFixed(1);
+              setUpdateState(s => s.phase === "installing" ? {
+                ...s,
+                msg: `Downloading… ${p.pct}%  (${mb(p.done)} / ${mb(p.total)} MB)`
+              } : s);
+            } else if (p.phase === "verified") {
+              setUpdateState(s => s.phase === "installing" ? {
+                ...s,
+                msg: "Verifying download…"
+              } : s);
+            } else if (p.phase === "installing") {
+              setUpdateState(s => s.phase === "installing" ? {
+                ...s,
+                msg: "Installing…"
+              } : s);
+            }
+          } catch {}
+        }, 400);
+      }
+      const stop = () => {
+        if (poll) {
+          clearInterval(poll);
+          poll = null;
+        }
+      };
       try {
-        const r = await api.apply_update(info.asset_url, info.asset_name);
+        const r = await api.apply_update(info.asset_url, info.asset_name, info.asset_size, info.asset_sha256);
+        stop();
         if (!r?.ok) {
           setUpdateState(s => ({
             ...s,
@@ -354,6 +389,7 @@
           msg
         }));
       } catch (e) {
+        stop();
         setUpdateState(s => ({
           ...s,
           phase: "error",
