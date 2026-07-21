@@ -1,54 +1,105 @@
 {
-  "_comment": "Source of truth for the README supported-boards table. Add a board here when its support is merged, then run `python tools/gen_boards_table.py --write` (CI checks the README stays in sync). Fields: name, switches, lighting/actuation = true|false|\"wip\", status.",
+  "_comment": "Source of truth for the README boards section. TWO lists, deliberately: 'boards' is the SUPPORTED table — only keyboards Aether can actually drive, i.e. exactly the registry entries with offerInUi true (data/board_registry.json). 'recognized' is the identify-only list — boards Aether detects, names and draws but cannot drive, kept visible so the app can explain itself instead of silently pretending a board doesn't exist. Every entry carries the registry `slug` that ties it to data/board_registry.json; tests/test_boards.py fails if the two files drift apart. After editing, run `python tools/gen_boards_table.py --write` (CI checks the README stays in sync). Fields: slug, name, switches, lighting/actuation = true|false|\"wip\", status. Cell semantics differ from the registry's capability flags ON PURPOSE: the registry records whether a command is wired, this table records what a USER can rely on — so a board whose protocol is shared-by-inference but never round-tripped on the physical hardware shows \"wip\", not a tick.",
   "boards": [
     {
+      "slug": "aula-win60-he",
       "name": "Aula Win60 HE",
       "switches": "Hall-effect",
       "lighting": true,
       "actuation": true,
-      "status": "Fully supported"
+      "status": "Fully supported — hardware-verified"
     },
     {
-      "name": "Aula MINI60HE Max",
+      "slug": "aula-mini60he-pro",
+      "name": "Aula MINI 60 HE PRO (wired)",
+      "switches": "Hall-effect",
+      "lighting": true,
+      "actuation": true,
+      "status": "Fully supported — hardware-verified (#6)"
+    },
+    {
+      "slug": "aula-mini60he-pro-24g",
+      "name": "Aula MINI 60 HE PRO (2.4 GHz dongle)",
+      "switches": "Hall-effect",
+      "lighting": true,
+      "actuation": true,
+      "status": "Supported over RF — firmware effects only, no host streaming (#6)"
+    },
+    {
+      "slug": "aula-win68-he",
+      "name": "Aula WIN 68 HE",
       "switches": "Hall-effect",
       "lighting": "wip",
       "actuation": "wip",
-      "status": "Bring-up — protocol decoded (#4)"
+      "status": "Bring-up — auto-detected, shares the Win60 protocol; not yet verified on hardware"
     },
     {
-      "name": "Aula Mini 60 HE Pro",
+      "slug": "aula-kp-te153",
+      "name": "Aula KP-TE153",
       "switches": "Hall-effect",
-      "lighting": false,
-      "actuation": false,
-      "status": "Layout added — needs captures (#6)"
+      "lighting": "wip",
+      "actuation": "wip",
+      "status": "Bring-up — as WIN 68 HE (UK ISO); not yet verified on hardware"
     },
     {
-      "name": "Aula Win60 HE Max",
-      "switches": "Hall-effect",
-      "lighting": false,
-      "actuation": false,
-      "status": "Layout added — needs captures (#5)"
-    },
-    {
-      "name": "Aula win68 HE Max",
-      "switches": "Hall-effect",
-      "lighting": false,
-      "actuation": false,
-      "status": "Layout added (65%) — needs captures (#7)"
-    },
-    {
+      "slug": "aula-win60he-pro",
       "name": "Aula WIN 60 HE Pro",
       "switches": "Hall-effect",
-      "lighting": false,
+      "lighting": "wip",
       "actuation": false,
-      "status": "Layout added — SayoDevice, needs captures (#3)"
+      "status": "Bring-up — SayoDevice, lighting decoded from captures (#3)"
+    }
+  ],
+  "recognized": [
+    {
+      "slug": "aula-mini60he-max",
+      "name": "Aula MINI60HE Max",
+      "reason": "protocol decoded from a capture but never proven on hardware (#4)"
     },
     {
+      "slug": "aula-mini60he-pro-80b2",
+      "name": "Aula MINI 60 HE PRO (alt PID 0x80B2)",
+      "reason": "second hardware revision, no capture of its own (#6)"
+    },
+    {
+      "slug": "aula-mini68he",
+      "name": "Aula MINI 68 HE",
+      "reason": "listed by the vendor driver, no capture"
+    },
+    {
+      "slug": "aula-mini68he-pro",
+      "name": "Aula MINI 68 HE PRO",
+      "reason": "listed by the vendor driver, no capture"
+    },
+    {
+      "slug": "aula-mini68he-max",
+      "name": "Aula MINI68 HE MAX",
+      "reason": "listed by the vendor driver, no capture"
+    },
+    {
+      "slug": "aula-f75-he",
+      "name": "AULA F75 HE",
+      "reason": "listed by the vendor driver, no capture"
+    },
+    {
+      "slug": "aula-mini60he-max-24g",
+      "name": "Aula MINI60HE / MINI68HE MAX (2.4 GHz dongle)",
+      "reason": "different transport from the decoded wired boards, no capture"
+    },
+    {
+      "slug": "aula-win60he-max",
+      "name": "Aula Win60 HE Max",
+      "reason": "layout added, needs captures (#5)"
+    },
+    {
+      "slug": "aula-win68he-max",
+      "name": "Aula win68 HE Max",
+      "reason": "layout added (65%), needs captures (#7)"
+    },
+    {
+      "slug": "aula-f75-tri-mode",
       "name": "Aula F75 Tri-Mode",
-      "switches": "Mechanical",
-      "lighting": false,
-      "actuation": false,
-      "status": "Added to registry — needs captures (#8)"
+      "reason": "in the registry, needs captures (#8)"
     }
   ]
 }

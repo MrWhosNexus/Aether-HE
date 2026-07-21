@@ -6,6 +6,15 @@ supports. This script renders that list into the Markdown table in README.md,
 between the BOARDS markers, and always appends the "Your board? -> Submit it"
 call-to-action row.
 
+TWO lists are rendered, and the split is the point. `boards` is the SUPPORTED
+table: only keyboards Aether can actually drive (the registry entries with
+`offerInUi` true). `recognized` is an identify-only sentence rendered under the
+table: boards Aether detects, names and draws but cannot drive. They are not
+advertised as supported, but they are not hidden either — a user whose board is
+recognised-but-not-driveable should read that fact here rather than wonder why
+the app names their keyboard and then does nothing. `recognized` is optional:
+a boards.json without it renders exactly the old block.
+
 Workflow:
     # after merging support for a new board, add it to data/boards.json, then:
     python tools/gen_boards_table.py --write     # rewrite the README table
@@ -56,11 +65,31 @@ def render_table(boards):
     return "\n".join(lines)
 
 
+def render_recognized(boards):
+    """Identify-only boards, rendered as one paragraph under the table.
+
+    Empty/absent -> "" (the block is byte-identical to the pre-split output).
+    """
+    if not boards:
+        return ""
+    items = ", ".join(
+        f"**{b['name']}**" + (f" ({b['reason']})" if b.get("reason") else "")
+        for b in boards
+    )
+    return (
+        "\n\n**Recognised, but not drivable yet.** Aether identifies these boards, "
+        "names them and draws their layout, but has no verified protocol for them — "
+        "lighting and actuation stay switched off and they are not offered as "
+        f"selectable options anywhere in the app: {items}."
+    )
+
+
 def build_block():
     with open(BOARDS_PATH, encoding="utf-8") as f:
         data = json.load(f)
     boards = data.get("boards", [])
-    return f"{START}\n{render_table(boards)}\n{END}"
+    recognized = data.get("recognized", [])
+    return f"{START}\n{render_table(boards)}{render_recognized(recognized)}\n{END}"
 
 
 def splice(readme_text, block):
