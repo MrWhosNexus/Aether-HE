@@ -109,16 +109,20 @@ const FW_MODES = {
   neon:     { byte: 3,  bg: true,  speed: true,  dir: "none",   full: true },
   radar:    { byte: 4,  bg: true,  speed: true,  dir: "rotate", full: true },
   reactive: { byte: 6,  bg: true,  speed: true,  dir: "none",   full: true },
-  cross:    { byte: 7,  bg: true,  speed: true,  dir: "gather", full: true },
+  // VENDOR-CORRECTED (hed.aulacn.com config__language.json, lightMode<N>, and
+  // the board's own readLightList): byte 7 = Aurora (gather/spread), byte 11 =
+  // Cross (no direction), byte 16 = Fireworks. The old table had those three
+  // swapped, so e.g. picking "Fireworks" made the firmware render Cross.
+  aurora:   { byte: 7,  bg: true,  speed: true,  dir: "gather", full: true },
   ripple:   { byte: 8,  bg: true,  speed: true,  dir: "none",   full: true },
   twinkle:  { byte: 9,  bg: true,  speed: true,  dir: "none",   full: true },
   custom:   { byte: 10, bg: false, speed: false, dir: "none",   full: false },
-  fireworks:{ byte: 11, bg: true,  speed: true,  dir: "none",   full: true },
-  frenzy:   { byte: 11, bg: true,  speed: true,  dir: "none",   full: true },
+  cross:    { byte: 11, bg: true,  speed: true,  dir: "none",   full: true },
+  frenzy:   { byte: 16, bg: true,  speed: true,  dir: "none",   full: true },
   speedres: { byte: 12, bg: true,  speed: false, dir: "ud",     full: true },
   autorip:  { byte: 14, bg: true,  speed: true,  dir: "none",   full: true },
   striation:{ byte: 15, bg: true,  speed: true,  dir: "lr",     full: true },
-  aurora:   { byte: 16, bg: true,  speed: true,  dir: "none",   full: true },
+  fireworks:{ byte: 16, bg: true,  speed: true,  dir: "none",   full: true },
 };
 const MODE_BYTE = Object.fromEntries(Object.entries(FW_MODES).map(([k, v]) => [k, v.byte]));
 // SOCD key labels (BASIC/EXTENDED) → design data-code, from the keyboard layout.

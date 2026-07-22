@@ -294,6 +294,25 @@
   const briByteFor = (pct, max) => pct <= 0 ? 0 : Math.max(1, Math.min(max, Math.ceil(pct / 100 * max)));
   const spdByteFor = (pct, max) => Math.max(1, Math.min(max, Math.round(pct / 100 * (max - 1)) + 1));
 
+  /* Firmware 2-color modes carry ONE foreground over the user's background.
+     THE "WAVE DOES NOTHING" BUG (hardware-verified, v0.4.4 regression): a
+     profile saved with colors[0] === bgColor (e.g. both #ffffff) sends a white
+     wave over a white background — the firmware IS animating, but every frame
+     is identical, so the board looks dead. The host engine never had this
+     failure because it painted the WHOLE palette over the bg. So: when the
+     resolved mode uses a bg and colors[0] would vanish into it, send the first
+     palette color that differs (the closest visible match to what the host
+     engine showed). Modes without a bg (static, custom) keep colors[0]
+     untouched — for them fg-==bg is meaningless and substitution would change
+     correct behaviour. */
+  const fwFgHex = (rule, s) => {
+    const first = s.colors && s.colors[0] || "#ffffff";
+    if (!rule || !rule.bg) return first;
+    const bg = (s.bgColor || "").toLowerCase();
+    if (first.toLowerCase() !== bg) return first;
+    return (s.colors || []).find(c => (c || "").toLowerCase() !== bg) || first;
+  };
+
   /* resolveLightDispatch(bl, {pattern, power, fullColor}) -> decision.
      bl = board.lighting (registry block) or null. Returns one of:
        { call:"legacy" }                          no mode table -> today's code
@@ -374,7 +393,7 @@
     }
     const briMax = bl.brightnessMax || 4;
     const spdMax = bl.speedMax || 4;
-    const [r, g, b] = hexToRgb(s.colors && s.colors[0] || "#ffffff");
+    const [r, g, b] = hexToRgb(fwFgHex(d.rule, s));
     const [br, bg2, bb] = hexToRgb(s.bgColor);
     // 2-way direction rule (registry `direction: true`): the firmware takes a
     // plain 0/1 byte, so clamp the 4-way dial value. Directional *kinds*
@@ -432,7 +451,7 @@
     // on the host preview below.
     if (rule && s.pattern !== "custom" && (!legacyId || bl.hostEngine === false || bl.preferFirmwareEffects)) {
       if (rule.color === false) return s.bgColor; // firmware-chosen colors — show only the user's bg
-      return idx % 6 === 0 ? colors[0] || "#ffffff" : s.bgColor; // exactly the fg byte sent (buildLightCalls)
+      return idx % 6 === 0 ? fwFgHex(rule, s) || "#ffffff" : s.bgColor; // exactly the fg byte sent (buildLightCalls)
     }
     const hit = idx % 6 === 0 || colors.length === 1;
     return hit ? colors[idx % colors.length] : s.bgColor;
@@ -1392,6 +1411,7 @@
     buildLightCalls,
     briByteFor,
     spdByteFor,
-    previewSimColor
+    previewSimColor,
+    fwFgHex
   };
 })();

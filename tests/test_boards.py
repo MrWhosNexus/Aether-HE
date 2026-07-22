@@ -452,10 +452,14 @@ def test_win60_lighting_table():
                                "build": "build_read_light_list",
                                "parse": "parse_light_list"}
     by_id = {m["id"]: m for m in lt["modes"]}
+    # VENDOR-CORRECT names (hed.aulacn.com config__language.json lightMode<N>,
+    # cross-checked against the board's own readLightList): byte 7 = Aurora,
+    # byte 11 = Cross, byte 16 = Fireworks. The pre-v0.4.5 table had those
+    # three swapped. frenzy stays a host-engine alias of fireworks (byte 16).
     expected_bytes = {"static": 0, "breath": 1, "wave": 2, "neon": 3, "radar": 4,
-                      "reactive": 6, "cross": 7, "ripple": 8, "twinkle": 9,
-                      "custom": 10, "fireworks": 11, "frenzy": 11, "speedres": 12,
-                      "autorip": 14, "striation": 15, "aurora": 16}
+                      "reactive": 6, "aurora": 7, "ripple": 8, "twinkle": 9,
+                      "custom": 10, "cross": 11, "frenzy": 16, "speedres": 12,
+                      "autorip": 14, "striation": 15, "fireworks": 16}
     assert {k: v["byte"] for k, v in by_id.items()} == expected_bytes
     assert by_id["static"]["speed"] is False and by_id["custom"]["speed"] is False
     assert by_id["wave"]["direction"] == "all"

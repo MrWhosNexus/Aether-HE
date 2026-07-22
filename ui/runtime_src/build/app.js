@@ -208,7 +208,11 @@
       dir: "none",
       full: true
     },
-    cross: {
+    // VENDOR-CORRECTED (hed.aulacn.com config__language.json, lightMode<N>, and
+    // the board's own readLightList): byte 7 = Aurora (gather/spread), byte 11 =
+    // Cross (no direction), byte 16 = Fireworks. The old table had those three
+    // swapped, so e.g. picking "Fireworks" made the firmware render Cross.
+    aurora: {
       byte: 7,
       bg: true,
       speed: true,
@@ -236,7 +240,7 @@
       dir: "none",
       full: false
     },
-    fireworks: {
+    cross: {
       byte: 11,
       bg: true,
       speed: true,
@@ -244,7 +248,7 @@
       full: true
     },
     frenzy: {
-      byte: 11,
+      byte: 16,
       bg: true,
       speed: true,
       dir: "none",
@@ -271,7 +275,7 @@
       dir: "lr",
       full: true
     },
-    aurora: {
+    fireworks: {
       byte: 16,
       bg: true,
       speed: true,

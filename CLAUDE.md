@@ -37,9 +37,13 @@ venv-web/bin/python ui/runtime_src/build_runtime.py
 
 ## HID protocol cheat-sheet (verified on hardware)
 - **Lighting (cmd 7)**: `[0]=7,[4]=14,[5]=mode,[6]=bri,[7]=speed,[8-10]=fg,[11-13]=bg,[14]=dir,[15]=fullColor,[16]=power`.
-  Mode bytes: static0 breath1 wave2 neon3 radar4 reactive6 cross7 ripple8 twinkle9
-  custom10 fireworks11 speedres12 autorip14 striation15 aurora16. Direction bytes:
-  right0 left1 up2 down3 spread4 gather5.
+  Mode bytes (VENDOR-CORRECT, from hed.aulacn.com `config__language.json` lightMode<N>
+  + the board's own readLightList): static0 breath1 wave2 neon3 radar4 reactive6
+  **aurora7** ripple8 twinkle9 custom10 **cross11** speedres12 autorip14 striation15
+  **fireworks16** (5 and 13 unused; 100 = vendor's host-side Musical Rhythm, not ported).
+  An earlier table had 7/11/16 swapped (cross7 fireworks11 aurora16) — that was wrong.
+  Direction bytes: right0 left1 up2 down3 spread4 gather5. Side-light channel = same
+  layout on **cmd 8** (list via cmd 2); the Win60 reports an EMPTY side list (no side LEDs).
 - **Per-key RGB (cmd 9)**: 396-byte table streamed in 54-byte pages (host effect engine).
 - **Actuation/trigger (cmd 33)**: travel/RT. Trigger MODE: **0 = fixed actuation point**,
   12 = rapid-trigger single, 13 = RT separate press/release. Unit = **0.01 mm**, min 0.08, max 3.4 mm.
