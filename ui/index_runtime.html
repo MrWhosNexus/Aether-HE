@@ -39100,6 +39100,19 @@
     };
     const rule = modes.find(m => m.id === pattern) || null;
     const hostOk = bl.hostEngine !== false;
+    // Vendor parity (preferFirmwareEffects): if this board has the effect as a
+    // NATIVE firmware mode (a byte in its table), drive it on the board via
+    // cmd-7 — exactly what the vendor web app's setLightValue does. The board
+    // animates itself, so the effect shows even when nothing streams from the
+    // host. Effects with NO firmware byte (rain/comet/tide) still fall through
+    // to the host engine below. This is the fix for the Win60 "animations go
+    // static" report: everything was being forced through the host per-key
+    // stream, which the firmware effects never needed.
+    if (bl.preferFirmwareEffects && rule && power && !fullColor && pattern !== "static") return {
+      call: "fw",
+      byte: rule.byte,
+      rule
+    };
     if (power && !fullColor && pattern !== "static" && hostOk && HOST_FX_IDS.has(pattern)) return {
       call: "host",
       id: pattern
@@ -39197,7 +39210,14 @@
     if (s.pattern === "static") return colors[0];
     const rule = modeRuleFor(bl, s.pattern);
     const legacyId = LIGHT_MODES.some(m => m.id === s.pattern);
-    if (rule && s.pattern !== "custom" && (!legacyId || bl.hostEngine === false)) {
+    // Use the single-colour firmware preview whenever the effect is DISPATCHED to
+    // firmware: a host-less board (hostEngine===false), a non-legacy registry
+    // mode, OR a preferFirmwareEffects board driving one of its native modes
+    // (Win60). Those animate on the keyboard, not the host, so the schematic must
+    // show exactly the {fg, bg} the firmware receives — never the scattered
+    // host palette. rain/comet/tide have no `rule` here, so they correctly stay
+    // on the host preview below.
+    if (rule && s.pattern !== "custom" && (!legacyId || bl.hostEngine === false || bl.preferFirmwareEffects)) {
       if (rule.color === false) return s.bgColor; // firmware-chosen colors — show only the user's bg
       return idx % 6 === 0 ? colors[0] || "#ffffff" : s.bgColor; // exactly the fg byte sent (buildLightCalls)
     }

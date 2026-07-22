@@ -36,6 +36,7 @@
         "modeQuery": { "module": "protocol", "build": "build_read_light_list", "parse": "parse_light_list" },
         "customModeByte": 10,
         "hostEngine": true,
+        "preferFirmwareEffects": true,
         "hostEngineMaxFps": 60,
         "modes": [
           { "id": "static",    "name": "Static",        "byte": 0,  "speed": false },
