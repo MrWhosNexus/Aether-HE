@@ -2006,6 +2006,7 @@
       duplicateProfile,
       deleteProfile,
       applyState,
+      collectState,
       activeProfileName: (profiles.find(p => p.id === activeId) || {}).name || "Profile",
       // theme
       theme,

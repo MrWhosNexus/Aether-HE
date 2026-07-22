@@ -1365,7 +1365,7 @@ function App() {
     apiCall, connected, connecting, togglePair,
     autoConnect, setAutoConnect,
     // profiles / persistence
-    profiles, activeId, switchProfile, renameProfile, addProfile, duplicateProfile, deleteProfile, applyState,
+    profiles, activeId, switchProfile, renameProfile, addProfile, duplicateProfile, deleteProfile, applyState, collectState,
     activeProfileName: (profiles.find(p => p.id === activeId) || {}).name || "Profile",
     // theme
     theme, setTheme, themeOpen, setThemeOpen,

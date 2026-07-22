@@ -186,16 +186,22 @@
   /* ===== Backup/Import widget ===== */
   function BackupWidget(ctx) {
     const {
-      applyState
+      applyState,
+      collectState,
+      profiles
     } = ctx;
     const [message, setMessage] = useState("");
     const handleExport = () => {
       try {
+        // Capture the REAL current configuration. collectState() is the exact
+        // flat shape applyState() consumes on import, so export->import round-
+        // trips; profiles is included so the whole saved set travels with it.
+        const live = typeof collectState === "function" && collectState() || {};
         const state = {
           timestamp: new Date().toISOString(),
           app: "AetherHE",
-          profiles: [],
-          settings: {}
+          profiles: Array.isArray(profiles) ? profiles : [],
+          ...live
         };
         const json = JSON.stringify(state, null, 2);
         const blob = new Blob([json], {

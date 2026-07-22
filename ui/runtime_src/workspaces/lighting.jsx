@@ -6,7 +6,7 @@
    {{background:c}}, PatternPreview) are byte-identical — these are real
    device RGB values, never re-tokenized.
    ============================================================ */
-const { useState, useRef } = React;
+const { useState, useRef, useEffect } = React;
 const S = window.AetherSections || {};
 const Slider = S.Slider, Chip = S.Chip, SubTabs = S.SubTabs, ToolbarButton = S.ToolbarButton;
 const I = window.AetherIcons || {};
@@ -694,6 +694,12 @@ function ColorPaletteWidget(ctx) {
   const { colors, setColors, bgColor, setBgColor, pattern } = ctx;
   const palette = colors || [];
   const [activeSlot, setActiveSlot] = useState(0);
+  // Draft for the bg hex text field: lets the user type intermediate values
+  // without committing an invalid color (which would stream black to the
+  // device). Only a full valid #RRGGBB is pushed to bgColor; external changes
+  // (picker, swatches, Off) sync back into the field.
+  const [bgText, setBgText] = useState(bgColor);
+  useEffect(() => { setBgText(bgColor); }, [bgColor]);
 
   /* Board awareness (additive): some boards' firmware forces random colors
      for certain modes (registry rule `color: false`) — the picker cannot
@@ -809,8 +815,8 @@ function ColorPaletteWidget(ctx) {
             <input type="color" value={bgColor} onChange={(e) => setBgColor(e.target.value)}
                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"/>
           </div>
-          <input type="text" value={bgColor.toUpperCase()}
-                 onChange={(e) => { const v = e.target.value; if (/^#[0-9a-fA-F]{6}$/.test(v)) setBgColor(v); else setBgColor(v); }}
+          <input type="text" value={(bgText || "").toUpperCase()}
+                 onChange={(e) => { const v = e.target.value; setBgText(v); if (/^#[0-9a-fA-F]{6}$/.test(v)) setBgColor(v); }}
                  className="flex-1 h-10 px-3 rounded-lg bg-[rgba(5,11,14,0.5)] border border-[var(--line)] font-mono text-[12px] text-[var(--text)] outline-none focus:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"/>
           <button onClick={() => setBgColor("#000000")}
             className="px-2.5 h-10 rounded-lg border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:text-white hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] font-display text-[10.5px] uppercase tracking-[0.16em]">

@@ -102,12 +102,12 @@ function TravelWidget(ctx) {
         <div className="mb-5">
           <Slider label="Key Trigger Travel" value={actuation} min={travelMin} max={travelMax} step={0.05} unit="mm" onChange={setActuation}/>
           <div className="flex items-center gap-2 mt-2">
-            <button onClick={() => setActuation(Math.max(0.1, actuation - 0.05))}
+            <button onClick={() => setActuation(Math.max(travelMin, actuation - 0.05))}
               className="w-7 h-7 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]">−</button>
             <div className="px-3 h-7 rounded-md border border-[var(--line)] bg-white/[0.02] grid place-items-center font-mono text-[12px] text-[var(--text)]">
               {actuation.toFixed(2)} mm
             </div>
-            <button onClick={() => setActuation(Math.min(4.0, actuation + 0.05))}
+            <button onClick={() => setActuation(Math.min(travelMax, actuation + 0.05))}
               className="w-7 h-7 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]">+</button>
           </div>
         </div>
@@ -351,7 +351,7 @@ function PollingWidget(ctx) {
         ))}
       </div>
       <div className="mt-6 p-4 rounded-lg border border-[var(--line)] bg-[rgba(5,11,14,0.5)] font-mono text-[11px] text-[var(--text-dim)] leading-relaxed">
-        <div><span className="text-[var(--text-faint)]">current</span> · <span className="text-[var(--accent)]">{polling}000 Hz</span> · {(1000/polling).toFixed(2)}ms tick</div>
+        <div><span className="text-[var(--text-faint)]">current</span> · <span className="text-[var(--accent)]">{polling}000 Hz</span> · {(1/polling).toFixed(2)}ms tick</div>
         <div><span className="text-[var(--text-faint)]">latency</span> · ~{(0.5 + 1/polling).toFixed(2)}ms end-to-end</div>
       </div>
     </div>

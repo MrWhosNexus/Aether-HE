@@ -127,9 +127,9 @@ function AxisMappingWidget(ctx) {
                 </div>
               ) : meta.btn ? (
                 <div className="flex items-center gap-2">
-                  <input type="range" className="aether flex-1" min={0.2} max={4.0} step={0.1}
+                  <input type="range" className="aether flex-1" min={0.2} max={3.4} step={0.1}
                          value={r.threshold_mm ?? 1.5}
-                         style={{ "--pct": (((r.threshold_mm ?? 1.5) - 0.2) / 3.8) * 100 + "%" }}
+                         style={{ "--pct": (((r.threshold_mm ?? 1.5) - 0.2) / 3.2) * 100 + "%" }}
                          onChange={(e) => setRow(i, { threshold_mm: parseFloat(e.target.value) })}/>
                   <span className="font-mono text-[10px] text-[var(--text-dim)] w-12 text-right">{(r.threshold_mm ?? 1.5).toFixed(1)}mm</span>
                 </div>

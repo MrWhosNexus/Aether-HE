@@ -8,7 +8,8 @@
      ============================================================ */
   const {
     useState,
-    useRef
+    useRef,
+    useEffect
   } = React;
   const S = window.AetherSections || {};
   const Slider = S.Slider,
@@ -926,6 +927,14 @@
     } = ctx;
     const palette = colors || [];
     const [activeSlot, setActiveSlot] = useState(0);
+    // Draft for the bg hex text field: lets the user type intermediate values
+    // without committing an invalid color (which would stream black to the
+    // device). Only a full valid #RRGGBB is pushed to bgColor; external changes
+    // (picker, swatches, Off) sync back into the field.
+    const [bgText, setBgText] = useState(bgColor);
+    useEffect(() => {
+      setBgText(bgColor);
+    }, [bgColor]);
 
     /* Board awareness (additive): some boards' firmware forces random colors
        for certain modes (registry rule `color: false`) — the picker cannot
@@ -1051,10 +1060,11 @@
       className: "absolute inset-0 opacity-0 cursor-pointer w-full h-full"
     })), /*#__PURE__*/React.createElement("input", {
       type: "text",
-      value: bgColor.toUpperCase(),
+      value: (bgText || "").toUpperCase(),
       onChange: e => {
         const v = e.target.value;
-        if (/^#[0-9a-fA-F]{6}$/.test(v)) setBgColor(v);else setBgColor(v);
+        setBgText(v);
+        if (/^#[0-9a-fA-F]{6}$/.test(v)) setBgColor(v);
       },
       className: "flex-1 h-10 px-3 rounded-lg bg-[rgba(5,11,14,0.5)] border border-[var(--line)] font-mono text-[12px] text-[var(--text)] outline-none focus:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"
     }), /*#__PURE__*/React.createElement("button", {

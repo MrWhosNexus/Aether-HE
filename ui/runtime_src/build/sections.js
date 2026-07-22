@@ -2223,11 +2223,11 @@
         type: "range",
         className: "aether flex-1",
         min: 0.2,
-        max: 4.0,
+        max: 3.4,
         step: 0.1,
         value: r.threshold_mm ?? 1.5,
         style: {
-          "--pct": ((r.threshold_mm ?? 1.5) - 0.2) / 3.8 * 100 + "%"
+          "--pct": ((r.threshold_mm ?? 1.5) - 0.2) / 3.2 * 100 + "%"
         },
         onChange: e => setRow(i, {
           threshold_mm: parseFloat(e.target.value)

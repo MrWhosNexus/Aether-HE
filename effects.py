@@ -182,17 +182,16 @@ class PerKeyEffectEngine:
     def _run(self):
         gens = {
             "twinkle": self._g_twinkle, "wave": self._g_wave, "breath": self._g_breath,
-            "ripple": self._g_ripple, "autorip": self._g_ripple, "aurora": self._g_aurora,
+            "ripple": self._g_ripple, "aurora": self._g_aurora,
             "striation": self._g_striation, "radar": self._g_radar, "cross": self._g_cross,
             "fireworks": self._g_fireworks, "frenzy": self._g_frenzy,
             "reactive": self._g_reactive,
             "neon": self._g_breath, "speedres": self._g_speedres, "static": self._g_static,
             "rain": self._g_rain, "comet": self._g_comet, "tide": self._g_slopewave,
-            "autorip": self._g_autorip, "striation": self._g_striation,
+            "autorip": self._g_autorip,
             "calibrate": self._g_calibrate,
         }
         t0 = time.time()
-        frame_time = 1.0 / FPS
         while not self._stop.is_set():
             t_start = time.time()
             t = t_start - t0

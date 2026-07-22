@@ -79,6 +79,12 @@ def parse_light_list(report):
     if len(report) < 6 or report[1] not in (10, 2):
         return None
     length = report[5]
+    # The device length byte is untrusted: a corrupt/short frame with an
+    # oversized length would make payload[length-1] index past the slice.
+    # Require the full payload to be present (matches parse_custom_light_chunk
+    # et al.), so the fixed-index reads below are always in bounds.
+    if 6 + length > len(report):
+        return None
     payload = report[6:6 + length]
     if len(payload) < 4:
         return None

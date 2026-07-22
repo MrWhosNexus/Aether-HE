@@ -51,8 +51,13 @@ def _coerce_int(v):
         return False, None
     if isinstance(v, int):
         return True, v
-    if isinstance(v, str) and v.strip().lstrip("-").isdigit():
-        return True, int(v.strip())
+    if isinstance(v, str):
+        # ASCII-digit guard is permissive (passes '--5', unicode digits like '5²'),
+        # so int() can still raise — wrap it to honour the "never raises" contract.
+        try:
+            return True, int(v.strip())
+        except ValueError:
+            return False, None
     return False, None
 
 

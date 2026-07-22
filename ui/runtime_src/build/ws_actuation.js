@@ -133,12 +133,12 @@
     }), /*#__PURE__*/React.createElement("div", {
       className: "flex items-center gap-2 mt-2"
     }, /*#__PURE__*/React.createElement("button", {
-      onClick: () => setActuation(Math.max(0.1, actuation - 0.05)),
+      onClick: () => setActuation(Math.max(travelMin, actuation - 0.05)),
       className: "w-7 h-7 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"
     }, "\u2212"), /*#__PURE__*/React.createElement("div", {
       className: "px-3 h-7 rounded-md border border-[var(--line)] bg-white/[0.02] grid place-items-center font-mono text-[12px] text-[var(--text)]"
     }, actuation.toFixed(2), " mm"), /*#__PURE__*/React.createElement("button", {
-      onClick: () => setActuation(Math.min(4.0, actuation + 0.05)),
+      onClick: () => setActuation(Math.min(travelMax, actuation + 0.05)),
       className: "w-7 h-7 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"
     }, "+"))), rtAvailable ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", {
       className: "flex items-center gap-2 cursor-pointer select-none mb-3"
@@ -440,7 +440,7 @@
       className: "text-[var(--text-faint)]"
     }, "current"), " \xB7 ", /*#__PURE__*/React.createElement("span", {
       className: "text-[var(--accent)]"
-    }, polling, "000 Hz"), " \xB7 ", (1000 / polling).toFixed(2), "ms tick"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+    }, polling, "000 Hz"), " \xB7 ", (1 / polling).toFixed(2), "ms tick"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
       className: "text-[var(--text-faint)]"
     }, "latency"), " \xB7 ~", (0.5 + 1 / polling).toFixed(2), "ms end-to-end")));
   }
