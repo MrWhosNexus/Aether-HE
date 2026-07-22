@@ -64,7 +64,12 @@
       } : p));
     };
     const addProfile = () => {
-      const next = `SOCD${socdProfiles.length + 1}`;
+      if (socdProfiles.length >= 20) return; // enforce the advertised /20 cap
+      // Smallest unused SOCDn id — length-based ids collide after a delete.
+      const used = new Set(socdProfiles.map(p => p.id));
+      let n = 1;
+      while (used.has(`SOCD${n}`)) n++;
+      const next = `SOCD${n}`;
       setSocdProfiles([...socdProfiles, {
         id: next,
         k1: "",

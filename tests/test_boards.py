@@ -794,6 +794,22 @@ def test_readme_boards_block_in_sync():
         "README boards block is stale — run: python tools/gen_boards_table.py --write")
 
 
+def test_win60_lighting_table_shared_copies_stay_in_sync():
+    """aula-win68-he and aula-kp-te153 carry hand-copied ("SOURCE-ONLY-SHARED")
+    duplicates of the Win60 lighting-mode table. Guard them like the mini60
+    wired/dongle pair so a future Win60 mode-byte correction can't silently
+    leave the copies wrong (mislabeled/wrong-byte lighting on WIN 68 / KP-TE153)."""
+    reg = boards.load_registry()
+    win60 = reg.by_slug("aula-win60-he")
+    assert win60 is not None and win60.lighting, "Win60 base entry missing lighting table"
+    for slug in ("aula-win68-he", "aula-kp-te153"):
+        p = reg.by_slug(slug)
+        assert p is not None and p.lighting, f"{slug} missing lighting table"
+        assert p.lighting["modes"] == win60.lighting["modes"], (
+            f"{slug} lighting.modes drifted from aula-win60-he — the shared table "
+            f"was edited in one place only")
+
+
 if __name__ == "__main__":
     import traceback
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]

@@ -156,7 +156,15 @@ class KeyboardDiagram(ctk.CTkFrame):
         fill = T.SURFACE
         if self._mode == "lighting" and self._led.get(code):
             fill = self._led[code]
-            tcol = T.TEXT if T.blend("#000000", fill, 1) else T.S300
+            # Pick label colour by the fill's luminance: light text on dark
+            # keys, the darker text on bright keys. (The old `T.blend(...)`
+            # test was always truthy, so text never adapted.)
+            _h = str(fill).lstrip("#")
+            if len(_h) == 6:
+                _r, _g, _b = int(_h[0:2], 16), int(_h[2:4], 16), int(_h[4:6], 16)
+                tcol = T.TEXT if (0.299 * _r + 0.587 * _g + 0.114 * _b) < 140 else T.S300
+            else:
+                tcol = T.TEXT
         elif self._mode in ("actuation", "socd") and self._depth.get(code, 0) > 0.05:
             fill = T.blend(T.SURFACE, T.ACCENT, min(1.0, self._depth[code] / 4.0))
 

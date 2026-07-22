@@ -1339,7 +1339,7 @@ class Api:
         running analog reader). Other effects detach it."""
         if not self.fx:
             return
-        if any(m in ("reactive", "ripple", "speedres", "cross", "fireworks") for m in modes):
+        if any(m in effects.PRESS_REACTIVE for m in modes):
             if self.reader is None and self.km:
                 try:
                     self.reader = self.driver.make_live_reader(self.km)

@@ -713,35 +713,6 @@ const LIGHT_MODES = [
 ];
 
 // Per-mode capabilities (mirrors app.jsx FW_MODES, from the firmware driver).
-// bg: uses a background color · speed: has a speed control · full: Full-RGB applies
-// dir: "none" | "lr" | "ud" | "all" | "rotate" | "gather"
-const MODE_CAPS = {
-  static:   { bg: false, speed: false, dir: "none",   full: false },
-  breath:   { bg: true,  speed: true,  dir: "none",   full: true },
-  wave:     { bg: true,  speed: true,  dir: "all",    full: true },
-  neon:     { bg: true,  speed: true,  dir: "none",   full: true },
-  radar:    { bg: true,  speed: true,  dir: "rotate", full: true },
-  reactive: { bg: true,  speed: true,  dir: "none",   full: true },
-  cross:    { bg: true,  speed: true,  dir: "gather", full: true },
-  ripple:   { bg: true,  speed: true,  dir: "none",   full: true },
-  twinkle:  { bg: true,  speed: true,  dir: "none",   full: true },
-  custom:   { bg: false, speed: false, dir: "none",   full: false },
-  fireworks:{ bg: true,  speed: true,  dir: "none",   full: true },
-  frenzy:   { bg: true,  speed: true,  dir: "none",   full: true },
-  speedres: { bg: true,  speed: false, dir: "ud",     full: true },
-  autorip:  { bg: true,  speed: true,  dir: "none",   full: true },
-  striation:{ bg: true,  speed: true,  dir: "lr",     full: true },
-  aurora:   { bg: true,  speed: true,  dir: "none",   full: true },
-};
-// Direction button sets per dir-type (value = firmware direction byte).
-const DIR_OPTS = {
-  lr:     [["→", 0], ["←", 1]],
-  ud:     [["↑", 2], ["↓", 3]],
-  all:    [["→", 0], ["←", 1], ["↑", 2], ["↓", 3], ["⊙", 5], ["⊕", 4]],
-  rotate: [["↻", 0], ["↺", 1]],
-  gather: [["⊙", 5], ["⊕", 4]],
-};
-
 const ZONE_MODES = [
   { id: "twinkle", label: "Twinkle" }, { id: "wave", label: "Wave" },
   { id: "striation", label: "Striation" }, { id: "radar", label: "Radar" },
@@ -1142,29 +1113,6 @@ const LightingSection = ({
   );
 };
 
-const PatternPreview = ({ kind, color }) => (
-  <svg viewBox="0 0 100 30" className="w-full h-8 mt-3" preserveAspectRatio="none">
-    {kind === "static" && Array.from({length: 8}).map((_,i) => (
-      <rect key={i} x={i*13+2} y={6} width="10" height="18" rx="2" fill={color} opacity="0.7"/>
-    ))}
-    {kind === "wave" && Array.from({length: 8}).map((_,i) => (
-      <rect key={i} x={i*13+2} y={6} width="10" height="18" rx="2" fill={color} opacity={0.2 + (Math.sin(i)+1)*0.4}/>
-    ))}
-    {kind === "react" && Array.from({length: 8}).map((_,i) => (
-      <rect key={i} x={i*13+2} y={6} width="10" height="18" rx="2" fill={color} opacity={i === 3 ? 1 : 0.15}/>
-    ))}
-    {kind === "ripple" && [10, 18, 26].map((r,i) => (
-      <circle key={i} cx="50" cy="15" r={r} fill="none" stroke={color} strokeWidth="0.8" opacity={1 - i*0.3}/>
-    ))}
-    {kind === "breathe" && (
-      <rect x="2" y="6" width="96" height="18" rx="3" fill={color} opacity="0.5"/>
-    )}
-    {kind === "rain" && Array.from({length: 6}).map((_,i) => (
-      <line key={i} x1={i*18+8} x2={i*18+8} y1={i*4} y2={i*4+12} stroke={color} strokeWidth="1.5"/>
-    ))}
-  </svg>
-);
-
 /* ===== SOCD SECTION ===== */
 const SOCDSection = ({ socdMode, setSocdMode, hotkey, hotkeyEnabled, setHotkeyEnabled, onApply,
                        profiles, setProfiles, active, setActive }) => {
@@ -1172,7 +1120,12 @@ const SOCDSection = ({ socdMode, setSocdMode, hotkey, hotkeyEnabled, setHotkeyEn
 
   const updateActive = (patch) => setProfiles(ps => ps.map(p => p.id === active ? { ...p, ...patch } : p));
   const addProfile = () => {
-    const next = `SOCD${profiles.length + 1}`;
+    if (profiles.length >= 20) return;   // enforce the advertised /20 cap
+    // Smallest unused SOCDn id — length-based ids collide after a delete.
+    const used = new Set(profiles.map(p => p.id));
+    let n = 1;
+    while (used.has(`SOCD${n}`)) n++;
+    const next = `SOCD${n}`;
     setProfiles([...profiles, { id: next, k1: "", k2: "", mode: 1 }]);
     setActive(next);
   };

@@ -32,6 +32,12 @@ _SPAWN_NORM = 30.0 / FPS
 # at any rate. A cap can only LOWER the rate: the Win60 declares 120, which is
 # above the 60 fps default, so its pacing and spawn behaviour are unchanged.
 
+# Effect modes that consume live key-travel (a depth source) to animate. Single
+# source of truth: app_web._ensure_reactive and play_effect.py both read this so
+# a new press-reactive generator can't be half-wired (attach a reader in one
+# place but forget the other).
+PRESS_REACTIVE = ("reactive", "ripple", "speedres", "cross", "fireworks")
+
 
 def _scale(rgb, f):
     if f >= 1.0: return rgb

@@ -603,6 +603,13 @@ def _frame(cmd, length, offset=0, final=False, frame_len=FRAME_LEN):
             f"chunk length {length:#04x} exceeds the {frame_len}-byte "
             f"frame's payload space ({page_size(frame_len):#04x}) — size "
             f"frames from the board profile")
+    if offset > 0xFFFF:
+        # The offset field is 16-bit LE (f[3]/f[4]); a larger value would
+        # silently wrap and overwrite the header/earlier body. Refuse it
+        # rather than corrupt the device write.
+        raise ValueError(
+            f"table offset {offset:#06x} exceeds the 16-bit frame offset "
+            f"field — table/macro too large to address")
     f = [0] * frame_len
     f[0] = MAGIC
     f[1] = cmd & 0xFF

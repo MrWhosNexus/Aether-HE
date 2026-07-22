@@ -37,7 +37,7 @@ fx._send = send
 
 # Press-reactive effects need live travel; attach a reader for those.
 reader = None
-if effect in ("reactive", "ripple", "speedres", "cross", "fireworks"):
+if effect in effects.PRESS_REACTIVE:
     reader = device_state.LiveReader(dev, km)
     reader.start()
     fx.get_depths = lambda: {km.index_of_code[c]: mm

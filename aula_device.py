@@ -125,8 +125,17 @@ class AulaDevice:
             raise IOError(f"{name} not found (VID:PID {vid:04X}:{pid:04X})")
         dev = hid.device()
         log.info("Opening %s interface %s", name, info["interface_number"])
-        dev.open_path(info["path"])
-        dev.set_nonblocking(False)
+        try:
+            dev.open_path(info["path"])
+            dev.set_nonblocking(False)
+        except Exception:
+            # Don't leak the just-opened handle if set_nonblocking (or the
+            # open) fails before we store it — a retry would open a second one.
+            try:
+                dev.close()
+            except Exception:
+                pass
+            raise
         with self._lock:
             self._dev = dev
             self._info = info
