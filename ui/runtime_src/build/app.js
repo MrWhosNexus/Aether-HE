@@ -1849,22 +1849,35 @@
 
     // Mirror the live host effect onto the IN-APP keyboard: poll the current frame
     // while on the Lighting tab and paint each key with its real animated color.
-    // The host engine streams cmd-9 pages to the board at 60fps under the GIL;
-    // a tight polling loop here starves it and makes the board look choppy.
-    // 50ms (~20fps) is plenty for the on-screen mirror and leaves the engine room.
+    // The engine produces frames at effects.FPS (60) — the previous 50ms (~20fps)
+    // poll showed only every third frame, which read as choppy. Poll at the
+    // engine's rate (~16ms) so the on-screen keyboard is as smooth as the effect
+    // actually runs. This does NOT starve the board stream the old comment warned
+    // about: get_light_frame just returns the engine's last_frame (a cheap dict
+    // read, microseconds of GIL), and the engine spends its time in cmd-9 HID
+    // writes — I/O that releases the GIL — so the extra polls have room. The
+    // dedupe below skips a re-render whenever the frame hasn't changed, so a
+    // board capped below 60fps (its engine produces frames slower) costs nothing.
+    const MIRROR_MS = Math.round(1000 / 60); // keep in step with effects.FPS
     useEffect(() => {
       if (!connected || section !== "lighting") {
         setLightFrame(null);
         return;
       }
-      let alive = true;
+      let alive = true,
+        inflight = false;
       const id = setInterval(() => {
+        if (inflight) return; // don't queue behind a slow bridge call
+        inflight = true;
         apiCall("get_light_frame").then(f => {
+          inflight = false;
           if (!alive) return;
           const valid = f && typeof f === "object" && !(f.ok === false) && Object.keys(f).length ? f : null;
           setLightFrame(prev => JSON.stringify(prev) === JSON.stringify(valid) ? prev : valid);
+        }).catch(() => {
+          inflight = false;
         });
-      }, 50);
+      }, MIRROR_MS);
       return () => {
         alive = false;
         clearInterval(id);

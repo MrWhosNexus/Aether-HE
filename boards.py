@@ -215,13 +215,6 @@ def _validate_lighting(slug, d):
         if d.get(key) is not None:
             out[key] = _int_field(f"{slug}.lighting.{key}", d.get(key), 0, 255)
     out["hostEngine"] = _bool_field(f"{slug}.lighting.hostEngine", d.get("hostEngine", False))
-    # preferFirmwareEffects: drive every effect that HAS a firmware mode byte on
-    # the board itself (cmd-7), exactly as the vendor web app's setLightValue
-    # does — the board animates natively. Only effects with no firmware
-    # equivalent fall through to the host per-key engine. Defaults False so a
-    # board without this flag keeps the host-engine-first behaviour untouched.
-    out["preferFirmwareEffects"] = _bool_field(
-        f"{slug}.lighting.preferFirmwareEffects", d.get("preferFirmwareEffects", False))
     modes = d.get("modes")
     if not isinstance(modes, list) or not modes:
         raise BoardRegistryError(f"{slug}.lighting.modes must be a non-empty array")
