@@ -474,24 +474,26 @@ class Mini60Driver(BoardDriver):
                        if 0 <= int(i) < pm.ACT_TABLE_SIZE // pm.ACT_RECORD_SIZE})
         if not idxs:
             raise ValueError("no valid key indices for this board")
-        records = self._read_actuation_records()   # raises on partial read
         rt = int(mode) in _RT_MODES
         press = float(rt_press_mm)
         release = float(rt_release_mm)
         if rt and release <= 0:
             release = press
-        for i in idxs:
-            old = records[i]
-            axis = old[4] if old else 0
-            old_flags = old[0] if old else 0
-            flags = (old_flags & ~0x01) | (0x01 if rt else 0x00)
-            if rt:
-                records[i] = (flags, float(travel_mm), press, release, axis)
-            else:
-                records[i] = (flags, float(travel_mm),
-                              old[2] if old else 0.0,
-                              old[3] if old else 0.0, axis)
-        self._write_actuation_records(records)
+        # Atomic across the 0x17 read -> patch -> 0x27 write (see transaction()).
+        with self.transaction():
+            records = self._read_actuation_records()   # raises on partial read
+            for i in idxs:
+                old = records[i]
+                axis = old[4] if old else 0
+                old_flags = old[0] if old else 0
+                flags = (old_flags & ~0x01) | (0x01 if rt else 0x00)
+                if rt:
+                    records[i] = (flags, float(travel_mm), press, release, axis)
+                else:
+                    records[i] = (flags, float(travel_mm),
+                                  old[2] if old else 0.0,
+                                  old[3] if old else 0.0, axis)
+            self._write_actuation_records(records)
 
     def get_actuation(self):
         """{device index: {rt, travel_mm, rt_press_mm, rt_release_mm,
@@ -622,20 +624,24 @@ class Mini60Driver(BoardDriver):
         parity plan §2)."""
         if top_mm is None and bottom_mm is None:
             raise ValueError("no dead-zone values given")
-        tbl = self._read_table(pm.build_config_read_frames(self.frame_len),
-                               pm.CONFIG_TABLE_SIZE)
-        payload = list(tbl[:pm.PAGE])
-        if top_mm is not None:
-            payload = pm.set_deadzone(payload, float(top_mm))
-        if bottom_mm is not None:
-            raw = pm.mm_to_raw(float(bottom_mm))
-            if raw > 0xFF:
-                raise ValueError("dead zone > 2.55 mm: field is a single byte")
-            # SOURCE-ONLY: SDK game-mode field map has payload[9] = bottomDeadZone
-            payload[pm.CONFIG_DEADZONE_OFFSET + 1] = raw
-        for f in pm.build_config_write_frames(payload, self.frame_len):
-            self._send(f)
-            time.sleep(0.005)
+        # Atomic across the 64-byte config read -> patch -> write (see
+        # transaction()); most fields are live settings a partial/raced write
+        # would zero.
+        with self.transaction():
+            tbl = self._read_table(pm.build_config_read_frames(self.frame_len),
+                                   pm.CONFIG_TABLE_SIZE)
+            payload = list(tbl[:pm.PAGE])
+            if top_mm is not None:
+                payload = pm.set_deadzone(payload, float(top_mm))
+            if bottom_mm is not None:
+                raw = pm.mm_to_raw(float(bottom_mm))
+                if raw > 0xFF:
+                    raise ValueError("dead zone > 2.55 mm: field is a single byte")
+                # SOURCE-ONLY: SDK game-mode field map has payload[9] = bottomDeadZone
+                payload[pm.CONFIG_DEADZONE_OFFSET + 1] = raw
+            for f in pm.build_config_write_frames(payload, self.frame_len):
+                self._send(f)
+                time.sleep(0.005)
 
     # ---- macros (0x15 read / 0x25 write, binds via 0x12/0x22) ----
     # Frame layouts are CONFIRMED-BY-CAPTURE (webhid-capture-macros.json);
@@ -684,11 +690,15 @@ class Mini60Driver(BoardDriver):
             patches[self._check_key_index(k)] = rec
         if not patches:
             raise ValueError("no key records to write")
-        table = list(self._read_key_table())   # raises on partial read
-        for k, rec in patches.items():
-            base = k * pm.KEY_RECORD_SIZE
-            table[base:base + pm.KEY_RECORD_SIZE] = rec
-        self._write_key_table(table)
+        # Atomic across the read+patch+write so a concurrent op can't read the
+        # same snapshot and clobber our write (the reentrant lock lets the
+        # per-frame _write inside re-acquire it).
+        with self.transaction():
+            table = list(self._read_key_table())   # raises on partial read
+            for k, rec in patches.items():
+                base = k * pm.KEY_RECORD_SIZE
+                table[base:base + pm.KEY_RECORD_SIZE] = rec
+            self._write_key_table(table)
 
     def _patch_key_record(self, key_index, record):
         """Strict read-modify-write of ONE key-table record (see
@@ -760,15 +770,18 @@ class Mini60Driver(BoardDriver):
         idx = int(index)
         if not 0 <= idx < pm.MACRO_SLOTS:
             raise ValueError(f"macro slot must be 0..{pm.MACRO_SLOTS - 1}")
-        macros = self._read_macros()             # raises on partial read
-        if events:
-            macros[idx] = list(events)
-        else:
-            macros.pop(idx, None)
-        table = pm.build_macro_table(macros)
-        for f in pm.build_macro_write_frames(table, self.frame_len):
-            self._send(f)
-            time.sleep(0.005)
+        # Atomic across the whole-table read -> patch -> write (see
+        # transaction()); a raced partial header write orphans other offsets.
+        with self.transaction():
+            macros = self._read_macros()             # raises on partial read
+            if events:
+                macros[idx] = list(events)
+            else:
+                macros.pop(idx, None)
+            table = pm.build_macro_table(macros)
+            for f in pm.build_macro_write_frames(table, self.frame_len):
+                self._send(f)
+                time.sleep(0.005)
 
     # ---- key remap + advanced keys (0x12 read / 0x22 write; DKS also
     #      0x18 read / 0x28 write) ----
@@ -968,15 +981,18 @@ class Mini60Driver(BoardDriver):
             raise ValueError(f"DKS slot must be 0..{pm.DKS_USABLE_SLOTS - 1}")
         record = pm.dks_slot_record(points_mm, actions, trigger_masks)
         key_record = pm.key_record_dks(s)
-        # --- both reads first; either failure aborts with nothing written ---
-        dks_table = list(self._read_dks_table())
-        key_table = list(self._read_key_table())
-        base = s * pm.DKS_SLOT_SIZE
-        dks_table[base:base + pm.DKS_SLOT_SIZE] = record
-        key_table[k * pm.KEY_RECORD_SIZE:
-                  (k + 1) * pm.KEY_RECORD_SIZE] = key_record
-        # --- vendor write order: travel table (0x28) then key record (0x22) ---
-        for f in pm.build_dks_travel_write_frames(dks_table, self.frame_len):
-            self._send(f)
-            time.sleep(0.005)
-        self._write_key_table(key_table)
+        # Atomic across BOTH table reads and BOTH writes (see transaction()) so
+        # a concurrent op can't clobber either half of this two-table pair.
+        with self.transaction():
+            # --- both reads first; either failure aborts with nothing written ---
+            dks_table = list(self._read_dks_table())
+            key_table = list(self._read_key_table())
+            base = s * pm.DKS_SLOT_SIZE
+            dks_table[base:base + pm.DKS_SLOT_SIZE] = record
+            key_table[k * pm.KEY_RECORD_SIZE:
+                      (k + 1) * pm.KEY_RECORD_SIZE] = key_record
+            # --- vendor write order: travel table (0x28) then key record (0x22) ---
+            for f in pm.build_dks_travel_write_frames(dks_table, self.frame_len):
+                self._send(f)
+                time.sleep(0.005)
+            self._write_key_table(key_table)

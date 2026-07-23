@@ -107,7 +107,7 @@ def test_lighting_block_carries_uniform_ui_field():
 
 def _api():
     a = app_web.Api.__new__(app_web.Api)
-    a._lock = threading.Lock()
+    a._lock = threading.RLock()   # driver contract: reentrant outer lock
     a._registry = None
     a.reader = None
     a.calib_reader = None

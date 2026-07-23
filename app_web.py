@@ -362,7 +362,9 @@ class Api:
         except Exception as e:
             log.warning("board registry unavailable, using Win60 defaults: %s", e)
             self.board = None
-        self._lock = threading.Lock()
+        # Reentrant so a driver read-modify-write can hold it across the whole
+        # op (driver.transaction()) while the per-frame _write re-acquires it.
+        self._lock = threading.RLock()
         self.dev = AulaDevice(self.board) if self.board else AulaDevice()
         # Per-board protocol driver: EVERY packet the Api emits goes through
         # this object. Boards without a wired protocol get an inert driver

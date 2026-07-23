@@ -189,22 +189,25 @@ class Win60Driver(BoardDriver):
         protocol.build_deadband_table callers passing explicit defaults.
         """
         patch = dict(raw_by_index or {})
-        if not self.dev.is_open():
-            self.dev.open()
-        if getattr(self.dev, "_dev", None) is None:
-            # No readable handle: original behavior, byte-for-byte.
-            for pkt in protocol.build_deadband_table(patch):
+        # Atomic across the read -> patch -> write (see transaction()); a raced
+        # read would let a concurrent op's snapshot clobber the merged write.
+        with self.transaction():
+            if not self.dev.is_open():
+                self.dev.open()
+            if getattr(self.dev, "_dev", None) is None:
+                # No readable handle: original behavior, byte-for-byte.
+                for pkt in protocol.build_deadband_table(patch):
+                    self._write(pkt)
+                    time.sleep(0.005)
+                return
+            base = self.read_deadband_table(timeout_s=self.DEADBAND_READ_TIMEOUT_S)
+            if base is None:
+                raise RuntimeError(
+                    "dead-band read failed; aborting write (refusing to "
+                    "overwrite the other keys' dead bands with assumed defaults)")
+            for pkt in protocol.build_deadband_table(patch, base_table=base):
                 self._write(pkt)
                 time.sleep(0.005)
-            return
-        base = self.read_deadband_table(timeout_s=self.DEADBAND_READ_TIMEOUT_S)
-        if base is None:
-            raise RuntimeError(
-                "dead-band read failed; aborting write (refusing to "
-                "overwrite the other keys' dead bands with assumed defaults)")
-        for pkt in protocol.build_deadband_table(patch, base_table=base):
-            self._write(pkt)
-            time.sleep(0.005)
 
     def read_deadband_table(self, timeout_s=1.5):
         """Read the current 264-byte per-key dead-band table (cmd 38, [1]=0).

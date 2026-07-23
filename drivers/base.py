@@ -30,6 +30,25 @@ import threading
 log = logging.getLogger(__name__)
 
 
+def _is_reentrant(lock):
+    """True if `lock` can be re-acquired by the same thread (an RLock).
+
+    A plain `threading.Lock` cannot, and would self-deadlock the moment an
+    RMW `transaction()` (which holds the lock) calls `_write` (which re-takes
+    it). We can't type-check — `RLock()`/`Lock()` are factories — so we probe:
+    a fresh RLock accepts a second non-blocking acquire, a Lock refuses it.
+    """
+    if not lock.acquire(blocking=False):
+        return True   # already held (not at construction) — can't probe; trust caller
+    try:
+        again = lock.acquire(blocking=False)
+        if again:
+            lock.release()
+        return again
+    finally:
+        lock.release()
+
+
 class UnsupportedFeature(Exception):
     """A board's driver cannot perform the requested operation.
 
@@ -67,7 +86,15 @@ class BoardDriver:
         driver is used standalone, e.g. in tests)."""
         self.profile = profile
         self.dev = device
-        self._lock = lock if lock is not None else threading.Lock()
+        # Reentrant: an RMW op holds this across its whole read+modify+write
+        # (via transaction()), and the per-frame _write below re-acquires the
+        # SAME lock — a plain Lock would self-deadlock. The Api passes its
+        # outer lock (also an RLock); a private one is used standalone (tests).
+        if lock is not None and not _is_reentrant(lock):
+            raise TypeError(
+                "BoardDriver needs a reentrant lock (threading.RLock): a plain "
+                "Lock self-deadlocks when an RMW transaction() re-enters _write.")
+        self._lock = lock if lock is not None else threading.RLock()
 
     # ---- identity / capability ----
     @property
@@ -91,6 +118,19 @@ class BoardDriver:
             if not self.dev.is_open():
                 self.dev.open()
             self.dev.write(payload)
+
+    def transaction(self):
+        """Hold the outer write lock across a whole read-modify-write so a
+        concurrent operation cannot interleave — read the same table snapshot
+        and clobber this op's write. The lock is reentrant, so the per-frame
+        _write()/read paths inside re-acquire it harmlessly. Use as:
+
+            with self.transaction():
+                table = self._read_table(...)
+                ... modify ...
+                self._write_table(table)
+        """
+        return self._lock
 
     # ---- lifecycle ----
     def connect(self):

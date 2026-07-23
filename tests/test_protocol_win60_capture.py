@@ -428,7 +428,7 @@ def test_driver_set_deadband_is_read_modify_write():
     """THE FIX: setting one key's dead band reads the current table first
     and preserves every other key's 2/2 instead of stamping 4/5 on them."""
     dev = ReadableDevice(_capture_reply_fn)
-    d = Win60Driver(None, dev, threading.Lock())
+    d = Win60Driver(None, dev, threading.RLock())
     d.set_deadband({90: (0x0A, 0x19)})
     assert dev.writes[0] == protocol.build_read_deadband()
     expect = protocol.build_deadband_table({90: (0x0A, 0x19)},
@@ -448,7 +448,7 @@ def test_driver_set_deadband_aborts_when_read_fails():
     """No reply -> RuntimeError BEFORE any table write (never fall back to
     assumed defaults)."""
     dev = ReadableDevice(reply_fn=None)
-    d = Win60Driver(None, dev, threading.Lock())
+    d = Win60Driver(None, dev, threading.RLock())
     d.DEADBAND_READ_TIMEOUT_S = 0.05
     with pytest.raises(RuntimeError):
         d.set_deadband({90: (0x0A, 0x19)})
@@ -460,20 +460,20 @@ def test_driver_set_deadband_legacy_path_without_raw_handle():
     """A device with no raw input handle keeps the pre-fix behavior
     byte-for-byte (existing callers/tests unchanged)."""
     dev = WriteOnlyDevice()
-    d = Win60Driver(None, dev, threading.Lock())
+    d = Win60Driver(None, dev, threading.RLock())
     d.set_deadband({3: (4, 5), 7: (10, 12)})
     assert dev.writes == protocol.build_deadband_table({3: (4, 5), 7: (10, 12)})
 
 
 def test_driver_read_deadband_table_from_captured_chunks():
     dev = ReadableDevice(_capture_reply_fn)
-    d = Win60Driver(None, dev, threading.Lock())
+    d = Win60Driver(None, dev, threading.RLock())
     assert d.read_deadband_table(timeout_s=0.5) == _DB_TABLE
 
 
 def test_driver_write_macro_emits_capture_identical_packets():
     dev = ReadableDevice()
-    d = Win60Driver(None, dev, threading.Lock())
+    d = Win60Driver(None, dev, threading.RLock())
     d.write_macro(1, _M2_EVENTS, repeat_count=3)
     assert dev.writes == protocol.build_macro_packets(1, _M2_EVENTS, 3)
     assert [w[1:] for w in dev.writes] == _macro_write_group(1, 0x38)
@@ -481,14 +481,14 @@ def test_driver_write_macro_emits_capture_identical_packets():
 
 def test_driver_read_macro_round_trip():
     dev = ReadableDevice(_capture_reply_fn)
-    d = Win60Driver(None, dev, threading.Lock())
+    d = Win60Driver(None, dev, threading.RLock())
     parsed = d.read_macro(1, timeout_s=0.5)
     assert parsed == {"slot": 1, "repeat_count": 3, "events": _M2_EVENTS}
 
 
 def test_driver_device_info_from_captured_replies():
     dev = ReadableDevice(_capture_reply_fn)
-    d = Win60Driver(None, dev, threading.Lock())
+    d = Win60Driver(None, dev, threading.RLock())
     info = d.device_info()
     assert info == {"firmware": "W669,34,KB,SI,SI2825KZHEARGB,V3.17.07",
                     "build_date": "Apr 15 2026,11:20:35"}
@@ -496,7 +496,7 @@ def test_driver_device_info_from_captured_replies():
 
 def test_driver_read_init_info_and_max_travel():
     dev = ReadableDevice(_capture_reply_fn)
-    d = Win60Driver(None, dev, threading.Lock())
+    d = Win60Driver(None, dev, threading.RLock())
     info = d.read_init_info(timeout_s=0.5)
     assert info["is_dead_band"] is True and info["is_gamepad"] is False
     mt = d.read_max_trigger_travel(high_precision=info["is_high_precision"],
@@ -507,7 +507,7 @@ def test_driver_read_init_info_and_max_travel():
 
 def test_driver_set_music_rhythm():
     dev = ReadableDevice()
-    d = Win60Driver(None, dev, threading.Lock())
+    d = Win60Driver(None, dev, threading.RLock())
     d.set_music_rhythm(False)
     d.set_music_rhythm(True)
     assert dev.writes == [protocol.build_music_rhythm(False),
@@ -624,7 +624,7 @@ def test_custom_light_parsers_reject_foreign_bodies():
 
 def test_driver_read_per_key_rgb_from_captured_chunks():
     dev = ReadableDevice(_capture_reply_fn)
-    d = Win60Driver(None, dev, threading.Lock())
+    d = Win60Driver(None, dev, threading.RLock())
     colors0 = d.read_per_key_rgb(slot=0, timeout_s=0.5)
     assert len(colors0) == 132
     assert colors0[22] == (45, 0, 184)      # absolute: table[66..68]
@@ -635,7 +635,7 @@ def test_driver_read_per_key_rgb_from_captured_chunks():
 
 def test_driver_read_active_custom_slot():
     dev = ReadableDevice(_capture_reply_fn)
-    d = Win60Driver(None, dev, threading.Lock())
+    d = Win60Driver(None, dev, threading.RLock())
     assert d.read_active_custom_slot(timeout_s=0.5) == 0
 
 
@@ -643,7 +643,7 @@ def test_driver_set_per_key_rgb_default_is_byte_identical():
     """REGRESSION GUARD: the default call (no slot, no cumulative) emits
     exactly what it always did — mode-10 light write + slot-0 table."""
     dev = ReadableDevice()
-    d = Win60Driver(None, dev, threading.Lock())
+    d = Win60Driver(None, dev, threading.RLock())
     colors = {22: (45, 0, 184), 90: (1, 2, 3)}
     d.set_per_key_rgb(colors)
     expect = ([protocol.build_light(10, 4, 4, (255, 255, 255))]
@@ -656,7 +656,7 @@ def test_driver_set_per_key_rgb_default_is_byte_identical():
 
 def test_driver_set_per_key_rgb_slot1_targets_second_palette():
     dev = ReadableDevice()
-    d = Win60Driver(None, dev, threading.Lock())
+    d = Win60Driver(None, dev, threading.RLock())
     colors = protocol.custom_light_colors(_CL1_TABLE)
     d.set_per_key_rgb(colors, slot=1)
     table_writes = dev.writes[1:]
@@ -670,7 +670,7 @@ def test_driver_set_per_key_rgb_cumulative_preserves_stored_colors():
     """MINI-parity Paint semantics: painting ONE key merges into the
     board's stored slot table instead of darkening every other key."""
     dev = ReadableDevice(_capture_reply_fn)
-    d = Win60Driver(None, dev, threading.Lock())
+    d = Win60Driver(None, dev, threading.RLock())
     d.set_per_key_rgb({0: (255, 0, 0)}, cumulative=True)
     # read request first, then mode 10, then the merged table
     assert dev.writes[0] == protocol.build_read_custom_light(0)
@@ -689,7 +689,7 @@ def test_driver_set_per_key_rgb_cumulative_aborts_when_read_fails():
     """No reply -> RuntimeError BEFORE the mode write or any table write
     (never blind-darken the keys the user didn't touch)."""
     dev = ReadableDevice(reply_fn=None)
-    d = Win60Driver(None, dev, threading.Lock())
+    d = Win60Driver(None, dev, threading.RLock())
     d.CUSTOM_READ_TIMEOUT_S = 0.05
     with pytest.raises(RuntimeError):
         d.set_per_key_rgb({0: (255, 0, 0)}, cumulative=True)

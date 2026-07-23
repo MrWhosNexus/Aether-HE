@@ -162,12 +162,12 @@ DONGLE = _profile("mini60-pro-24g", 0x0C45, 0xFEFE, None,
 def _mini(board=None):
     board = board or FakeMiniBoard()
     dev = StubDevice(reply_fn=board.reply)
-    return Mini60Driver(MINI_PRO, dev, threading.Lock()), dev, board
+    return Mini60Driver(MINI_PRO, dev, threading.RLock()), dev, board
 
 
 def _win():
     dev = StubDevice()
-    return Win60Driver(WIN60, dev, threading.Lock()), dev
+    return Win60Driver(WIN60, dev, threading.RLock()), dev
 
 
 def _frames(dev, cmd=None):
@@ -768,6 +768,48 @@ def test_mini60_set_key_remap_is_strict_rmw():
     assert cmds == [0x12] * 10 + [0x22] * 9, "read sweep must precede the write"
 
 
+def test_mini60_concurrent_rmw_no_lost_update():
+    """Two threads remap DIFFERENT keys of the same 0x12 table at the same
+    instant. transaction() must serialise each whole read-modify-write so BOTH
+    survive. Without the span-lock the second reader gets the pre-write
+    snapshot and clobbers the first (the mini60.py RMW race, audit round 2).
+
+    Determinism: the key-table read is slowed so that, absent serialisation,
+    both threads provably read the same empty snapshot before either writes —
+    so a regression fails every run, not just under load.
+    """
+    import time as _time
+    board = FakeMiniBoard()
+    d, _dev, _ = _mini(board)
+    orig_read = d._read_key_table
+
+    def slow_read():
+        r = orig_read()
+        _time.sleep(0.03)
+        return r
+    d._read_key_table = slow_read
+
+    gate = threading.Barrier(2)
+    errors = []
+
+    def worker(key, usage):
+        try:
+            gate.wait()
+            d.set_key_remap(key, usage)
+        except Exception as e:   # pragma: no cover
+            errors.append(e)
+
+    t1 = threading.Thread(target=worker, args=(10, 0x04))
+    t2 = threading.Thread(target=worker, args=(20, 0x05))
+    t1.start(); t2.start()
+    t1.join(5); t2.join(5)
+    assert not (t1.is_alive() or t2.is_alive()), "RMW deadlocked"
+    assert not errors, errors
+    # Neither remap clobbered the other.
+    assert _key_rec(board, 10) == [0x02, 0x00, 0x04, 0x00]
+    assert _key_rec(board, 20) == [0x02, 0x00, 0x05, 0x00]
+
+
 def test_mini60_set_key_remap_carries_the_modifier_bitmask():
     """Byte 1 is a modifier MASK (the stock Fn table's 02 40 00 00), so a
     modifier-only bind must survive the driver unchanged."""
@@ -1091,7 +1133,7 @@ def _real(slug):
 def _mini_dongle():
     board = FakeMiniBoard(frame_len=32)
     dev = StubDevice(reply_fn=board.reply)
-    d = Mini60Driver(_real("aula-mini60he-pro-24g"), dev, threading.Lock())
+    d = Mini60Driver(_real("aula-mini60he-pro-24g"), dev, threading.RLock())
     return d, dev, board
 
 
@@ -1152,7 +1194,7 @@ def test_wired_driver_derives_colormode_from_registry():
     per-key round trip was HARDWARE-VERIFIED with 1)."""
     board = FakeMiniBoard()
     dev = StubDevice(reply_fn=board.reply)
-    d = Mini60Driver(_real("aula-mini60he-pro"), dev, threading.Lock())
+    d = Mini60Driver(_real("aula-mini60he-pro"), dev, threading.RLock())
     assert d.frame_len == 64
     d.set_lighting(0, (255, 0, 0))            # Api static -> mode 1, fixed
     assert board.light[8] == 0x01 and board.light[16] == 0x00
@@ -1177,7 +1219,7 @@ def test_wired_driver_sends_native_mode_10_as_colorful_cross():
     selected. A byte the board declares natively must reach the wire."""
     board = FakeMiniBoard()
     dev = StubDevice(reply_fn=board.reply)
-    d = Mini60Driver(_real("aula-mini60he-pro"), dev, threading.Lock())
+    d = Mini60Driver(_real("aula-mini60he-pro"), dev, threading.RLock())
     d.set_lighting(10, (255, 0, 0))
     assert board.light[8] == 10               # NOT 20
     assert board.light[1] == pm.CMD_LIGHTING
@@ -1196,7 +1238,7 @@ def test_wired_driver_mode_zero_still_maps_to_static_everywhere():
     for profile in (_real("aula-mini60he-pro"), MINI_PRO):
         board = FakeMiniBoard()
         dev = StubDevice(reply_fn=board.reply)
-        Mini60Driver(profile, dev, threading.Lock()).set_lighting(0, (1, 2, 3))
+        Mini60Driver(profile, dev, threading.RLock()).set_lighting(0, (1, 2, 3))
         assert board.light[8] == pm.LIGHT_MODE_STATIC
 
 
@@ -1220,7 +1262,7 @@ def test_dongle_actuation_rmw_pages_42_frames():
     board = FakeMiniBoard(frame_len=32)
     board.act_table[40:48] = bytes([2, 3, 200, 0, 100, 0, 50, 0])
     dev = StubDevice(reply_fn=board.reply)
-    d = Mini60Driver(_real("aula-mini60he-pro-24g"), dev, threading.Lock())
+    d = Mini60Driver(_real("aula-mini60he-pro-24g"), dev, threading.RLock())
     d.set_actuation([3], 0, 1.5)
     reads = _frames(dev, pm.CMD_ACTUATION_READ)
     writes = _frames(dev, pm.CMD_ACTUATION)
@@ -1237,7 +1279,7 @@ def test_dongle_actuation_rmw_pages_42_frames():
     board2 = FakeMiniBoard(frame_len=32)
     board2.fail_reads_from = 5 * 0x18
     dev2 = StubDevice(reply_fn=board2.reply)
-    d2 = Mini60Driver(_real("aula-mini60he-pro-24g"), dev2, threading.Lock())
+    d2 = Mini60Driver(_real("aula-mini60he-pro-24g"), dev2, threading.RLock())
     with pytest.raises(IOError):
         d2.set_actuation([3], 0, 1.5)
     assert _frames(dev2, pm.CMD_ACTUATION) == []
@@ -1280,7 +1322,7 @@ def test_dongle_host_stream_refuses_loudly():
     # table-less stub profiles keep streaming exactly as before
     wboard = FakeMiniBoard()
     wdev = StubDevice(reply_fn=wboard.reply)
-    wd = Mini60Driver(_real("aula-mini60he-pro"), wdev, threading.Lock())
+    wd = Mini60Driver(_real("aula-mini60he-pro"), wdev, threading.RLock())
     wd.begin_host_stream()
     assert _frames(wdev, pm.CMD_LIGHTING)[0][8] == pm.LIGHT_MODE_CUSTOM
     sd, sdev, _ = _mini()
@@ -1299,7 +1341,7 @@ def test_dongle_deadband_config_rmw_at_32_bytes():
     board.config[1] = 1
     board.config[5] = 6
     dev = StubDevice(reply_fn=board.reply)
-    d = Mini60Driver(_real("aula-mini60he-pro-24g"), dev, threading.Lock())
+    d = Mini60Driver(_real("aula-mini60he-pro-24g"), dev, threading.RLock())
     d.set_deadband({0: (4, 5)}, top_mm=0.42, bottom_mm=0.10)
     reads = _frames(dev, pm.CMD_CONFIG_READ)
     writes = _frames(dev, pm.CMD_CONFIG_WRITE)
@@ -1356,7 +1398,7 @@ import app_web  # noqa: E402  (import placement mirrors the other api tests)
 
 def _api():
     a = app_web.Api.__new__(app_web.Api)
-    a._lock = threading.Lock()
+    a._lock = threading.RLock()   # driver contract: reentrant (transaction() re-enters _write)
     return a
 
 

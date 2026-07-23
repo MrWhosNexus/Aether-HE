@@ -84,7 +84,7 @@ def _driver_for(profile):
     else:
         board = None
         dev = StubDevice()
-    return get_driver(profile, dev, threading.Lock()), dev, board
+    return get_driver(profile, dev, threading.RLock()), dev, board
 
 
 def _first_mode_byte(profile):
@@ -312,7 +312,7 @@ class _KM:
 
 def _api_for(slug):
     a = app_web.Api.__new__(app_web.Api)
-    a._lock = threading.Lock()
+    a._lock = threading.RLock()   # driver contract: reentrant outer lock
     a.board = _registry().by_slug(slug)
     a.km = _KM()
     a._deadband_state = {}
