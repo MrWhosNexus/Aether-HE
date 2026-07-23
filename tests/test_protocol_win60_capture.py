@@ -380,6 +380,15 @@ class ReadableDevice:
             self._dev.frames.extend(self.reply_fn(list(payload)) or [])
         return len(payload)
 
+    # Handle reads now go through the wrapper (like the real AulaDevice), not
+    # device._dev directly, so read_actuation stays inner-lock-guarded.
+    def read(self, n, timeout_ms=0):
+        return self._dev.read(n) if self._dev is not None else []
+
+    def set_nonblocking(self, v):
+        if self._dev is not None:
+            self._dev.set_nonblocking(v)
+
 
 class WriteOnlyDevice(ReadableDevice):
     """No raw handle at all — the legacy constant-fill dead-band path."""

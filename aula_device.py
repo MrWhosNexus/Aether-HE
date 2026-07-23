@@ -188,3 +188,12 @@ class AulaDevice:
             if self._dev is None:
                 raise IOError("device not open")
             return self._dev.read(length, timeout_ms=timeout_ms)
+
+    def set_nonblocking(self, flag):
+        """Set the handle's blocking mode under the handle lock. Callers must
+        never poke self._dev.set_nonblocking directly — that bypasses the lock
+        that serialises handle access against the reader threads."""
+        with self._lock:
+            if self._dev is None:
+                raise IOError("device not open")
+            return self._dev.set_nonblocking(bool(flag))

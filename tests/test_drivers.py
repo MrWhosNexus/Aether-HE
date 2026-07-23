@@ -810,6 +810,39 @@ def test_mini60_concurrent_rmw_no_lost_update():
     assert _key_rec(board, 20) == [0x02, 0x00, 0x05, 0x00]
 
 
+def test_read_actuation_goes_through_locked_wrapper_not_raw_dev():
+    """read_actuation must touch the handle only via the inner-lock-guarded
+    AulaDevice methods, never device._dev directly (audit round 2: the raw
+    read/set_nonblocking raced the reader threads). A tripwire _dev that
+    raises on ANY attribute access proves it."""
+    import device_state
+
+    class _Tripwire:
+        def __getattr__(self, name):
+            raise AssertionError(
+                f"read_actuation touched device._dev.{name} directly")
+
+    class _Dev:
+        def __init__(self):
+            self._dev = _Tripwire()
+            self.reads = 0
+            self.nonblock = None
+        def set_nonblocking(self, v):
+            self.nonblock = v
+        def write(self, payload):
+            return len(payload)
+        def read(self, n, timeout_ms=0):
+            self.reads += 1
+            return []
+
+    km = types.SimpleNamespace(keys=[{"index": 0, "name": "Esc"}])
+    dev = _Dev()
+    out = device_state.read_actuation(dev, km)   # must not raise
+    assert out == {}                 # empty reads -> nothing parsed, no crash
+    assert dev.nonblock is True      # went through the wrapper
+    assert dev.reads >= 1
+
+
 def test_mini60_set_key_remap_carries_the_modifier_bitmask():
     """Byte 1 is a modifier MASK (the stock Fn table's 02 40 00 00), so a
     modifier-only bind must survive the driver unchanged."""

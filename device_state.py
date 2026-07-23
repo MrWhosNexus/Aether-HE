@@ -265,7 +265,9 @@ def read_actuation(device, keymap):
     """Read each key's current actuation (travel mm) via cmd33/sub5. Returns
     {name: mm}. Best-effort; blocks briefly per key."""
     out = {}
-    device._dev.set_nonblocking(True)
+    # All handle access goes through the inner-lock-guarded AulaDevice methods
+    # (never device._dev directly) so reads can't tear against a reader thread.
+    device.set_nonblocking(True)
     for k in keymap.keys:
         idx = int(k["index"])
         rq = [0] * 63
@@ -276,7 +278,7 @@ def read_actuation(device, keymap):
             break
         t = time.time()
         while (time.time() - t) < 0.04:
-            r = device._dev.read(64)
+            r = device.read(64, timeout_ms=0)
             if r and r[1] == 33 and r[5] == 5:
                 parsed = protocol.parse_trigger_read(bytes(r[1:]))
                 out[k["name"]] = round(parsed["travel"] / 100.0, 2)
