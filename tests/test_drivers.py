@@ -1432,6 +1432,8 @@ import app_web  # noqa: E402  (import placement mirrors the other api tests)
 def _api():
     a = app_web.Api.__new__(app_web.Api)
     a._lock = threading.RLock()   # driver contract: reentrant (transaction() re-enters _write)
+    a._reader_users = set()       # shared-reader ownership (lifecycle fix C)
+    a._calibrating = False
     return a
 
 
@@ -1631,3 +1633,112 @@ def test_api_init_falls_back_to_default_when_nothing_connected(monkeypatch):
     a = app_web.Api()
     assert a.board.slug == "win60"
     assert isinstance(a.driver, Win60Driver)
+
+
+# ------------------------------------------------- lifecycle (fix C) ----
+def test_reader_ownership_stops_only_when_last_owner_leaves():
+    """The shared live reader stops only when the LAST owner releases it, so
+    turning gamepad capture off can't strand the analog tab's stream
+    (audit round 2, defect 7)."""
+    a = _api()
+    a.km = object()               # truthy: reader may be created
+    made = []
+
+    class R:
+        def __init__(self): self.stopped = False
+        def start(self): pass
+        def stop(self): self.stopped = True
+
+    def make():
+        r = R(); made.append(r); return r
+
+    a.reader = None
+    a._acquire_reader("gamepad", make)
+    r = a.reader
+    assert r is not None and len(made) == 1
+    a._acquire_reader("analog", make)         # reuses the running reader
+    assert a.reader is r and len(made) == 1
+    a._release_reader("gamepad")              # analog still owns it
+    assert a.reader is r and not r.stopped
+    a._release_reader("analog")               # nobody left -> stop
+    assert a.reader is None and r.stopped
+
+
+def test_stop_readers_clears_both_and_ownership():
+    a = _api()
+
+    class R:
+        def __init__(self): self.stopped = False
+        def stop(self): self.stopped = True
+
+    a.reader = R(); a.calib_reader = R()
+    lr, cr = a.reader, a.calib_reader
+    a._reader_users = {"analog", "gamepad"}
+    a._stop_readers()
+    assert a.reader is None and a.calib_reader is None
+    assert lr.stopped and cr.stopped and not a._reader_users
+
+
+def test_disconnect_disarms_calibration_and_stops_readers():
+    """disconnect() while calibrating must issue set_calibration(False) and
+    stop the readers BEFORE closing the handle (audit round 3, HIGH) — else the
+    board is left mid-calibration with a reader spinning on a dead handle."""
+    a = _api()
+    a.fx = None
+    a.pad = None
+    a._pad_thread = None
+    a._pad_stop = threading.Event()
+    a._calibrating = True
+    calls = []
+
+    class Rec:
+        def set_calibration(self, start, any_key=False):
+            calls.append(("set_calibration", start))
+
+    class R:
+        def __init__(self): self.stopped = False
+        def stop(self): self.stopped = True
+
+    class Dev:
+        def __init__(self): self.closed = False
+        def close(self): self.closed = True
+
+    a.driver = Rec()
+    a.reader = R(); a.calib_reader = R()
+    lr, cr = a.reader, a.calib_reader
+    a.dev = Dev()
+    a.disconnect()
+    assert ("set_calibration", False) in calls   # firmware disarmed
+    assert a._calibrating is False
+    assert lr.stopped and cr.stopped             # both readers stopped
+    assert a.reader is None and a.calib_reader is None
+    assert a.dev.closed
+
+
+def test_livereader_self_terminates_when_handle_dies_midstream():
+    """A LiveReader whose handle is closed/unplugged mid-stream must exit its
+    loop instead of spinning ~20 Hz forever on a dead handle (audit round 3)."""
+    import device_state
+
+    class FakeHandle:
+        def set_nonblocking(self, v): pass
+        def read(self, n): return []          # alive: empty reads
+
+    class FakeDev:
+        def __init__(self):
+            self._lock = threading.Lock()
+            self._dev = FakeHandle()
+        def write(self, payload):
+            if self._dev is None:
+                raise IOError("device not open")
+            return len(payload)
+
+    km = types.SimpleNamespace(indices=lambda: [0], code_of=lambda i: None)
+    dev = FakeDev()
+    lr = device_state.LiveReader(dev, km, indices=[0])
+    lr.start()
+    assert lr._thread is not None and lr._thread.is_alive()
+    with dev._lock:                            # simulate unplug/close
+        dev._dev = None
+    lr._thread.join(4)
+    assert not lr._thread.is_alive(), "LiveReader spun forever on a dead handle"

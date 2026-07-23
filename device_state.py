@@ -128,6 +128,7 @@ class LiveReader:
         except Exception:
             pass
         last_open = 0.0
+        dead = 0   # consecutive dead-handle / failed-read cycles (self-teardown)
         while not self._stop.is_set():
             # Re-arm the travel-test stream periodically. Actuation/dead-band
             # config writes (also cmd 33) can stop the stream, so without this the
@@ -147,7 +148,13 @@ class LiveReader:
             got = False
             try:
                 with self.dev._lock:
-                    if not self.dev._dev:
+                    if self.dev._dev is None:
+                        # Handle closed (disconnect) — normally _stop is set too,
+                        # but self-terminate as a backstop so we never spin
+                        # forever on a dead handle.
+                        dead += 1
+                        if dead > 50:
+                            break
                         time.sleep(0.02); continue
                     for _ in range(256):          # bounded drain
                         r = self.dev._dev.read(64)
@@ -166,7 +173,13 @@ class LiveReader:
                                 else:
                                     self.depths[code] = depth
                                 got = True
+                dead = 0   # a clean drain -> the handle is alive
             except Exception:
+                # Persistent read failure (e.g. mid-stream unplug) -> stop
+                # instead of spinning ~20 Hz forever on a dead handle.
+                dead += 1
+                if dead > 50:
+                    break
                 time.sleep(0.05); continue
             # Nothing pending → sleep briefly so we don't busy-spin the lock;
             # when reports are flowing, loop straight back to stay real-time.
@@ -226,11 +239,18 @@ class CalibrationReader:
                 self.on_change(self.calibrated)   # initial dim frame
             except Exception:
                 pass
+        dead = 0   # consecutive failed reads (dead-handle self-teardown)
         while not self._stop.is_set():
             try:
                 r = self.dev.read(64, timeout_ms=40)
             except Exception:
+                # Handle closed/unplugged (read raises "device not open") — stop
+                # instead of spinning forever with done stuck False.
+                dead += 1
+                if dead > 50:
+                    break
                 time.sleep(0.05); continue
+            dead = 0
             if not r or len(r) < 30:
                 continue
             if r[1] == 33 and r[6] in (8, 15):

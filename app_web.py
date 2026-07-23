@@ -386,9 +386,14 @@ class Api:
                        max_fps=_host_engine_max_fps(self.board))
                    if self.km else None)
         self.reader = None
+        # Who needs the shared live reader running (analog tab / gamepad /
+        # reactive effects). The reader stops only when this empties, so
+        # turning one consumer off can't strand another's stream.
+        self._reader_users = set()
         self._remaps = {}         # accumulated key remaps: {device_index: target_hid}
         self._pad_map = None      # custom gamepad mappings (list of gamepad.KeyMap)
         self.calib_reader = None  # CalibrationReader active during calibration
+        self._calibrating = False  # firmware armed in calibration mode (disarm on abort)
         # Captured Fn-layer table from the device — replayed verbatim after every
         # base-layer write so the firmware's existing Fn mappings are preserved
         # (the official driver always writes both layers together; writing base
@@ -524,14 +529,13 @@ class Api:
                     teardown()
                 except Exception:
                     pass
-            if self.reader:
-                try: self.reader.stop()
+            # Disarm calibration and stop both readers (and clear ownership)
+            # before closing — same contract as disconnect().
+            if self._calibrating:
+                try: self.driver.set_calibration(False)
                 except Exception: pass
-                self.reader = None
-            if self.calib_reader:
-                try: self.calib_reader.stop()
-                except Exception: pass
-                self.calib_reader = None
+                self._calibrating = False
+            self._stop_readers()
             try:
                 self.dev.close()
             except Exception:
@@ -574,9 +578,55 @@ class Api:
     def status(self):
         return {"connected": self.dev.is_open()}
 
+    # ---- shared-reader lifecycle -------------------------------------------
+    def _acquire_reader(self, who, make):
+        """Register `who` as needing the shared live reader; start it (via
+        `make`) if it isn't already running. Returns the reader, or None when
+        there is no keymap to read."""
+        self._reader_users.add(who)
+        if self.reader is None and self.km:
+            self.reader = make()
+            self.reader.start()
+        return self.reader
+
+    def _release_reader(self, who):
+        """Drop `who`; stop the shared reader only when nobody else needs it —
+        so turning gamepad capture off can't strand the analog tab's stream."""
+        self._reader_users.discard(who)
+        if not self._reader_users and self.reader is not None:
+            try:
+                self.reader.stop()
+            except Exception:
+                pass
+            self.reader = None
+
+    def _stop_readers(self):
+        """Stop and clear BOTH readers and all ownership. Every disconnect /
+        board-switch path runs this so no reader thread is left spinning on a
+        handle that is about to close."""
+        self._reader_users.clear()
+        for attr in ("reader", "calib_reader"):
+            r = getattr(self, attr, None)
+            if r is not None:
+                try:
+                    r.stop()
+                except Exception:
+                    pass
+                setattr(self, attr, None)
+
     def disconnect(self):
         self.stop_multicolor()
         self.set_gamepad_capture(False)
+        # Disarm calibration BEFORE closing the handle — otherwise the board is
+        # left in calibration mode (its stored calibration already wiped) with
+        # no way to recover on reconnect.
+        if self._calibrating:
+            try:
+                self.driver.set_calibration(False)
+            except Exception:
+                pass
+            self._calibrating = False
+        self._stop_readers()
         self.dev.close()
         return {"ok": True}
 
@@ -618,6 +668,10 @@ class Api:
                 idxs = self.km.indices_for_codes(codes or []) if codes else self.km.indices()
                 if not idxs:
                     idxs = self.km.indices()
+                # The analog tab needs a reader over THESE indices, so replace
+                # any existing one; register as an owner so gamepad/reactive
+                # turning off can't stop it out from under the tab.
+                self._reader_users.add("analog")
                 if self.reader:
                     self.reader.stop()
                 self.reader = self.driver.make_live_reader(self.km, idxs)
@@ -630,9 +684,10 @@ class Api:
 
     def close_analog(self):
         try:
-            if self.reader:
-                self.reader.stop()
-                self.reader = None
+            if "analog" in self._reader_users or self.reader is not None:
+                # Drop the analog claim; the reader stops only if gamepad /
+                # reactive don't still need it.
+                self._release_reader("analog")
             else:
                 self.driver.close_trigger_test()
             return {"ok": True}
@@ -918,6 +973,7 @@ class Api:
                 # calibration reader uses a short blocking read so it shares the
                 # device with the lighting engine without busy-spinning the lock.
                 self.driver.set_calibration(True, bool(any_key))
+                self._calibrating = True   # armed: disconnect() must disarm on abort
                 self.calib_reader = self.driver.make_calibration_reader(self.km)
                 self.calib_reader.start()
             else:
@@ -925,6 +981,7 @@ class Api:
                     self.calib_reader.stop()
                     self.calib_reader = None
                 self.driver.set_calibration(False, bool(any_key))
+                self._calibrating = False
             return {"ok": True}
         except Exception as e:
             return self._fail(e)
@@ -954,11 +1011,13 @@ class Api:
             if self.pad:
                 self.pad.close()
             self.pad = None
+            # Release our claim on the shared reader; it stops only if the
+            # analog tab / reactive effects don't still need it.
+            self._release_reader("gamepad")
             return {"ok": True}
         try:
-            if self.reader is None and self.km:
-                self.reader = self.driver.make_live_reader(self.km)
-                self.reader.start()
+            self._acquire_reader("gamepad",
+                                 lambda: self.driver.make_live_reader(self.km))
             if self.pad is None:
                 self.pad = gamepad.VirtualGamepad(self._pad_map).open()
             self._pad_stop.clear()
@@ -1342,12 +1401,11 @@ class Api:
         if not self.fx:
             return
         if any(m in effects.PRESS_REACTIVE for m in modes):
-            if self.reader is None and self.km:
-                try:
-                    self.reader = self.driver.make_live_reader(self.km)
-                    self.reader.start()
-                except UnsupportedFeature:
-                    self.reader = None
+            try:
+                self._acquire_reader(
+                    "reactive", lambda: self.driver.make_live_reader(self.km))
+            except UnsupportedFeature:
+                pass
             rdr = self.reader
             km = self.km
             self.fx.get_depths = (lambda: {km.index_of_code[c]: mm
@@ -1355,6 +1413,7 @@ class Api:
                                            if c in km.index_of_code}) if rdr else None
         else:
             self.fx.get_depths = None
+            self._release_reader("reactive")
 
     def get_light_frame(self):
         """Current per-key effect frame keyed by design code — the in-app keyboard

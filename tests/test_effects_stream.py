@@ -110,6 +110,8 @@ def _api():
     a._lock = threading.RLock()   # driver contract: reentrant outer lock
     a._registry = None
     a.reader = None
+    a._reader_users = set()       # shared-reader ownership (lifecycle fix C)
+    a._calibrating = False
     a.calib_reader = None
     a.fx = None
     a.pad = None
