@@ -631,7 +631,11 @@ class PerKeyEffectEngine:
         st = z.state                  # idx -> {"f": fade fraction, "pressed": bool}
         press_mm = 0.5                # depth at which a press fires
         release_mm = 0.25             # hysteresis so light taps still trigger once
-        decay = 0.015 + z.speed * 0.04   # per-frame fade @ 120fps (~0.4..2s)
+        # Time-based fade: scale the per-frame step by FPS/self.fps so the fade
+        # lasts the same wall-clock time on any board. At the 60 fps default the
+        # factor is 1.0 (Win60 unchanged); on the 28 fps MINI60 it was ~2.14x
+        # too slow because the decay was applied once per FRAME, not per second.
+        decay = (0.015 + z.speed * 0.04) * (FPS / self.fps)
         for i, idx in enumerate(z.indices):
             mm = self._depths.get(idx, 0.0)
             s = st.get(idx) or {"f": 0.0, "pressed": False}

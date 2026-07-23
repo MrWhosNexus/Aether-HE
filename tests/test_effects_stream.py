@@ -362,3 +362,28 @@ def test_geometry_driven_generators_are_already_board_neutral():
             frame = {}
             getattr(eng, "_g_" + mode)(z, 1.25, frame)
             assert set(frame) == set(km.by_index), (path, mode)
+
+
+def test_reactive_fade_is_frame_rate_independent():
+    """The reactive press-fade must last the same wall-clock time regardless of
+    the board's fps cap. It was applied once per FRAME with no interval scaling,
+    so it faded ~2.14x slower on the 28 fps MINI60 than the 60 fps Win60
+    (audit round 1 #4). Win60 (60 fps) behaviour is unchanged (factor 1.0)."""
+    palette = [(255, 0, 0)]
+
+    def fade_after(cap, seconds):
+        eng = _engine(max_fps=cap)
+        idx = eng.indices[0]
+        z = effects.Zone([idx], "reactive", palette, (0, 0, 0), 0.1, 1.0, 0)
+        eng._depths = {idx: 1.0}                 # press
+        eng._g_reactive(z, 0.0, {})              # latch -> f == 1.0
+        assert z.state[idx]["f"] == 1.0 and z.state[idx]["pressed"]
+        eng._depths = {idx: 0.0}                 # release, then fade
+        for _ in range(round(eng.fps * seconds)):
+            eng._g_reactive(z, 0.0, {})
+        return z.state[idx]["f"]
+
+    f_win60 = fade_after(120, 0.4)   # capped to 60 fps
+    f_mini60 = fade_after(28, 0.4)
+    assert 0.0 < f_win60 < 1.0                   # partial fade (discriminating)
+    assert abs(f_win60 - f_mini60) < 0.03, (f_win60, f_mini60)
