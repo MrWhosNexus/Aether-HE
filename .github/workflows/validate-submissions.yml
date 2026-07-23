@@ -14,6 +14,7 @@ on:
       - "data/boards.json"
       - "README.md"
       - "ui/runtime_src/src/**"
+      - "ui/runtime_src/workspaces/**"
       - ".github/workflows/validate-submissions.yml"
   push:
     branches: [main]
@@ -24,6 +25,7 @@ on:
       - "data/boards.json"
       - "README.md"
       - "ui/runtime_src/src/**"
+      - "ui/runtime_src/workspaces/**"
 
 permissions:
   contents: read
@@ -62,8 +64,12 @@ jobs:
           # The WebView exposes window.pywebview.api (the HID bridge), so any XSS
           # in the UI is arbitrary device control. Keymap-derived strings must
           # only ever be rendered as escaped text. Block raw-HTML sinks entirely.
-          if grep -rnE "dangerouslySetInnerHTML|\.innerHTML|insertAdjacentHTML|outerHTML" ui/runtime_src/src; then
+          # Scan BOTH authored, shipped source trees: src/ AND workspaces/ —
+          # build_runtime.py compiles workspaces/*.jsx into the runtime too, so
+          # a sink there ships just the same. (vendor/ is the unmodified React/
+          # Babel libs, which legitimately use innerHTML — not scanned.)
+          if grep -rnE "dangerouslySetInnerHTML|\.innerHTML|insertAdjacentHTML|outerHTML" ui/runtime_src/src ui/runtime_src/workspaces; then
             echo "::error::Raw-HTML sink found in UI source. Render untrusted strings as text only (no innerHTML / dangerouslySetInnerHTML)."
             exit 1
           fi
-          echo "OK: no raw-HTML sinks in ui/runtime_src/src."
+          echo "OK: no raw-HTML sinks in ui/runtime_src/src or ui/runtime_src/workspaces."

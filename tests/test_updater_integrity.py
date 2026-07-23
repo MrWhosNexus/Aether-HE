@@ -155,3 +155,42 @@ def test_missing_digest_field_is_none_not_crash():
     assets = [{"name": "AetherHE-Setup.exe", "state": "uploaded", "size": 1,
                "browser_download_url": "https://x/s.exe"}]
     assert updater._pick_asset_full(assets, "windows")["sha256"] is None
+
+
+def test_apply_update_refuses_when_no_checksum_or_size(monkeypatch):
+    """Fall-open guard (audit round 1 #8): if the caller omits size+sha256 AND
+    the re-fetch can't repopulate them (rate-limited API host, or a release cut
+    between check and apply so the URL differs), apply_update must REFUSE — never
+    fall through to executing an unverified installer."""
+    import subprocess
+    # Re-fetch succeeds but for a DIFFERENT asset_url -> metadata stays None.
+    monkeypatch.setattr(updater, "check_for_update",
+                        lambda *a, **k: {"ok": True,
+                                         "asset_url": "https://other/x.exe",
+                                         "asset_size": 123,
+                                         "asset_sha256": "deadbeef"})
+    seen = {"download": False, "popen": False}
+    monkeypatch.setattr(updater, "_download",
+                        lambda *a, **k: seen.__setitem__("download", True))
+    monkeypatch.setattr(subprocess, "Popen",
+                        lambda *a, **k: seen.__setitem__("popen", True))
+    r = updater.apply_update("https://example.com/AetherHE-Setup.exe")
+    assert r["ok"] is False and "unverified" in r["error"]
+    assert seen["download"] is False, "must not download without verification data"
+    assert seen["popen"] is False, "must not execute an unverified installer"
+
+
+def test_apply_update_still_installs_with_valid_metadata(monkeypatch):
+    """The guard must NOT block a normal verified install: when size+sha256 are
+    present, _download runs and the installer launches."""
+    import subprocess
+    ran = {"download": False, "popen": False}
+    monkeypatch.setattr(updater, "_download",
+                        lambda *a, **k: ran.__setitem__("download", True))
+    monkeypatch.setattr(updater, "_download_dir", lambda kind: ".")
+    monkeypatch.setattr(updater, "platform_kind", lambda: "windows")
+    monkeypatch.setattr(subprocess, "Popen",
+                        lambda *a, **k: ran.__setitem__("popen", True))
+    r = updater.apply_update("https://example.com/AetherHE-Setup.exe",
+                             asset_size=999, asset_sha256="abc123")
+    assert r["ok"] is True and ran["download"] and ran["popen"]

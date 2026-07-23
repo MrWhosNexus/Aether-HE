@@ -311,6 +311,18 @@ def apply_update(asset_url, asset_name=None, asset_size=None, asset_sha256=None)
         except Exception as e:
             log.warning("update: could not re-fetch asset digest: %s", e)
 
+    if asset_sha256 is None and asset_size is None:
+        # Neither a checksum nor a size to verify the bytes against — refuse
+        # rather than execute an unverified installer. This closes the fall-open
+        # where the caller omits metadata AND the re-fetch fails to repopulate it
+        # (API host rate-limited/offline, or a release cut between check and
+        # apply), honouring the docstring's "cannot be bypassed" invariant.
+        # (A size-only check remains available when GitHub published no digest.)
+        _set_progress(phase="idle", done=0, total=0)
+        return {"ok": False,
+                "error": "could not verify the update (no checksum or size "
+                         "available) — refusing to install an unverified download"}
+
     ddir = _download_dir(kind)
     try:
         dest = os.path.join(ddir, name)
