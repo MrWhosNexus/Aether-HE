@@ -26,7 +26,13 @@ import gamepad
 import updater
 from tools import board_submission
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s",
+                    handlers=[
+                        logging.FileHandler("aether_debug.log", mode="w", encoding="utf-8"),
+                        logging.StreamHandler(),
+                    ])
+logging.getLogger("device_state").setLevel(logging.DEBUG)
+logging.getLogger("gamepad").setLevel(logging.DEBUG)
 log = logging.getLogger("aether.web")
 
 # When frozen by PyInstaller, ui/ ships next to the exe (or inside _MEIPASS for

@@ -189,6 +189,8 @@ class VirtualGamepad:
     def update(self, depths):
         if self._impl is not None:
             self._impl.update(depths)
+            if depths:
+                log.debug("gamepad depths: %s", {k: round(v, 2) for k, v in depths.items()})
 
     def close(self):
         if self._impl is not None:
@@ -215,6 +217,18 @@ class _EvdevPad:
             "BTN_X": e.BTN_NORTH, "BTN_Y": e.BTN_WEST,
             "BTN_LB": e.BTN_TL,   "BTN_RB": e.BTN_TR,
         }
+        # Instant-rise, smooth-fall spring-decay
+        self._lx = self._ly = self._rx = self._ry = 0.0
+        self._lt = self._rt = 0.0
+        self._DECAY = 0.7
+
+    # Instant-rise, smooth-fall: on press raw > smoothed → immediate;
+    # on release raw = 0 → exponential decay.
+    @staticmethod
+    def _smooth(smoothed, raw, coef):
+        if abs(raw) > abs(smoothed):
+            return raw
+        return smoothed * coef + raw * (1 - coef)
 
     def open(self):
         cap = {
@@ -250,22 +264,50 @@ class _EvdevPad:
             return
         axis_val = {}
         for m in self.mappings:
+            if m.axis in self._axis_code:
+                code, _ = self._axis_code[m.axis]
+                axis_val.setdefault(code, 0)
+        lx = ly = rx = ry = 0.0
+        lt = rt = 0.0
+        for m in self.mappings:
             raw = depths.get(m.key, 0.0)
             depth = max(0.0, min(self.max_travel, raw))
+            if depth < 1.0:
+                depth = 0.0
             span = max(0.001, self.max_travel - TRAVEL_FLOOR_MM)
             frac = max(0.0, min(1.0, (depth - TRAVEL_FLOOR_MM) / span))
-            if m.axis in self._axis_code:
-                code, is_trig = self._axis_code[m.axis]
-                if is_trig:
-                    axis_val[code] = axis_val.get(code, 0) + int(frac * 255)
-                else:
-                    axis_val[code] = axis_val.get(code, 0) + int(m.direction * frac * 32767)
-            elif m.axis in self._btn_code:
+            if m.axis in _STICK_AXES:
+                v = m.direction * frac
+                if   m.axis == "LX": lx += v
+                elif m.axis == "LY": ly += v
+                elif m.axis == "RX": rx += v
+                elif m.axis == "RY": ry += v
+            elif m.axis in _TRIG_AXES:
+                if m.axis == "LT": lt += frac
+                else:              rt += frac
+            elif m.axis in _BTN_AXES:
                 self._ui.write(e.EV_KEY, self._btn_code[m.axis],
                                1 if depth >= m.threshold_mm else 0)
-        for code, val in axis_val.items():
-            val = max(-32767, min(32767, val))
-            self._ui.write(e.EV_ABS, code, val)
+        # Instant-rise, smooth-fall spring-decay
+        self._lx = self._smooth(self._lx, lx, self._DECAY)
+        self._ly = self._smooth(self._ly, ly, self._DECAY)
+        self._rx = self._smooth(self._rx, rx, self._DECAY)
+        self._ry = self._smooth(self._ry, ry, self._DECAY)
+        self._lt = self._smooth(self._lt, lt, self._DECAY)
+        self._rt = self._smooth(self._rt, rt, self._DECAY)
+        log.debug("evdev axes: lx=%.3f ly=%.3f rx=%.3f ry=%.3f lt=%.3f rt=%.3f",
+                  self._lx, self._ly, self._rx, self._ry, self._lt, self._rt)
+        for code, val in [
+            (self._axis_code["LX"][0], int(self._lx * 32767)),
+            (self._axis_code["LY"][0], int(self._ly * 32767)),
+            (self._axis_code["RX"][0], int(self._rx * 32767)),
+            (self._axis_code["RY"][0], int(self._ry * 32767)),
+            (self._axis_code["LT"][0], int(self._lt * 255)),
+            (self._axis_code["RT"][0], int(self._rt * 255)),
+        ]:
+            if code in axis_val:
+                val = max(-32767, min(32767, val))
+                self._ui.write(e.EV_ABS, code, val)
         self._ui.syn()
 
     def close(self):
@@ -285,6 +327,10 @@ class _VgamepadPad:
         self._pad = None
         # Button enums resolved lazily after import.
         self._btn_enum = None
+        # Instant-rise, smooth-fall spring-decay
+        self._lx = self._ly = self._rx = self._ry = 0.0
+        self._lt = self._rt = 0.0
+        self._DECAY = 0.7
 
     def _btn(self, axis):
         b = self._btn_enum
@@ -317,12 +363,14 @@ class _VgamepadPad:
     def update(self, depths):
         if self._pad is None:
             return
-        # Accumulate analog values, then push one update().
+        self._pad.reset()
         lx = ly = rx = ry = 0.0
         lt = rt = 0.0
         for m in self.mappings:
             raw = depths.get(m.key, 0.0)
             depth = max(0.0, min(self.max_travel, raw))
+            if depth < 1.0:
+                depth = 0.0
             span = max(0.001, self.max_travel - TRAVEL_FLOOR_MM)
             frac = max(0.0, min(1.0, (depth - TRAVEL_FLOOR_MM) / span))
             if m.axis in _STICK_AXES:
@@ -340,13 +388,29 @@ class _VgamepadPad:
                     self._pad.press_button(button=btn)
                 else:
                     self._pad.release_button(button=btn)
+        # Instant-rise, exponential-decay (EMA) so constant input never
+        # oscillates:
+        #   if abs(lx) > abs(self._lx)  → instant rise (no smoothing lag on press)
+        #   else                        → self._lx = self._lx*DECAY + lx*(1-DECAY)
+        # The old version (self._lx = lx OR self._lx*DECAY) oscillated at 30 Hz
+        # when raw lx was a small constant (e.g. 0.13 from a stuck key).
+        d = self._DECAY
+        a = 1 - d  # EMA alpha
+        self._lx = lx if abs(lx) > abs(self._lx) else self._lx * d + lx * a
+        self._ly = ly if abs(ly) > abs(self._ly) else self._ly * d + ly * a
+        self._rx = rx if abs(rx) > abs(self._rx) else self._rx * d + rx * a
+        self._ry = ry if abs(ry) > abs(self._ry) else self._ry * d + ry * a
+        self._lt = lt if lt > self._lt else self._lt * d + lt * a
+        self._rt = rt if rt > self._rt else self._rt * d + rt * a
+        log.debug("vgamepad axes: lx=%.3f ly=%.3f rx=%.3f ry=%.3f lt=%.3f rt=%.3f",
+                  self._lx, self._ly, self._rx, self._ry, self._lt, self._rt)
         clamp = lambda x: max(-1.0, min(1.0, x))
-        self._pad.left_joystick_float(x_value_float=clamp(lx),
-                                      y_value_float=clamp(ly))
-        self._pad.right_joystick_float(x_value_float=clamp(rx),
-                                       y_value_float=clamp(ry))
-        self._pad.left_trigger_float(value_float=max(0.0, min(1.0, lt)))
-        self._pad.right_trigger_float(value_float=max(0.0, min(1.0, rt)))
+        self._pad.left_joystick_float(x_value_float=clamp(self._lx),
+                                       y_value_float=clamp(self._ly))
+        self._pad.right_joystick_float(x_value_float=clamp(self._rx),
+                                        y_value_float=clamp(self._ry))
+        self._pad.left_trigger_float(value_float=max(0.0, min(1.0, self._lt)))
+        self._pad.right_trigger_float(value_float=max(0.0, min(1.0, self._rt)))
         self._pad.update()
 
     def close(self):

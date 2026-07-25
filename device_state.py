@@ -5,12 +5,15 @@ ui/keymap.json): each key has index, name, code, hidCode, and x/y position. The
 device protocol (protocol.py) is used to read per-key trigger values and to
 stream live travel after enabling Travel Test.
 """
+import logging
 import os
 import sys
 import threading
 import time
 
 import protocol
+
+log = logging.getLogger(__name__)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 KEYMAP_PATH = os.path.join(HERE, "ui", "keymap.json")
@@ -93,19 +96,25 @@ class LiveReader:
 
     Shares the AulaDevice handle; uses short non-blocking reads under the device
     lock so GUI writes aren't starved.
+
+    The firmware's travel-test stream is event-driven — it only sends reports
+    when depth changes.  On quick release the firmware often skips the final
+    0.0 report, leaving stale entries that stick axes.
+
+    A **close+open cycle** (sub 3 → sub 2) runs every 200 ms to keep the
+    stream alive.  *snapshot()* uses **1 s absolute timeout** as a fallback
+    (no held key can stay event-silent that long in practice).  Cross-key
+    inference is not done here — the gamepad backend applies its own
+    exponential decay for smooth return on any axis that goes quiet.
     """
     def __init__(self, device, keymap, indices=None):
         self.dev = device
         self.km = keymap
         self.indices = list(indices or keymap.indices())
         self.depths = {}          # code -> mm
-        # The firmware's travel-test stream is event-driven on depth change.
-        # A key held at constant depth produces no further reports, so any
-        # time-based "haven't heard from this key in N ms → released" rule
-        # makes held keys vanish from the UI. Instead we trust the firmware's
-        # next report: cache the last reported depth and only clear an entry
-        # when a fresh report arrives at or below the firmware's noise floor.
+        self._last_update = {}    # code -> time.monotonic()
         self.NOISE_MM = 0.05
+        self._depth_lock = threading.Lock()   # guards mutations of self.depths
         self._stop = threading.Event()
         self._thread = None
 
@@ -127,71 +136,108 @@ class LiveReader:
                     self.dev._dev.set_nonblocking(True)
         except Exception:
             pass
-        last_open = 0.0
+        last_cycle = 0.0
         dead = 0   # consecutive dead-handle / failed-read cycles (self-teardown)
         while not self._stop.is_set():
-            # Re-arm the travel-test stream periodically. Actuation/dead-band
-            # config writes (also cmd 33) can stop the stream, so without this the
-            # live depth silently dies a moment after entering the Actuation tab.
             now = time.time()
-            if now - last_open > 0.8:
-                last_open = now
+            got = False
+            updates = {}
+            if now - last_cycle > 0.2:
+                last_cycle = now
+                try:
+                    self.dev.write(protocol.build_close_trigger_test())
+                except Exception:
+                    pass
+                # Close may flush pending sensor readings; drain them
+                # before re-opening so we don't lose the data.
+                close_reported = set()
+                with self.dev._lock:
+                    if self.dev._dev:
+                        for _ in range(64):
+                            r = self.dev._dev.read(64)
+                            if not r or len(r) < 11:
+                                break
+                            if r[1] == 33 and r[5] == 5:
+                                idx = r[7] * 22 + r[8]
+                                depth = (r[9] | (r[10] << 8)) / 100.0
+                                code = self.km.code_of(idx)
+                                if code:
+                                    updates[code] = depth
+                                    close_reported.add(code)
+                                    got = True
+                # ── unconditional timer refresh ──────────────────────────
+                # Every close cycle resets _last_update for all held keys so
+                # the snapshot timeout can never fire on a stable hold
+                # (the key exists because the normal stream kept it alive
+                # between close cycles).
+                with self._depth_lock:
+                    mono = time.monotonic()
+                    still_held = [c for c in self.depths if c not in close_reported]
+                    for code in list(self.depths.keys()):
+                        if code not in close_reported:
+                            self._last_update[code] = mono
+                log.debug("close-drain reported %d keys; still_held=%s",
+                          len(close_reported), still_held)
+                if not close_reported:
+                    log.debug("close-drain empty — no sensors changed, "
+                              "all held keys timer-refreshed")
                 try:
                     self.dev.write(protocol.build_open_trigger_test(self.indices))
                 except Exception:
                     pass
-            # Drain the WHOLE hidraw backlog each cycle, keeping only the latest
-            # depth per key. The board streams travel reports faster than a
-            # one-read-per-loop pace can consume, so reading a single report at a
-            # time lags reality — on a quick release the loop is still chewing
-            # through stale "pressed" reports and shows a high value instead of 0.
-            got = False
             try:
                 with self.dev._lock:
                     if self.dev._dev is None:
-                        # Handle closed (disconnect) — normally _stop is set too,
-                        # but self-terminate as a backstop so we never spin
-                        # forever on a dead handle.
                         dead += 1
                         if dead > 50:
                             break
                         time.sleep(0.02); continue
-                    for _ in range(256):          # bounded drain
+                    for _ in range(256):
                         r = self.dev._dev.read(64)
                         if not r or len(r) < 11:
                             break
-                        # hidapi read includes Report ID at [0]; travel sub-report:
-                        # [1]=33, [5]=5, [7]=row, [8]=col -> device index = row*22 +
-                        # col (W=46 -> (2,2), confirmed).
                         if r[1] == 33 and r[5] == 5:
                             idx = r[7] * 22 + r[8]
                             depth = (r[9] | (r[10] << 8)) / 100.0
-                            code = self.km.code_of(idx)   # e.g. "W","LCtrl","1"
+                            code = self.km.code_of(idx)
                             if code:
-                                if depth < self.NOISE_MM:
-                                    self.depths.pop(code, None)
-                                else:
-                                    self.depths[code] = depth
+                                updates[code] = depth
                                 got = True
-                dead = 0   # a clean drain -> the handle is alive
+                if updates:
+                    with self._depth_lock:
+                        mono = time.monotonic()
+                        for code, depth in updates.items():
+                            if depth < self.NOISE_MM:
+                                self.depths.pop(code, None)
+                                self._last_update.pop(code, None)
+                            else:
+                                self.depths[code] = depth
+                                self._last_update[code] = mono
+                dead = 0
             except Exception:
-                # Persistent read failure (e.g. mid-stream unplug) -> stop
-                # instead of spinning ~20 Hz forever on a dead handle.
                 dead += 1
                 if dead > 50:
                     break
                 time.sleep(0.05); continue
-            # Nothing pending → sleep briefly so we don't busy-spin the lock;
-            # when reports are flowing, loop straight back to stay real-time.
             if not got:
                 time.sleep(0.002)
 
     def snapshot(self):
-        # Last-reported depth per key. No time-based decay — the firmware
-        # stops reporting while a key is held flat, so any decay rule would
-        # erase held-key visibility. Release is handled in _run by clearing
-        # the cache when a fresh report drops below NOISE_MM.
-        return dict(self.depths)
+        with self._depth_lock:
+            if not self.depths:
+                return {}
+            now = time.monotonic()
+            pruned = []
+            result = {}
+            for code, mm in self.depths.items():
+                age = now - self._last_update.get(code, 0)
+                if age < 1.0:
+                    result[code] = mm
+                else:
+                    pruned.append((code, round(mm, 2), round(age, 3)))
+            if pruned:
+                log.debug("snapshot pruned stale: %s", pruned)
+            return result
 
     def stop(self):
         self._stop.set()
