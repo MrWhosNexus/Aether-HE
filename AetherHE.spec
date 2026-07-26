@@ -1,21 +1,13 @@
-# PyInstaller spec for AETHER HE (Windows).
-# Build:  venv-web\Scripts\pyinstaller --clean --noconfirm AetherHE.spec
-# Output: dist\AetherHE\AetherHE.exe  (+ adjacent _internal\)
+# -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
 
 block_cipher = None
 
 datas = [
     ("ui", "ui"),
-    # Multi-board registry + board defs (boards.py reads HERE/data/...); without
-    # this the frozen app can't resolve non-Win60 boards and warns on startup.
     ("data", "data"),
-    # Bundle the official ViGEmBus installer so users can install the kernel
-    # driver from inside the app on first launch (Gamepad tab → Install button).
     ("vendor/ViGEmBus_Setup.exe", "vendor"),
 ]
-# vgamepad ships its ViGEm client DLL as package data; collect it so the frozen
-# build can talk to the bus driver without an external install of the package.
 datas += collect_data_files("vgamepad")
 binaries = collect_dynamic_libs("vgamepad")
 
@@ -23,9 +15,6 @@ hidden = [
     "webview.platforms.edgechromium",
     "clr_loader",
     "pythonnet",
-    # device_state.py imports this via a runtime sys.path.insert(".../tools"),
-    # which PyInstaller's static analysis can't follow — bundle it explicitly
-    # (with tools/ on pathex so the module is resolvable at build time).
     "validate_keymap",
 ]
 
@@ -38,9 +27,7 @@ a = Analysis(
     hookspath=[],
     runtime_hooks=[],
     excludes=[
-        # Legacy Tk UI is not used by app_web.py — keep it out of the bundle.
         "customtkinter", "tkinter",
-        # Pure-Python USB helper, not on the lighting/actuation hot path.
         "usb",
     ],
     cipher=block_cipher,
@@ -58,7 +45,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    console=False,                # no terminal window
+    console=False,
     icon="ui/assets/logo.ico",
 )
 

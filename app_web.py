@@ -33,6 +33,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
                     ])
 logging.getLogger("device_state").setLevel(logging.DEBUG)
 logging.getLogger("gamepad").setLevel(logging.DEBUG)
+logging.getLogger("aether.web").setLevel(logging.DEBUG)
 log = logging.getLogger("aether.web")
 
 # When frozen by PyInstaller, ui/ ships next to the exe (or inside _MEIPASS for
@@ -1366,13 +1367,19 @@ class Api:
             return {"ok": False, "error": str(e)}
 
     def _gamepad_loop(self):
-        import time
+        import time, traceback
         while not self._pad_stop.is_set():
             try:
                 if self.pad and self.reader:
                     self.pad.update(self.reader.snapshot())
             except Exception as e:
-                log.warning("gamepad capture stopped: %s", e)
+                log.warning("GAMEPAD THREAD EXCEPTION (dies now): %s", e)
+                for line in traceback.format_exc().splitlines():
+                    log.warning("  %s", line)
+                log.warning("pad=%s reader=%s reader_alive=%s",
+                            self.pad is not None,
+                            self.reader is not None,
+                            self.reader.is_alive() if self.reader else "N/A")
                 break
             time.sleep(1 / 120)
 

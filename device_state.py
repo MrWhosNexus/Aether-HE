@@ -119,9 +119,7 @@ class LiveReader:
         self._last_update = {}    # code -> time.monotonic() (incl. close-refresh)
         self._last_stream = {}   # code -> time.monotonic() (real reports only)
         self._trend = {}          # code -> +1 (rising) / -1 (falling) / 0
-        self.STUCK_TREND_MM = 1.0
-        self.STUCK_SILENCE_S = 3.0  # remove if trend==-1 or mm<STUCK_MAX_MM and no stream for this long
-        self.STUCK_MAX_MM = 2.5    # shallow (<full press) keys cleaned regardless of trend
+        self.STUCK_SILENCE_S = 3.0  # remove if trend==-1 and no stream for this long
         self.NOISE_MM = 0.05
         self._depth_lock = threading.Lock()   # guards mutations of self.depths
         self._stop = threading.Event()
@@ -140,30 +138,29 @@ class LiveReader:
         self._thread.start()
 
     def _run(self):
+        import traceback
+        log.debug("READER thread started")
         try:
             with self.dev._lock:
                 if self.dev._dev:
                     self.dev._dev.set_nonblocking(True)
-        except Exception:
-            pass
+        except Exception as ex:
+            log.warning("READER set_nonblocking failed: %s", ex)
         last_cycle = 0.0
         dead = 0   # consecutive dead-handle / failed-read cycles (self-teardown)
         while not self._stop.is_set():
             now = time.time()
             got = False
             updates = {}
+            liveness = set()  # codes with subtype-3 non-zero this cycle → force trend=+1
             if now - last_cycle > 0.2:
                 last_cycle = now
-                try:
-                    self.dev.write(protocol.build_close_trigger_test())
-                except Exception:
-                    pass
-                # Close may flush pending sensor readings; drain them
-                # before re-opening so we don't lose the data.
+                # Drain pending sensor readings without stopping the stream
+                # so the firmware never misses a subtype-3 raw_adc frame.
                 close_reported = set()
                 with self.dev._lock:
                     if self.dev._dev:
-                        for _ in range(64):
+                        for _ in range(256):
                             r = self.dev._dev.read(64)
                             if not r or len(r) < 11:
                                 break
@@ -175,6 +172,13 @@ class LiveReader:
                                     continue
                                 if r[5] == 3 and val16 == 0:
                                     if code not in self._released:
+                                        # Pre-commit any pending depth so the press
+                                        # is captured before release removes it.
+                                        if code in updates and updates[code] >= self.NOISE_MM:
+                                            with self._depth_lock:
+                                                self.depths[code] = updates[code]
+                                                self._last_stream[code] = time.monotonic()
+                                                self._last_update[code] = time.monotonic()
                                         self._released.add(code)
                                         with self._depth_lock:
                                             self.depths.pop(code, None)
@@ -182,42 +186,44 @@ class LiveReader:
                                             self._last_stream.pop(code, None)
                                             self._trend.pop(code, None)
                                         log.debug("subtype3 release code=%s", code)
+                                    close_reported.discard(code)
                                     continue
                                 if code in self._released:
-                                    if val16 == 0:
-                                        continue
-                                    self._released.discard(code)
+                                    self._released.discard(code)  # any report = fresh press
                                 depth = val16 / 100.0
                                 updates[code] = depth
                                 close_reported.add(code)
                                 got = True
-                # ── unconditional timer refresh ──────────────────────────
-                # Every close cycle resets _last_update for all held keys so
-                # the snapshot timeout can never fire on a stable hold.
-                # Keys with trend==-1 (last stream report was decreasing) that
-                # went silent for > STUCK_SILENCE_S are considered stuck
-                # (released but firmware never sent the final 0.0 report).
+                                if r[5] == 3:
+                                    liveness.add(code)
+                # ── close-cycle drain ─────────────────────────────────
+                # Keys confirmed released (subtype-3 raw_adc=0 → _released)
+                # are removed unconditionally.
+                # Missing keys with trend=-1 + long silence are stuck → remove.
+                # Everything else gets a timer-refresh so shallow keys that
+                # happen to skip this batch don't oscillate in/out of depths.
                 with self._depth_lock:
                     mono = time.monotonic()
-                    still_held = []
                     for code in list(self.depths.keys()):
                         if code not in close_reported:
-                            if ((self._trend.get(code, 0) == -1
-                                 or self.depths.get(code, 0) < self.STUCK_MAX_MM)
-                                    and (mono - self._last_stream.get(code, mono))
-                                        > self.STUCK_SILENCE_S):
+                            if code in self._released:
+                                log.debug("close-drain remove released code=%s", code)
+                                self.depths.pop(code, None)
+                                self._last_update.pop(code, None)
+                                self._last_stream.pop(code, None)
+                                self._trend.pop(code, None)
+                            elif (self._trend.get(code, 0) == -1
+                                  and (mono - self._last_stream.get(code, mono))
+                                      > self.STUCK_SILENCE_S):
+                                log.debug("close-drain remove stuck code=%s (trend=-1)", code)
                                 self.depths.pop(code, None)
                                 self._last_update.pop(code, None)
                                 self._last_stream.pop(code, None)
                                 self._trend.pop(code, None)
                             else:
-                                self._last_update[code] = mono
-                                still_held.append(code)
-                log.debug("close-drain reported %d keys; still_held=%s",
-                          len(close_reported), still_held)
-                if not close_reported:
-                    log.debug("close-drain empty — no sensors changed, "
-                              "all held keys timer-refreshed")
+                                self._last_update[code] = mono  # timer-refresh
+                log.debug("close-drain reported %d keys; depths after=%s",
+                          len(close_reported), {k: round(v, 2) for k, v in self.depths.items()})
                 try:
                     self.dev.write(protocol.build_open_trigger_test(self.indices))
                 except Exception:
@@ -241,6 +247,12 @@ class LiveReader:
                                 continue
                             if r[5] == 3 and val16 == 0:
                                 if code not in self._released:
+                                    # Pre-commit any pending depth before removal
+                                    if code in updates and updates[code] >= self.NOISE_MM:
+                                        with self._depth_lock:
+                                            self.depths[code] = updates[code]
+                                            self._last_stream[code] = time.monotonic()
+                                            self._last_update[code] = time.monotonic()
                                     self._released.add(code)
                                     with self._depth_lock:
                                         self.depths.pop(code, None)
@@ -250,42 +262,46 @@ class LiveReader:
                                     log.debug("subtype3 release code=%s", code)
                                 continue
                             if code in self._released:
-                                if val16 == 0:
-                                    continue
-                                self._released.discard(code)
+                                self._released.discard(code)  # any report = fresh press
                             depth = val16 / 100.0
                             updates[code] = depth
                             got = True
+                            if r[5] == 3:
+                                liveness.add(code)
                 if updates:
                     with self._depth_lock:
                         mono = time.monotonic()
                         for code, depth in updates.items():
+                            if code in self._released:
+                                continue  # stale depth for released key
                             if depth < self.NOISE_MM:
                                 self.depths.pop(code, None)
                                 self._last_update.pop(code, None)
                                 self._last_stream.pop(code, None)
                                 self._trend.pop(code, None)
                             else:
-                                prev = self.depths.get(code)
-                                if prev is not None and depth < prev:
-                                    trend = -1
+                                if code in liveness:
+                                    self._trend[code] = +1
                                 else:
-                                    trend = +1
-                                self._trend[code] = trend
-                                if trend == -1 and depth < self.STUCK_TREND_MM:
-                                    self.depths.pop(code, None)
-                                    self._last_update.pop(code, None)
-                                    self._last_stream.pop(code, None)
-                                    self._trend.pop(code, None)
-                                else:
-                                    self.depths[code] = depth
-                                    self._last_update[code] = mono
-                                    self._last_stream[code] = mono
+                                    prev = self.depths.get(code)
+                                    trend = -1 if (prev is not None and depth < prev) else +1
+                                    self._trend[code] = trend
+                                self.depths[code] = depth
+                                self._last_update[code] = mono
+                                self._last_stream[code] = mono
                 dead = 0
+                if len(self.depths) > 0 or len(self._released) > 0:
+                    log.debug("reader state: depths=%s released=%s trend=%s",
+                              {k: round(v, 2) for k, v in self.depths.items()},
+                              list(self._released),
+                              {k: v for k, v in self._trend.items() if k in self.depths})
             except Exception:
                 dead += 1
-                if dead > 50:
+                if dead >= 50:
+                    log.warning("READER thread exits after %d consecutive failures", dead)
                     break
+                if dead == 1 or dead % 10 == 0:
+                    log.debug("READER read failure #%d", dead)
                 time.sleep(0.05); continue
             if not got:
                 time.sleep(0.002)
@@ -293,6 +309,7 @@ class LiveReader:
     def snapshot(self):
         with self._depth_lock:
             if not self.depths:
+                log.debug("snapshot: depths empty")
                 return {}
             now = time.monotonic()
             result = {}
@@ -303,10 +320,11 @@ class LiveReader:
                     self._last_stream.pop(code, None)
                     self._trend.pop(code, None)
                     continue
-                if ((self._trend.get(code, 0) == -1
-                     or mm < self.STUCK_MAX_MM)
+                if (self._trend.get(code, 0) == -1
                         and (now - self._last_stream.get(code, now))
                             > self.STUCK_SILENCE_S):
+                    log.debug("snapshot removing stuck code=%s (trend=-1, silence=%.1fs)",
+                              code, now - self._last_stream.get(code, now))
                     self.depths.pop(code, None)
                     self._last_update.pop(code, None)
                     self._last_stream.pop(code, None)
@@ -315,6 +333,9 @@ class LiveReader:
                 if now - self._last_update.get(code, 0) < 1.0:
                     result[code] = mm
             return result
+
+    def is_alive(self):
+        return self._thread is not None and self._thread.is_alive()
 
     def stop(self):
         self._stop.set()
