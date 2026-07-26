@@ -29,16 +29,25 @@ def parse_travel(report):
     `report` is a raw hidapi read() result, i.e. it INCLUDES the Report ID at
     index 0 (so the 0x21 command byte is at index 1).
 
-    Returns {"key": (a, b), "depth_mm": float} for the simple per-key travel
-    sub-report (subtype 5), else None. Depth is a 16-bit LE value in 0.01mm
-    units (0..~400 == 0..4.00mm), confirmed against the driver capture.
+    Subtypes (data[4] == report[5]):
+      5 — simple per-key travel: depth in 0.01mm units (0..~400 == 0..4.00mm).
+          Returns {"key": (row, col), "depth_mm": float}.
+      3 — raw Hall ADC (~2535 rest .. ~1431 bottomed). Same offsets but the
+          16-bit value is the raw Hall sensor reading, not mm.
+          Returns {"key": (row, col), "raw_adc": int}.
+      Other — returns None.
     """
     if len(report) < 11 or report[0] != VENDOR_REPORT_ID or report[1] != CMD_TRAVEL:
         return None
     subtype = report[5]
+    val16 = report[9] | (report[10] << 8)
     if subtype == 5:
-        depth_raw = report[9] | (report[10] << 8)
-        return {"key": (report[7], report[8]), "depth_mm": depth_raw / 100.0}
+        return {"key": (report[7], report[8]), "depth_mm": val16 / 100.0}
+    if subtype == 3:
+        log.debug("subtype3 raw_adc=%d row=%d col=%d hex=%s",
+                  val16, report[7], report[8],
+                  " ".join(f"{b:02x}" for b in report[:16]))
+        return {"key": (report[7], report[8]), "raw_adc": val16}
     return None
 
 

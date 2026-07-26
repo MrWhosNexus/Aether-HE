@@ -29,6 +29,8 @@ log = logging.getLogger(__name__)
 # never accelerates further when you press harder. Compressing the active
 # window to FLOOR..CEILING gives a usable proportional response.
 MAX_TRAVEL_MM = 3.4
+AXIS_GATE_MM = 1.5   # mm; depths below this produce zero analog output
+# (stops stuck-key ghosting from released keys that settle at 0.1‑1.23 mm)
 TRAVEL_FLOOR_MM = 0.15
 
 # --- backend probing --------------------------------------------------------
@@ -222,10 +224,12 @@ class _EvdevPad:
         self._lt = self._rt = 0.0
         self._DECAY = 0.7
 
-    # Instant-rise, smooth-fall: on press raw > smoothed → immediate;
-    # on release raw = 0 → exponential decay.
+    # Instant-rise, instant-drop: on press raw > smoothed → immediate;
+    # on release raw = 0 → immediate (confirmed by subtype 3 raw_adc=0).
     @staticmethod
     def _smooth(smoothed, raw, coef):
+        if raw == 0:
+            return 0
         if abs(raw) > abs(smoothed):
             return raw
         return smoothed * coef + raw * (1 - coef)
@@ -272,10 +276,14 @@ class _EvdevPad:
         for m in self.mappings:
             raw = depths.get(m.key, 0.0)
             depth = max(0.0, min(self.max_travel, raw))
-            if depth < 1.0:
+            if m.axis in _BTN_AXES:
+                self._ui.write(e.EV_KEY, self._btn_code[m.axis],
+                               1 if depth >= m.threshold_mm else 0)
+                continue
+            if depth < AXIS_GATE_MM:
                 depth = 0.0
-            span = max(0.001, self.max_travel - TRAVEL_FLOOR_MM)
-            frac = max(0.0, min(1.0, (depth - TRAVEL_FLOOR_MM) / span))
+            span = max(0.001, self.max_travel - AXIS_GATE_MM)
+            frac = max(0.0, min(1.0, (depth - AXIS_GATE_MM) / span))
             if m.axis in _STICK_AXES:
                 v = m.direction * frac
                 if   m.axis == "LX": lx += v
@@ -285,9 +293,6 @@ class _EvdevPad:
             elif m.axis in _TRIG_AXES:
                 if m.axis == "LT": lt += frac
                 else:              rt += frac
-            elif m.axis in _BTN_AXES:
-                self._ui.write(e.EV_KEY, self._btn_code[m.axis],
-                               1 if depth >= m.threshold_mm else 0)
         # Instant-rise, smooth-fall spring-decay
         self._lx = self._smooth(self._lx, lx, self._DECAY)
         self._ly = self._smooth(self._ly, ly, self._DECAY)
@@ -369,10 +374,17 @@ class _VgamepadPad:
         for m in self.mappings:
             raw = depths.get(m.key, 0.0)
             depth = max(0.0, min(self.max_travel, raw))
-            if depth < 1.0:
+            if m.axis in _BTN_AXES:
+                btn = self._btn(m.axis)
+                if depth >= m.threshold_mm:
+                    self._pad.press_button(button=btn)
+                else:
+                    self._pad.release_button(button=btn)
+                continue
+            if depth < AXIS_GATE_MM:
                 depth = 0.0
-            span = max(0.001, self.max_travel - TRAVEL_FLOOR_MM)
-            frac = max(0.0, min(1.0, (depth - TRAVEL_FLOOR_MM) / span))
+            span = max(0.001, self.max_travel - AXIS_GATE_MM)
+            frac = max(0.0, min(1.0, (depth - AXIS_GATE_MM) / span))
             if m.axis in _STICK_AXES:
                 v = m.direction * frac
                 if   m.axis == "LX": lx += v
@@ -382,26 +394,20 @@ class _VgamepadPad:
             elif m.axis in _TRIG_AXES:
                 if m.axis == "LT": lt += frac
                 else:              rt += frac
-            elif m.axis in _BTN_AXES:
-                btn = self._btn(m.axis)
-                if depth >= m.threshold_mm:
-                    self._pad.press_button(button=btn)
-                else:
-                    self._pad.release_button(button=btn)
-        # Instant-rise, exponential-decay (EMA) so constant input never
-        # oscillates:
-        #   if abs(lx) > abs(self._lx)  → instant rise (no smoothing lag on press)
-        #   else                        → self._lx = self._lx*DECAY + lx*(1-DECAY)
-        # The old version (self._lx = lx OR self._lx*DECAY) oscillated at 30 Hz
-        # when raw lx was a small constant (e.g. 0.13 from a stuck key).
+        # Instant-rise, instant-drop:
+        #   raw == 0             → immediate 0 (subtype 3 confirms release)
+        #   abs(raw) > smoothed  → instant rise (no lag on fresh press)
+        #   else                 → EMA decay (smooth sensor jitter on hold)
         d = self._DECAY
-        a = 1 - d  # EMA alpha
-        self._lx = lx if abs(lx) > abs(self._lx) else self._lx * d + lx * a
-        self._ly = ly if abs(ly) > abs(self._ly) else self._ly * d + ly * a
-        self._rx = rx if abs(rx) > abs(self._rx) else self._rx * d + rx * a
-        self._ry = ry if abs(ry) > abs(self._ry) else self._ry * d + ry * a
-        self._lt = lt if lt > self._lt else self._lt * d + lt * a
-        self._rt = rt if rt > self._rt else self._rt * d + rt * a
+        a = 1 - d
+        def _ema(smoothed, raw):
+            return 0 if raw == 0 else (raw if abs(raw) > abs(smoothed) else smoothed * d + raw * a)
+        self._lx = _ema(self._lx, lx)
+        self._ly = _ema(self._ly, ly)
+        self._rx = _ema(self._rx, rx)
+        self._ry = _ema(self._ry, ry)
+        self._lt = _ema(self._lt, lt)
+        self._rt = _ema(self._rt, rt)
         log.debug("vgamepad axes: lx=%.3f ly=%.3f rx=%.3f ry=%.3f lt=%.3f rt=%.3f",
                   self._lx, self._ly, self._rx, self._ry, self._lt, self._rt)
         clamp = lambda x: max(-1.0, min(1.0, x))

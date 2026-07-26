@@ -97,26 +97,36 @@ class LiveReader:
     Shares the AulaDevice handle; uses short non-blocking reads under the device
     lock so GUI writes aren't starved.
 
-    The firmware's travel-test stream is event-driven — it only sends reports
-    when depth changes.  On quick release the firmware often skips the final
-    0.0 report, leaving stale entries that stick axes.
+    The firmware streams two report subtypes on cmd 33:
+      - **subtype 5**: travel in 0.01 mm — event-driven, **never sends 0.0** on
+        release (the root cause of stuck axes).
+      - **subtype 3**: raw ADC — event-driven, **does send 0** on release.
 
-    A **close+open cycle** (sub 3 → sub 2) runs every 200 ms to keep the
-    stream alive.  *snapshot()* uses **1 s absolute timeout** as a fallback
-    (no held key can stay event-silent that long in practice).  Cross-key
-    inference is not done here — the gamepad backend applies its own
-    exponential decay for smooth return on any axis that goes quiet.
+    When subtype 3 raw_adc == 0 the key is **immediately released** (popped from
+    depths + added to `_released`).  Subtype 5 reports for a released key are
+    ignored until a non-zero subtype 3 signals a fresh press, so stale subtype 5
+    values can't re-stick the axis.
+
+    A **close+open cycle** (sub 3 → sub 2) runs every 200 ms to keep the stream
+    alive.  *snapshot()* still uses a **1 s absolute timeout** as a second-layer
+    safety net (no held key can stay event-silent that long).
     """
     def __init__(self, device, keymap, indices=None):
         self.dev = device
         self.km = keymap
         self.indices = list(indices or keymap.indices())
         self.depths = {}          # code -> mm
-        self._last_update = {}    # code -> time.monotonic()
+        self._last_update = {}    # code -> time.monotonic() (incl. close-refresh)
+        self._last_stream = {}   # code -> time.monotonic() (real reports only)
+        self._trend = {}          # code -> +1 (rising) / -1 (falling) / 0
+        self.STUCK_TREND_MM = 1.0
+        self.STUCK_SILENCE_S = 3.0  # remove if trend==-1 or mm<STUCK_MAX_MM and no stream for this long
+        self.STUCK_MAX_MM = 2.5    # shallow (<full press) keys cleaned regardless of trend
         self.NOISE_MM = 0.05
         self._depth_lock = threading.Lock()   # guards mutations of self.depths
         self._stop = threading.Event()
         self._thread = None
+        self._released = set()     # codes whose release was confirmed by subtype 3 raw_adc=0
 
     def start(self):
         if self._thread and self._thread.is_alive():
@@ -157,25 +167,52 @@ class LiveReader:
                             r = self.dev._dev.read(64)
                             if not r or len(r) < 11:
                                 break
-                            if r[1] == 33 and r[5] == 5:
+                            if r[1] == 33 and r[5] in (3, 5):
                                 idx = r[7] * 22 + r[8]
-                                depth = (r[9] | (r[10] << 8)) / 100.0
+                                val16 = r[9] | (r[10] << 8)
                                 code = self.km.code_of(idx)
-                                if code:
-                                    updates[code] = depth
-                                    close_reported.add(code)
-                                    got = True
+                                if not code:
+                                    continue
+                                if r[5] == 3 and val16 == 0:
+                                    if code not in self._released:
+                                        self._released.add(code)
+                                        with self._depth_lock:
+                                            self.depths.pop(code, None)
+                                            self._last_update.pop(code, None)
+                                            self._last_stream.pop(code, None)
+                                            self._trend.pop(code, None)
+                                        log.debug("subtype3 release code=%s", code)
+                                    continue
+                                if code in self._released:
+                                    if val16 == 0:
+                                        continue
+                                    self._released.discard(code)
+                                depth = val16 / 100.0
+                                updates[code] = depth
+                                close_reported.add(code)
+                                got = True
                 # ── unconditional timer refresh ──────────────────────────
                 # Every close cycle resets _last_update for all held keys so
-                # the snapshot timeout can never fire on a stable hold
-                # (the key exists because the normal stream kept it alive
-                # between close cycles).
+                # the snapshot timeout can never fire on a stable hold.
+                # Keys with trend==-1 (last stream report was decreasing) that
+                # went silent for > STUCK_SILENCE_S are considered stuck
+                # (released but firmware never sent the final 0.0 report).
                 with self._depth_lock:
                     mono = time.monotonic()
-                    still_held = [c for c in self.depths if c not in close_reported]
+                    still_held = []
                     for code in list(self.depths.keys()):
                         if code not in close_reported:
-                            self._last_update[code] = mono
+                            if ((self._trend.get(code, 0) == -1
+                                 or self.depths.get(code, 0) < self.STUCK_MAX_MM)
+                                    and (mono - self._last_stream.get(code, mono))
+                                        > self.STUCK_SILENCE_S):
+                                self.depths.pop(code, None)
+                                self._last_update.pop(code, None)
+                                self._last_stream.pop(code, None)
+                                self._trend.pop(code, None)
+                            else:
+                                self._last_update[code] = mono
+                                still_held.append(code)
                 log.debug("close-drain reported %d keys; still_held=%s",
                           len(close_reported), still_held)
                 if not close_reported:
@@ -196,13 +233,29 @@ class LiveReader:
                         r = self.dev._dev.read(64)
                         if not r or len(r) < 11:
                             break
-                        if r[1] == 33 and r[5] == 5:
+                        if r[1] == 33 and r[5] in (3, 5):
                             idx = r[7] * 22 + r[8]
-                            depth = (r[9] | (r[10] << 8)) / 100.0
+                            val16 = r[9] | (r[10] << 8)
                             code = self.km.code_of(idx)
-                            if code:
-                                updates[code] = depth
-                                got = True
+                            if not code:
+                                continue
+                            if r[5] == 3 and val16 == 0:
+                                if code not in self._released:
+                                    self._released.add(code)
+                                    with self._depth_lock:
+                                        self.depths.pop(code, None)
+                                        self._last_update.pop(code, None)
+                                        self._last_stream.pop(code, None)
+                                        self._trend.pop(code, None)
+                                    log.debug("subtype3 release code=%s", code)
+                                continue
+                            if code in self._released:
+                                if val16 == 0:
+                                    continue
+                                self._released.discard(code)
+                            depth = val16 / 100.0
+                            updates[code] = depth
+                            got = True
                 if updates:
                     with self._depth_lock:
                         mono = time.monotonic()
@@ -210,9 +263,24 @@ class LiveReader:
                             if depth < self.NOISE_MM:
                                 self.depths.pop(code, None)
                                 self._last_update.pop(code, None)
+                                self._last_stream.pop(code, None)
+                                self._trend.pop(code, None)
                             else:
-                                self.depths[code] = depth
-                                self._last_update[code] = mono
+                                prev = self.depths.get(code)
+                                if prev is not None and depth < prev:
+                                    trend = -1
+                                else:
+                                    trend = +1
+                                self._trend[code] = trend
+                                if trend == -1 and depth < self.STUCK_TREND_MM:
+                                    self.depths.pop(code, None)
+                                    self._last_update.pop(code, None)
+                                    self._last_stream.pop(code, None)
+                                    self._trend.pop(code, None)
+                                else:
+                                    self.depths[code] = depth
+                                    self._last_update[code] = mono
+                                    self._last_stream[code] = mono
                 dead = 0
             except Exception:
                 dead += 1
@@ -227,16 +295,25 @@ class LiveReader:
             if not self.depths:
                 return {}
             now = time.monotonic()
-            pruned = []
             result = {}
-            for code, mm in self.depths.items():
-                age = now - self._last_update.get(code, 0)
-                if age < 1.0:
+            for code, mm in list(self.depths.items()):
+                if mm < self.NOISE_MM:
+                    self.depths.pop(code, None)
+                    self._last_update.pop(code, None)
+                    self._last_stream.pop(code, None)
+                    self._trend.pop(code, None)
+                    continue
+                if ((self._trend.get(code, 0) == -1
+                     or mm < self.STUCK_MAX_MM)
+                        and (now - self._last_stream.get(code, now))
+                            > self.STUCK_SILENCE_S):
+                    self.depths.pop(code, None)
+                    self._last_update.pop(code, None)
+                    self._last_stream.pop(code, None)
+                    self._trend.pop(code, None)
+                    continue
+                if now - self._last_update.get(code, 0) < 1.0:
                     result[code] = mm
-                else:
-                    pruned.append((code, round(mm, 2), round(age, 3)))
-            if pruned:
-                log.debug("snapshot pruned stale: %s", pruned)
             return result
 
     def stop(self):
