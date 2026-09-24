@@ -83,6 +83,12 @@ const apiCall = (name, ...args) => {
   try { return Promise.resolve(api[name](...args)).then(tapUnsupported(name)); }
   catch (e) { return Promise.resolve({ ok: false, error: String(e) }); }
 };
+// Run bridge calls ONE AFTER ANOTHER. pywebview executes every js_api call on
+// a fresh Python thread, so `apiCall(a); apiCall(b);` gives no ordering
+// guarantee between a and b — use this wherever order matters (e.g. stop the
+// host effect engine, THEN write a firmware mode). Resolves to the last result.
+const callSeq = (calls) =>
+  calls.reduce((p, c) => p.then(() => apiCall(...c)), Promise.resolve());
 
 const hexToRgbArr = (hex) => {
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || "");
@@ -861,24 +867,34 @@ function App() {
 
   /* ===== board awareness: fetch, switch, honest failures ===== */
   // Refresh the active board + the live roster. Safe no-op without a bridge.
+  // Both setters dedupe by content: the bridge hands back a fresh object on
+  // every poll, and swapping identity for identical data would re-render the
+  // whole App (ctx is rebuilt from `board`) every 5 s for nothing.
+  const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   const refreshBoards = async () => {
     try {
       const g = await apiCall("get_board");
-      if (g && g.active !== undefined) setBoard(g.active || null);
+      if (g && g.active !== undefined) {
+        const next = g.active || null;
+        setBoard(prev => sameJson(prev, next) ? prev : next);
+      }
       const l = await apiCall("list_boards");
-      if (l && l.ok && Array.isArray(l.boards)) setBoardRoster(l.boards);
+      if (l && l.ok && Array.isArray(l.boards))
+        setBoardRoster(prev => sameJson(prev, l.boards) ? prev : l.boards);
     } catch {}
   };
 
   // Fetch once when the bridge comes up, then poll slowly so plugging in a
   // second board (or pulling one) updates the picker without a restart.
+  // Skipped while the window is hidden/minimised: each tick is two bridge
+  // calls and a hid.enumerate() on the Python side.
   useEffect(() => {
     let alive = true, timer = null, iv = null, tries = 0;
     const boot = () => {
       if (!alive) return;
       if (!getApi()) { if (tries++ < 50) timer = setTimeout(boot, 200); return; }
       refreshBoards();
-      iv = setInterval(() => { if (alive) refreshBoards(); }, 5000);
+      iv = setInterval(() => { if (alive && !document.hidden) refreshBoards(); }, 5000);
     };
     boot();
     return () => { alive = false; if (timer) clearTimeout(timer); if (iv) clearInterval(iv); };
@@ -950,8 +966,12 @@ function App() {
   const [gamepadError, setGamepadError] = useState(null);   // {msg, needsDriver}
   const handleGamepadToggle = (on) => {
     setGamepadOn(on);
-    if (on) { setGamepadError(null); apiCall("set_gamepad_map", gamepadMap); }
-    apiCall("set_gamepad_capture", on).then(r => {
+    if (on) setGamepadError(null);
+    // pywebview runs every bridge call on its own thread, so two back-to-back
+    // calls are NOT ordered. Push the map first and only then enable capture,
+    // or the pad could open with the previous map and immediately reopen.
+    const prep = on ? apiCall("set_gamepad_map", gamepadMap) : Promise.resolve();
+    prep.then(() => apiCall("set_gamepad_capture", on)).then(r => {
       if (!(r && r.ok)) {
         setGamepadOn(false);
         setGamepadError({ msg: (r && r.error) || "failed", needsDriver: !!(r && r.needs_vigembus) });
@@ -973,8 +993,17 @@ function App() {
 
   const handlePickSwitch = (id) => {
     setSwitchId(id);
-    const map = { hm1: 1, hh1: 2, cy1: 3, tc1: 5 };
-    if (connected) apiCall("set_switch_codes", Array.from(selectedKeys), map[id] || 1);
+    // Pass the registry switch id itself: Api.set_switch_codes resolves it
+    // against THE ACTIVE BOARD's `actuation.switches` table and fails closed on
+    // an unknown id. (A hardcoded id→code table here would silently send the
+    // Win60's bytes to every other board.)
+    // A board that declares no table (or no board data at all — registry
+    // unreadable) can only take a raw code, so keep the legacy Win60 bytes
+    // for exactly that case.
+    const table = board && board.actuation && board.actuation.switches;
+    const legacy = { hm1: 1, hh1: 2, cy1: 3, tc1: 5 };
+    const arg = (Array.isArray(table) && table.length) ? String(id) : (legacy[id] || 1);
+    if (connected) apiCall("set_switch_codes", Array.from(selectedKeys), arg);
   };
 
   // Effect zones (Custom mode): a group of keys running their own effect.
@@ -1079,7 +1108,11 @@ function App() {
                                    brightness, speed, direction, striOrient })
         : null;
       if (built) {
-        built.calls.forEach(c => apiCall(...c));
+        // Sequential, not forEach: pywebview dispatches each bridge call on
+        // its own thread, so ["stop_multicolor", "set_light"] fired together
+        // can land as set_light THEN stop — the engine's last frame overwrites
+        // the static colour and the board is left on stale Custom pixels.
+        callSeq(built.calls);
         // Honest fallback: the selected mode exists on neither this board's
         // firmware nor the host engine — static was shown instead of silently
         // sending a byte that may mean OFF. Same notice pipe as the backend's
@@ -1102,12 +1135,14 @@ function App() {
         apiCall("start_multicolor", pattern, colors.map(hexToRgbArr),
                 bgScaled, brightness, speed, direction, striOrient);
       } else {
-        apiCall("stop_multicolor");
         const [r, g, b] = hexToRgbArr(colors[0] || "#ffffff");
         const [br, bg, bb] = bgScaled;
-        apiCall("set_light", MODE_BYTE[pattern] ?? 0, r, g, b,
-                briByte(brightness), spdByte(speed), br, bg, bb, direction, power,
-                fullColor ? 1 : 0);
+        callSeq([
+          ["stop_multicolor"],
+          ["set_light", MODE_BYTE[pattern] ?? 0, r, g, b,
+           briByte(brightness), spdByte(speed), br, bg, bb, direction, power,
+           fullColor ? 1 : 0],
+        ]);
       }
     }, 70);
     return () => clearTimeout(lightTimer.current);
@@ -1133,15 +1168,18 @@ function App() {
         direction,
       })));
     } else {
-      apiCall("stop_multicolor");
       const map = {};
       Object.entries(perKeyColors || {}).forEach(([code, hex]) => { map[code] = hexToRgbArr(hex); });
       // Brightness/speed steps on THIS board's scale (Win60: 4 == the default,
       // so its bytes are unchanged; MINI 60 HE PRO: 5).
       const bl = (boardRef.current && boardRef.current.lighting) || null;
-      apiCall("set_custom_colors", map,
-              briByte(brightness, (bl && bl.brightnessMax) || 4),
-              spdByte(speed, (bl && bl.speedMax) || 4));
+      // Ordered: the engine must be stopped BEFORE the per-key table lands.
+      callSeq([
+        ["stop_multicolor"],
+        ["set_custom_colors", map,
+         briByte(brightness, (bl && bl.brightnessMax) || 4),
+         spdByte(speed, (bl && bl.speedMax) || 4)],
+      ]);
     }
   }, [connected, pattern, perKeyColors, brightness, speed, zones, direction, bgColor, bgBright, lightNonce, calibrating, boardSlug]);
 
@@ -1204,13 +1242,19 @@ function App() {
       return;
     }
     apiCall("open_analog_codes", []);   // [] = all keys
-    let alive = true;
+    let alive = true, inflight = false;
     const id = setInterval(() => {
+      // Hidden window: nobody can see the board, so don't serialise ~60 key
+      // depths over the bridge 30x/s. `inflight` stops ticks queueing up
+      // behind a slow bridge round-trip (WebView2 can stall for tens of ms).
+      if (document.hidden || inflight) return;
+      inflight = true;
       apiCall("read_live").then(d => {
+        inflight = false;
         if (alive && d && typeof d === "object" && !(d.ok === false)) {
           setLiveDepths(prev => JSON.stringify(prev) === JSON.stringify(d) ? prev : d);
         }
-      });
+      }).catch(() => { inflight = false; });
     }, 33);   // ~30fps — smooth enough for visual depth, doesn't starve the lighting stream
     return () => { alive = false; clearInterval(id); };
   }, [connected, travelTest]);
@@ -1251,12 +1295,19 @@ function App() {
   // writes — I/O that releases the GIL — so the extra polls have room. The
   // dedupe below skips a re-render whenever the frame hasn't changed, so a
   // board capped below 60fps (its engine produces frames slower) costs nothing.
-  const MIRROR_MS = Math.round(1000 / 60);   // keep in step with effects.FPS
+  //
+  // A board that declares `lighting.hostEngineMaxFps` (MINI 60 HE PRO: 28)
+  // produces frames no faster than that, so polling it at 60 Hz would just
+  // fetch the same frame twice; poll at the engine's actual rate instead.
+  const mirrorFps = Math.max(1, Math.min(60,
+    (board && board.lighting && +board.lighting.hostEngineMaxFps) || 60));
+  const MIRROR_MS = Math.round(1000 / mirrorFps);   // keep in step with effects.FPS
   useEffect(() => {
     if (!connected || section !== "lighting") { setLightFrame(null); return; }
     let alive = true, inflight = false;
     const id = setInterval(() => {
       if (inflight) return;                  // don't queue behind a slow bridge call
+      if (document.hidden) return;           // nothing to mirror to while minimised
       inflight = true;
       apiCall("get_light_frame").then(f => {
         inflight = false;
@@ -1266,7 +1317,7 @@ function App() {
       }).catch(() => { inflight = false; });
     }, MIRROR_MS);
     return () => { alive = false; clearInterval(id); };
-  }, [connected, section]);
+  }, [connected, section, MIRROR_MS]);
 
   // Deepest currently-pressed key, for the switch-cutaway animation.
   const liveMax = useMemo(() => {

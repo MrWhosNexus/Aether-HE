@@ -54,6 +54,9 @@
     }, [open]);
     if (!open) return null;
     const startCapture = async () => {
+      // A second click while a poll is already running would overwrite pollRef
+      // and orphan the first interval (it would poll forever, past close).
+      if (pollRef.current) return;
       setReports([]);
       setKeysSeen(0);
       await api().open_capture?.(dev.path, dev.vid, dev.pid);
@@ -75,7 +78,10 @@
       }, 200);
     };
     const stopCapture = async () => {
-      if (pollRef.current) clearInterval(pollRef.current);
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
       setCapturing(false);
       await api().stop_capture?.();
     };

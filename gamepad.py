@@ -34,6 +34,7 @@ TRAVEL_FLOOR_MM = 0.15
 # --- backend probing --------------------------------------------------------
 
 _BACKEND = None   # "evdev" | "vgamepad" | None
+_vg = None        # the vgamepad module when that backend is active
 
 try:
     if sys.platform.startswith("linux"):
@@ -43,7 +44,9 @@ try:
 except Exception:
     pass
 
-if _BACKEND is None:
+if _BACKEND is None and sys.platform.startswith("win"):
+    # vgamepad is Windows-only (it ships the ViGEm client DLL); importing it
+    # elsewhere just raises, so don't even try.
     try:
         import vgamepad as _vg
         _BACKEND = "vgamepad"
@@ -83,6 +86,8 @@ def install_vigembus_driver():
         return {"ok": False, "error": "ViGEmBus_Setup.exe not bundled with this build"}
     try:
         import ctypes
+        shell32 = ctypes.WinDLL("shell32", use_last_error=True)
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
         SEE_MASK_NOCLOSEPROCESS = 0x40
         SEE_MASK_NOASYNC = 0x100
         class SHELLEXECUTEINFOW(ctypes.Structure):
@@ -103,32 +108,52 @@ def install_vigembus_driver():
         sei.lpFile = setup
         sei.lpParameters = "/quiet /norestart"   # ViGEmBus uses WiX → MSI flags
         sei.nShow = 1
-        if not ctypes.windll.shell32.ShellExecuteExW(ctypes.byref(sei)):
-            err = ctypes.windll.kernel32.GetLastError()
+        if not shell32.ShellExecuteExW(ctypes.byref(sei)):
+            err = ctypes.get_last_error()
             # 1223 == ERROR_CANCELLED (user declined UAC)
-            return {"ok": False, "error": f"installer launch failed (code {err})"}
-        ctypes.windll.kernel32.WaitForSingleObject(sei.hProcess, 0xFFFFFFFF)
+            msg = "cancelled at the UAC prompt" if err == 1223 else f"code {err}"
+            return {"ok": False, "error": f"installer launch failed ({msg})"}
+        if not sei.hProcess:
+            return {"ok": False, "error": "installer launched but no process handle returned"}
+        kernel32.WaitForSingleObject(sei.hProcess, 0xFFFFFFFF)
         code = ctypes.c_ulong(0)
-        ctypes.windll.kernel32.GetExitCodeProcess(sei.hProcess, ctypes.byref(code))
-        ctypes.windll.kernel32.CloseHandle(sei.hProcess)
+        kernel32.GetExitCodeProcess(sei.hProcess, ctypes.byref(code))
+        kernel32.CloseHandle(sei.hProcess)
+        if code.value == 0:
+            # A fresh install invalidates any cached "driver missing" answer.
+            global _VIGEM_PRESENT
+            _VIGEM_PRESENT = None
         return {"ok": code.value == 0, "exit_code": code.value,
                 "error": "" if code.value == 0 else f"installer exited {code.value}"}
     except Exception as ex:
         return {"ok": False, "error": f"{type(ex).__name__}: {ex}"}
 
 
+# Cached answer of vigembus_present(). Probing means creating (and tearing
+# down) a virtual Xbox pad, which makes Windows enumerate a controller that
+# every running game sees appear and vanish — not something to do on every
+# status poll. A positive answer is sticky; a negative one is re-probed
+# after install_vigembus_driver() succeeds (it resets this to None).
+_VIGEM_PRESENT = None
+
+
 def vigembus_present():
-    """Cheap probe — try to instantiate a virtual pad and immediately reset.
-    Returns True if the driver is installed and accepting clients."""
+    """Is the ViGEmBus driver installed and accepting clients? Probes once by
+    instantiating a virtual pad; the result is cached (see _VIGEM_PRESENT)."""
+    global _VIGEM_PRESENT
     if _BACKEND != "vgamepad" or _vg is None:
         return False
+    if _VIGEM_PRESENT is not None:
+        return _VIGEM_PRESENT
     try:
         p = _vg.VX360Gamepad()
         try: p.reset(); p.update()
         except Exception: pass
-        return True
+        del p
+        _VIGEM_PRESENT = True
     except Exception:
-        return False
+        _VIGEM_PRESENT = False
+    return _VIGEM_PRESENT
 
 
 @dataclass(frozen=True)
@@ -157,6 +182,7 @@ DEFAULT_DRIVING_MAP = [
 _STICK_AXES = {"LX", "LY", "RX", "RY"}
 _TRIG_AXES = {"LT", "RT"}
 _BTN_AXES = {"BTN_A", "BTN_B", "BTN_X", "BTN_Y", "BTN_LB", "BTN_RB"}
+KNOWN_AXES = _STICK_AXES | _TRIG_AXES | _BTN_AXES
 
 
 # --- shared ----------------------------------------------------------------
@@ -166,13 +192,26 @@ class VirtualGamepad:
 
     def __init__(self, mappings=None, max_travel_mm=MAX_TRAVEL_MM):
         if _BACKEND is None:
-            raise RuntimeError(
-                "No virtual-gamepad backend available. "
-                "Install python-evdev (Linux) or vgamepad + ViGEmBus (Windows)."
-            )
+            if sys.platform.startswith("win"):
+                hint = ("the 'vgamepad' package is not installed in this build "
+                        "(pip install vgamepad), and ViGEmBus must be installed")
+            elif sys.platform.startswith("linux"):
+                hint = "install python-evdev (pip install evdev)"
+            else:
+                hint = "virtual gamepads are supported on Linux (uinput) and Windows (ViGEmBus) only"
+            raise RuntimeError(f"No virtual-gamepad backend available: {hint}.")
         self.mappings = list(mappings or DEFAULT_DRIVING_MAP)
+        bad = sorted({m.axis for m in self.mappings if m.axis not in KNOWN_AXES})
+        if bad:
+            raise ValueError(f"unknown gamepad control(s): {', '.join(bad)}")
+        if not self.mappings:
+            raise ValueError("no key mappings — add at least one key → control row")
         self.max_travel = max_travel_mm
         self._impl = None
+        # Depth signature of the last frame pushed to the backend, so a
+        # 120 Hz capture loop only touches the device when something moved.
+        self._keys = tuple(sorted({m.key for m in self.mappings}))
+        self._last_sig = None
 
     def open(self):
         self._impl = (
@@ -181,14 +220,22 @@ class VirtualGamepad:
             else _VgamepadPad(self.mappings, self.max_travel)
         )
         self._impl.open()
+        self._last_sig = None
         return self
 
     def is_open(self):
         return self._impl is not None and self._impl.is_open()
 
     def update(self, depths):
-        if self._impl is not None:
-            self._impl.update(depths)
+        """Push the mapped keys' depths (mm) to the backend. Idempotent on an
+        unchanged frame: nothing is written when no mapped key moved."""
+        if self._impl is None:
+            return
+        sig = tuple(depths.get(k, 0.0) for k in self._keys)
+        if sig == self._last_sig:
+            return
+        self._last_sig = sig
+        self._impl.update(depths)
 
     def close(self):
         if self._impl is not None:
@@ -231,6 +278,8 @@ class _EvdevPad:
             )
         if not cap[e.EV_KEY]:
             del cap[e.EV_KEY]
+        if not cap[e.EV_ABS]:
+            del cap[e.EV_ABS]
         try:
             self._ui = UInput(cap, name="Aula Win60 HE Virtual Gamepad",
                               vendor=0x2E3C, product=0xC365, version=1)

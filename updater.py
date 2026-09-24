@@ -26,6 +26,7 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.error
 import urllib.request
 
 import version
@@ -299,7 +300,12 @@ def apply_update(asset_url, asset_name=None, asset_size=None, asset_sha256=None)
     if not asset_url:
         return {"ok": False, "error": "no installable asset for this platform"}
     kind = platform_kind()
-    name = asset_name or os.path.basename(asset_url.split("?")[0])
+    # basename() on BOTH sources: the asset name comes over the JS bridge, and
+    # a name with a path separator would otherwise let the download land
+    # outside the download dir.
+    name = os.path.basename(asset_name or "") or os.path.basename(asset_url.split("?")[0])
+    if not name:
+        return {"ok": False, "error": "asset has no usable filename"}
 
     if asset_sha256 is None:
         # Re-derive from the release rather than trusting an unverified download.
@@ -357,6 +363,12 @@ def apply_update(asset_url, asset_name=None, asset_size=None, asset_sha256=None)
                 capture_output=True, text=True, timeout=300)
             if cp.returncode != 0:
                 return {"ok": False, "error": (cp.stderr or cp.stdout or "install failed").strip()}
+            # The bundle (tens of MB) has been copied into the flatpak repo;
+            # don't leave one behind in $XDG_DATA_HOME per update.
+            try:
+                os.remove(dest)
+            except OSError:
+                pass
             return {"ok": True, "action": "installed", "restart": True}
         # Bare Linux / macOS / source checkout: nothing safe to auto-install.
         return {"ok": True, "action": "downloaded", "path": dest}

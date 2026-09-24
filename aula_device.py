@@ -84,6 +84,17 @@ def enumerate_interfaces(vid=AULA_VID, pid=AULA_PID):
 
 
 def find_vendor_interface(vid=AULA_VID, pid=AULA_PID, usage_page=VENDOR_USAGE_PAGE):
+    """Pick the vendor-config HID collection for (vid, pid).
+
+    Preferred: the collection whose usage_page matches (0xFF1B on the Win60).
+    Windows and macOS hidapi report usage pages per top-level collection, so
+    this is the normal path there. Linux hidraw reports usage_page=0 for
+    every interface (see docs/context/aula-win60-hidapi-usage-page-quirk.md),
+    so fall back to the highest interface_number — and within that interface
+    prefer a vendor-defined usage page (0xFF00..0xFFFF) over a generic one, so
+    a platform that DOES split an interface into several collections never
+    hands us the keyboard/consumer collection that shares its number.
+    """
     matches = enumerate_interfaces(vid, pid)
     if not matches:
         return None
@@ -93,9 +104,14 @@ def find_vendor_interface(vid=AULA_VID, pid=AULA_PID, usage_page=VENDOR_USAGE_PA
     log.warning(
         "No 0x%04X usage page found; falling back to highest interface_number. Interfaces: %s",
         usage_page,
-        [(m["interface_number"], m["usage_page"]) for m in matches],
+        [(m.get("interface_number"), m.get("usage_page")) for m in matches],
     )
-    return max(matches, key=lambda m: m["interface_number"])
+
+    def rank(m):
+        up = m.get("usage_page") or 0
+        return (m.get("interface_number", -1), 0xFF00 <= up <= 0xFFFF, up)
+
+    return max(matches, key=rank)
 
 
 class AulaDevice:
@@ -137,8 +153,17 @@ class AulaDevice:
                 pass
             raise
         with self._lock:
+            # Re-opening while a handle is still held (connect() called twice,
+            # e.g. the Pair button racing the auto-reconnect watchdog) must not
+            # leak the old hidraw/HID handle.
+            old = self._dev
             self._dev = dev
             self._info = info
+        if old is not None:
+            try:
+                old.close()
+            except Exception:
+                pass
         log.info(
             "Opened Aula interface %s (usage_page=0x%04X)",
             info["interface_number"],
