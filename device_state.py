@@ -324,27 +324,9 @@ class CalibrationReader:
         self._thread = None
 
 
-def read_actuation(device, keymap):
-    """Read each key's current actuation (travel mm) via cmd33/sub5. Returns
-    {name: mm}. Best-effort; blocks briefly per key."""
-    out = {}
-    # All handle access goes through the inner-lock-guarded AulaDevice methods
-    # (never device._dev directly) so reads can't tear against a reader thread.
-    device.set_nonblocking(True)
-    for k in keymap.keys:
-        idx = int(k["index"])
-        rq = [0] * 63
-        rq[0] = 33; rq[4] = 24; rq[5] = 5; rq[6] = idx // 22; rq[7] = idx % 22
-        try:
-            device.write([protocol.REPORT_ID] + rq)
-        except Exception:
-            break
-        t = time.time()
-        while (time.time() - t) < 0.04:
-            r = device.read(64, timeout_ms=0)
-            if r and r[1] == 33 and r[5] == 5:
-                parsed = protocol.parse_trigger_read(bytes(r[1:]))
-                out[k["name"]] = round(parsed["travel"] / 100.0, 2)
-                break
-            time.sleep(0.001)
-    return out
+# The old module-level read_actuation() sweep was removed: it filtered on raw
+# r[5] == 5 (the payload LENGTH byte — 0x0c on the real readTriggerData reply,
+# 5 only on a live travel-test frame) and decoded travel at the stream-frame
+# offsets, so it never saw a config reply and could book live depth as the
+# stored actuation. The working read-back is Win60Driver.read_trigger_config
+# / read_actuation (protocol.parse_trigger_config, CONFIRMED-BY-CAPTURE).

@@ -200,6 +200,14 @@ class Mini60Driver(BoardDriver):
     # semantics are impossible on this hardware.
     DEADBAND_SCOPE = "global"
 
+    #: Macro limits (0x15/0x25 address space: 100 directory slots, u16
+    #: word count, u16 LE delays; play modes per key_record_macro).
+    MACRO_SLOTS = pm.MACRO_SLOTS
+    MACRO_MAX_EVENTS = 0x7FFF
+    MACRO_MAX_DELAY_MS = 0xFFFF
+    MACRO_MAX_REPEAT = 0xFF
+    MACRO_PLAY_MODES = (0, 1, 2)
+
     def __init__(self, profile, device, lock=None):
         super().__init__(profile, device, lock)
         # Frame size from the board profile (registry frameLen; wired 64
@@ -242,6 +250,14 @@ class Mini60Driver(BoardDriver):
         """Write one `frame_len`-byte vendor frame (0x00 report-id prefixed)."""
         self._guard(frame)
         self._write(pm.to_report(frame))
+
+    def send_raw(self, report):
+        """Developer-console raw report (report id at [0]); the vendor frame
+        behind it goes through the same DANGEROUS_CMDS guard as every
+        driver-built frame."""
+        report = [int(b) & 0xFF for b in report]
+        self._guard(report[1:])
+        self._write(report)
 
     def _drain(self, max_frames=64):
         """Discard stale input reports (e.g. the firmware's echo-acks of our
@@ -706,20 +722,32 @@ class Mini60Driver(BoardDriver):
         emits the identical frames it always did)."""
         self._patch_key_records({key_index: record})
 
-    def bind_macro(self, key_index, macro_index, play_mode=0, loop_count=1):
+    def bind_macro(self, key_index, macro_index, play_mode=0, loop_count=1,
+                   **_context):
         """Bind macro slot `macro_index` to key-table record `key_index`
         (matrix position) as a pageType-6 record, preserving every other
         record byte-for-byte. play_mode 0/1 are CONFIRMED-BY-CAPTURE;
-        mode 2 ("press again to end") is accepted but NOT CAPTURED."""
+        mode 2 ("press again to end") is accepted but NOT CAPTURED.
+        (`_context` = the whole-layer keymap context the Api passes for the
+        Win60; a key-table board needs none of it.)"""
         self._patch_key_record(
             key_index,
-            pm.key_record_macro(macro_index, play_mode, loop_count))
+            pm.key_record_macro(macro_index,
+                                0 if play_mode is None else play_mode,
+                                1 if loop_count is None else loop_count))
 
-    def unbind_key(self, key_index):
+    def unbind_key(self, key_index, **_context):
         """Clear key-table record `key_index` back to UNASSIGNED
         (00 00 00 00 — the captured state of unbound keys), preserving
         every other record."""
         self._patch_key_record(key_index, pm.key_record_unassigned())
+
+    def read_macro_bindings(self):
+        """{key index: macro slot} for every pageType-6 record in the key
+        table (a filtered read_key_records)."""
+        return {idx: rec["macro_index"]
+                for idx, rec in self.read_key_records().items()
+                if rec.get("type") == "macro"}
 
     def _read_macro_body(self, offset):
         """The vendor two-step body read: 4-byte count at `offset`, then
@@ -760,9 +788,11 @@ class Mini60Driver(BoardDriver):
             raise ValueError(f"macro slot must be 0..{pm.MACRO_SLOTS - 1}")
         return self._read_macros().get(idx)
 
-    def write_macro(self, index, events):
+    def write_macro(self, index, events, **_playback):
         """Store `events` ([(delay_ms, hid_usage, is_down), ...]) in macro
-        slot `index`; an empty/None event list deletes the slot. Strict
+        slot `index`; an empty/None event list deletes the slot. (This
+        board keeps playback mode/count in the key BINDING, so any
+        `_playback` kwargs the Api passes are ignored here.) Strict
         read-modify-write of the WHOLE macro table — the vendor driver
         rewrites the 400-byte header and every body on each save (a
         partial header write would orphan the other macros' offsets), and

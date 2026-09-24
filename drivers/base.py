@@ -79,6 +79,16 @@ class BoardDriver:
     #: stores dead zones in a global config table, not per key.
     DEADBAND_SCOPE = "per-key"
 
+    #: Macro storage limits the Api validates against (and reports to the
+    #: UI) — overridden by drivers that implement "macros". Zero slots
+    #: means "none"; the Api never needs a protocol module for these.
+    MACRO_SLOTS = 0
+    MACRO_MAX_EVENTS = 0
+    MACRO_MAX_DELAY_MS = 0xFFFF
+    MACRO_MAX_REPEAT = 0xFFFF
+    #: Accepted `play_mode` values for bind_macro / write_macro.
+    MACRO_PLAY_MODES = (0, 1, 2)
+
     def __init__(self, profile, device, lock=None):
         """`profile` is a boards.BoardProfile (or None for the legacy
         registry-unavailable fallback), `device` an aula_device.AulaDevice,
@@ -205,7 +215,10 @@ class BoardDriver:
     def set_poll_rate(self, rate):
         self._unsupported("poll_rate")
 
-    def write_keymap(self, default_hids, overrides, layer_indices, fn_layer_raw):
+    def write_keymap(self, default_hids, overrides, layer_indices, fn_layer_raw,
+                     restore_indices=()):
+        """Whole-layer base keymap write with `overrides` ({index: hid})
+        applied and `restore_indices` returned to their layout default."""
         self._unsupported("remap")
 
     def read_keymap_layer(self, fn_layer=False, timeout_s=1.5):
@@ -233,28 +246,52 @@ class BoardDriver:
     def set_gamepad_mode(self, on):
         self._unsupported("gamepad_mode")
 
+    def send_raw(self, report):
+        """Write one raw output report (report id at [0]) from the developer
+        console. Implementations MUST run it through the board's never-send
+        guard first (the MINI's DANGEROUS_CMDS, the Win60's
+        protocol.dangerous_command_reason) — this is the only path where a
+        human-typed frame reaches the wire. Boards without a guard table
+        refuse rather than pass bytes through unchecked."""
+        self._unsupported("raw_send")
+
     # ---- macros (feature key "macros") ----
     def list_macros(self):
         """All stored macros: {slot: [(delay_ms, hid_usage, is_down), ...]}."""
         self._unsupported("macros")
 
     def read_macro(self, index):
-        """One macro slot as an event list, or None if the slot is empty."""
+        """One macro slot, or None if the slot is empty. Boards that store
+        only events return the event list; boards whose slot also carries
+        playback settings (Win60: play_mode + repeat_count in the slot
+        header) return a dict {"events": [...], ...} — callers normalise via
+        `m["events"] if isinstance(m, dict) else m`."""
         self._unsupported("macros")
 
-    def write_macro(self, index, events):
-        """Store `events` ([(delay_ms, hid_usage, is_down), ...]) in macro
-        slot `index`; an empty/None event list deletes the slot."""
+    def write_macro(self, index, events, **playback):
+        """Store `events` ([(delay_ms, hid_usage, is_down), ...] — delay =
+        the wait BEFORE the event, ms) in macro slot `index`; an empty/None
+        event list deletes the slot. `playback` holds board-specific slot
+        settings (Win60: play_mode, repeat_count)."""
         self._unsupported("macros")
 
-    def bind_macro(self, key_index, macro_index, play_mode=0, loop_count=1):
+    def bind_macro(self, key_index, macro_index, play_mode=0, loop_count=1,
+                   **context):
         """Bind macro slot `macro_index` to key-table record `key_index`
         (play_mode: 0 = once, 1 = fixed repeat count, 2 = press-again-to-
-        end where supported)."""
+        end where supported). `context` is board-specific keymap context a
+        whole-layer board needs to compose the write (Win60: default_hids,
+        layer_indices, overrides, fn_layer_raw)."""
         self._unsupported("macros")
 
-    def unbind_key(self, key_index):
-        """Clear key-table record `key_index` back to UNASSIGNED."""
+    def unbind_key(self, key_index, **context):
+        """Clear key-table record `key_index` back to UNASSIGNED (or, on a
+        whole-layer board, its plain default entry)."""
+        self._unsupported("macros")
+
+    def read_macro_bindings(self):
+        """{key index: macro slot} for every key currently bound to a macro
+        (read from the board's key table)."""
         self._unsupported("macros")
 
     # ---- plain key remap, one record at a time (feature key "key_remap") ----

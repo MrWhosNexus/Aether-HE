@@ -297,7 +297,12 @@ def test_win60_deadband_switch_socd_poll_gamepad_bytes():
                           protocol.build_close_trigger_test()]
 
 
-def test_win60_write_keymap_base_then_fn_and_fn_skip():
+def test_win60_write_keymap_base_then_fn_and_abort_without_fn():
+    """Write-only stub (no readable handle): legacy layout rebuild + Fn
+    replay, byte-for-byte. Without ANY Fn table the write is refused before
+    the first base packet — the old "skip the Fn write" path is exactly what
+    left the board stuck in Fn mode (tests/test_win60_settings_fixes.py
+    covers the read-modify-write path over a readable handle)."""
     d, dev = _win()
     defaults = {0: 0x29, 1: 0x1E}
     fn_raw = bytes([0, 1] * 264)
@@ -307,9 +312,9 @@ def test_win60_write_keymap_base_then_fn_and_fn_skip():
               + protocol.build_fn_keymap_table(fn_raw))
     assert dev.writes == expect
     dev.writes.clear()
-    d.write_keymap(defaults, {}, set(), None)    # no snapshot -> fn skipped
-    assert dev.writes == protocol.build_base_keymap_table(defaults, {},
-                                                          layer_indices=set())
+    with pytest.raises(RuntimeError):
+        d.write_keymap(defaults, {}, set(), None)    # no Fn table -> abort
+    assert dev.writes == []                          # nothing reached the wire
 
 
 def test_win60_write_auto_opens_closed_device():
@@ -810,37 +815,14 @@ def test_mini60_concurrent_rmw_no_lost_update():
     assert _key_rec(board, 20) == [0x02, 0x00, 0x05, 0x00]
 
 
-def test_read_actuation_goes_through_locked_wrapper_not_raw_dev():
-    """read_actuation must touch the handle only via the inner-lock-guarded
-    AulaDevice methods, never device._dev directly (audit round 2: the raw
-    read/set_nonblocking raced the reader threads). A tripwire _dev that
-    raises on ANY attribute access proves it."""
+def test_device_state_read_actuation_sweep_is_gone():
+    """The module-level device_state.read_actuation was dead code AND wrong
+    (it filtered on raw r[5] == 5 — the payload-length byte, 0x0c on the
+    real sub-5 reply — and decoded travel at the stream-frame offsets).
+    The only actuation read-back is the driver's read_trigger_config /
+    read_actuation (protocol.parse_trigger_config, capture-pinned)."""
     import device_state
-
-    class _Tripwire:
-        def __getattr__(self, name):
-            raise AssertionError(
-                f"read_actuation touched device._dev.{name} directly")
-
-    class _Dev:
-        def __init__(self):
-            self._dev = _Tripwire()
-            self.reads = 0
-            self.nonblock = None
-        def set_nonblocking(self, v):
-            self.nonblock = v
-        def write(self, payload):
-            return len(payload)
-        def read(self, n, timeout_ms=0):
-            self.reads += 1
-            return []
-
-    km = types.SimpleNamespace(keys=[{"index": 0, "name": "Esc"}])
-    dev = _Dev()
-    out = device_state.read_actuation(dev, km)   # must not raise
-    assert out == {}                 # empty reads -> nothing parsed, no crash
-    assert dev.nonblock is True      # went through the wrapper
-    assert dev.reads >= 1
+    assert not hasattr(device_state, "read_actuation")
 
 
 def test_mini60_set_key_remap_carries_the_modifier_bitmask():

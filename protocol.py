@@ -249,12 +249,28 @@ def parse_custom_number(body):
 
 
 # ---------------- actuation / trigger (cmd 33) ----------------
-def build_trigger(mode, key_indices, travel_mm, rt_press_mm=0.0, rt_release_mm=0.0):
-    """Set actuation (and Rapid Trigger) for the given device key indices.
-    interval1 = RT press sensitivity, interval2 = RT release."""
-    travel = mm_to_raw(travel_mm)
-    i1 = mm_to_raw(rt_press_mm)
-    i2 = mm_to_raw(rt_release_mm)
+#: The RT interval pair a factory-fresh WIN 60 HE stores on every key, in
+#: trigger units. CONFIRMED-BY-CAPTURE: the mount-time readTriggerData reply
+#: (webhid-capture-win60.json frame 173, before this session wrote anything)
+#: carries interval1 = interval2 = 1, and the vendor's first fixed-mode write
+#: (frame 922, `... 64 64 01 01`) echoes exactly that stored pair. The vendor
+#: NEVER sends zero intervals in mode 0 — setAnyTriggerValue always copies
+#: key.trigger.interval1/2, which readTriggerData filled at mount (agreement
+#: deobfuscated.js L1532-1538 / L966-969); frame 1842 ("Rapid Trigger -> OFF")
+#: is mode 0 with the previous RT pair `78 78` still in place. Used only as
+#: the fallback when a key's stored pair cannot be read back.
+TRIGGER_DEFAULT_INTERVAL_RAW = 1
+
+
+def build_trigger_raw(mode, key_indices, travel_raw, i1_raw, i2_raw):
+    """build_trigger() in raw trigger units (0.01 mm on the WIN 60 HE) —
+    the form to use when re-sending values READ BACK from the board, so a
+    stored pair round-trips byte-for-byte with no mm conversion."""
+    travel = int(travel_raw)
+    i1 = int(i1_raw)
+    i2 = int(i2_raw)
+    if not (0 <= travel <= 0xFFFF and 0 <= i1 <= 0xFFFF and 0 <= i2 <= 0xFFFF):
+        raise ValueError("trigger values must fit 16 bits")
     sub = [0] * 31
     sub[0] = mode & 0xFF
     mask = _keymask(key_indices)
@@ -272,6 +288,13 @@ def build_trigger(mode, key_indices, travel_mm, rt_press_mm=0.0, rt_release_mm=0
     d[4] = 24
     d[5:5 + 31] = sub
     return _wrap(d)
+
+
+def build_trigger(mode, key_indices, travel_mm, rt_press_mm=0.0, rt_release_mm=0.0):
+    """Set actuation (and Rapid Trigger) for the given device key indices.
+    interval1 = RT press sensitivity, interval2 = RT release."""
+    return build_trigger_raw(mode, key_indices, mm_to_raw(travel_mm),
+                             mm_to_raw(rt_press_mm), mm_to_raw(rt_release_mm))
 
 
 def build_open_trigger_test(key_indices):
@@ -315,7 +338,13 @@ def build_base_keymap_table(default_hids, overrides=None, layer_indices=None):
 
     `code1` is the key TYPE: 1 for the Fn/layer-shift key (`code === "KeyFn"`),
     0 for ordinary keys. Writing 0 for the Fn key makes the firmware treat Fn
-    as a normal key, which "sticks" the function layer."""
+    as a normal key, which "sticks" the function layer.
+
+    NOTE: this rebuilds the WHOLE table from the layout, so any binding the
+    board holds that Aether did not make (a vendor macro entry `10 <hid>
+    <slot> 00`, an advanced key) is zeroed. It is kept only for write-only
+    stubs; the driver's remap path composes over the board's read-back via
+    compose_base_keymap() + build_base_keymap_raw() instead."""
     overrides = overrides or {}
     layer_indices = set(layer_indices or ())
     table = bytearray(528)
@@ -648,8 +677,55 @@ def build_win_lock(disable_win=False, disable_shift_tab=False,
 
 
 def build_reset_keyboard():
+    """Factory reset (driver: resetKeyboard, deobfuscated.js L1477-1486 —
+    cmd 20, [4]=1, [5]=1). Wipes every stored setting. SOURCE-ONLY: never
+    sent in the capture and refused by dangerous_command_reason()."""
     d = _pkt(20); d[4] = 1; d[5] = 1
     return _wrap(d)
+
+
+def dangerous_command_reason(body):
+    """Why a raw WIN 60 HE report BODY (63 bytes, report id stripped) must
+    NOT be sent blind — the Win60 analogue of protocol_mini60.DANGEROUS_CMDS.
+    Returns a short reason string, or None if the body is not on the list.
+
+    Unlike the MINI's protocol (where whole command bytes are never-send),
+    every destructive Win60 operation shares its command byte with ordinary
+    settings, so this matches on the sub-selector too. Evidence, all from
+    driver_src/dec_agreement/deobfuscated.js and the capture notes:
+
+      * cmd 20 (0x14), [1]=0, [5]=1 — resetKeyboard (L1477-1486): factory
+        reset of every stored setting. The same cmd with [5]=0 is the
+        win-lock/perf write (L1455-1474, captured frames 4456-4481) and
+        [1]=1/2/3 are sleep-timer/gamepad (L1487-1523): those stay allowed.
+      * cmd 33 (0x21), [4]=24, [5]=6 — resetTrigger (build_reset_trigger):
+        wipes every key's actuation/RT config. The capture author
+        deliberately never sent it (WIN60_CAPTURE_NOTES.md "NOT EXERCISED").
+      * cmd 33, [4]=24, [5]=8 [6]=0 / [5]=15 [6]=0 — calibration START
+        (reviseKeys; build_calibration). Arming wipes the board's stored
+        calibration and leaves it in calibration mode until stopped with
+        the matching stop frame; Api.calibrate() is the only path that
+        pairs the arm with a reader and the disconnect-disarm contract.
+        The stop frames (8/1, 16/0) are harmless and stay allowed.
+
+    No firmware/bootloader command exists in the vendor web driver: its
+    "firmware" feature (wmIndex checkFirmwareVersion/downloadFirmware)
+    only downloads a separate updater archive listed in
+    config__firmware.json — nothing is sent over HID — so there is no
+    boot/IAP command byte to list here.
+    """
+    b = list(body)
+    if len(b) < 7:
+        return None
+    if b[0] == 20 and b[1] == 0 and b[5] == 1:
+        return "cmd 20 [5]=1 is resetKeyboard (factory reset)"
+    if b[0] == 33 and b[4] == 24:
+        if b[5] == 6:
+            return "cmd 33 sub 6 is resetTrigger (wipes every key's actuation)"
+        if b[5] in (8, 15) and b[6] == 0:
+            return ("cmd 33 sub %d/0 arms calibration (wipes stored calibration; "
+                    "use the Calibration tab, which disarms on abort)" % b[5])
+    return None
 
 
 def build_heartbeat():
@@ -790,57 +866,127 @@ def parse_max_trigger_travel(body, high_precision=False):
 
 # ---------------- macros (cmd 25 / 0x19) ----------------
 # CONFIRMED-BY-CAPTURE, and a COMPLETELY DIFFERENT format from the MINI 60's
-# macro protocol (protocol_mini60) — do not unify them. 10 slots x 256 bytes,
-# written in 5 chunks (4 x 58 + 24). Slot image: 8-byte header
-# [slot, slot, event_bytes_hi, event_bytes_lo, 0, repeat_count, 0, 0]
-# (event length BIG-endian), then 4-byte events
-# [hid_code, 0x10 down | 0x00 up, delay_ms_hi, delay_ms_lo] (delay BE,
-# measured after the event). A macro fires from a key via the keymap entry
-# [0x10, hid_code, macro_slot, 0] — see macro_keymap_entry(). An unused slot
-# reads back as all 0xFF.
+# macro protocol (protocol_mini60) — do not unify them. 10 slots x 256 bytes
+# (deobfuscated.js L1200 reads slots 128..137, L1222 writes slots 0..9 of a
+# 256-byte ArrayBuffer), written in 5 chunks (4 x 58 + 24, L1260-1281).
+#
+# Slot image — 8-byte header, from setMacroValue (L1232-1238):
+#   [0] macro index (| 0x80 when the vendor re-sends a macro already used by
+#       an earlier key — a "duplicate" flag Aether never sets: one slot per
+#       macro, any number of keys may point at it via the keymap)
+#   [1] PLAY MODE = MacroKey.type (getMacroType(): 0 = operate once,
+#       1 = operate N times, 2 = toggle, 3 = hold-to-repeat). The captured
+#       slots read 00/01 here, which an earlier decode mistook for the slot
+#       index duplicated — slot 0 was "once" (type 0) and slot 1 "3 times"
+#       (type 1), so the bytes were identical under both readings. Only
+#       modes 0 and 1 were exercised on the wire; 2 and 3 are NOT VERIFIED.
+#   [2..3] event-block length in BYTES, big-endian ([3] = steps * 4 at L1236;
+#       [2] is never written by the vendor and stays 0 — 62 events max fit)
+#   [4..5] repeat count, big-endian (L1237-1238; "Operate Once" = 1)
+#   [6..7] 0
+# then 4-byte events (L1248-1251): [hid_code, state<<4 | type, delay_hi,
+# delay_lo] — state 1 = key DOWN (0x10), 0 = UP; type 0 = keyboard usage,
+# 1 = mouse button (NOT supported here). The delay is big-endian ms and is
+# the delay AFTER this event: the vendor stores step[i+1].delay into event i
+# (L1244-1247) and shifts it back by one on read (L505-512), because its UI
+# keeps each step's delay as the wait BEFORE that step. Aether's event tuples
+# use that same UI convention — (delay_before_ms, hid_code, is_down), the
+# drivers/base.py contract — and this module converts at the wire.
+#
+# A macro fires from a key via the keymap entry [0x10, hid_code, macro_slot,
+# 0] — see macro_keymap_entry(). An unused slot reads back as all 0xFF
+# (never written) or all 0x00 (the vendor writes zeros for empty slots).
 MACRO_SLOTS = 10
 MACRO_SLOT_BYTES = 256
 MACRO_EVENT_DOWN = 0x10
 MACRO_EVENT_UP = 0x00
 MACRO_MAX_EVENTS = (MACRO_SLOT_BYTES - 8) // 4   # 62
+MACRO_MAX_DELAY_MS = 0xFFFF
+MACRO_MAX_REPEAT = 0xFFFF
+#: Header byte 1 — the vendor's macroType radio (getMacroType()).
+MACRO_PLAY_ONCE = 0        # CONFIRMED-BY-CAPTURE (slot 0, count 1)
+MACRO_PLAY_REPEAT = 1      # CONFIRMED-BY-CAPTURE (slot 1, count 3)
+MACRO_PLAY_TOGGLE = 2      # SOURCE-ONLY (macroType3) — NOT VERIFIED
+MACRO_PLAY_HOLD = 3        # SOURCE-ONLY (macroType4) — NOT VERIFIED
+MACRO_PLAY_MODES = (MACRO_PLAY_ONCE, MACRO_PLAY_REPEAT,
+                    MACRO_PLAY_TOGGLE, MACRO_PLAY_HOLD)
+#: Keymap entry type byte that routes a key to a macro slot.
+KEYMAP_TYPE_MACRO = 0x10
 
 
-def build_macro_table(slot, events, repeat_count=1):
-    """Build the 256-byte slot image. `events` is a sequence of
-    (hid_code, is_down, delay_ms) tuples; delay is the ms measured AFTER the
-    event (BE16 on the wire). repeat_count: UI "Operate Once" = 1,
-    "Operate N times" = N (macro types 3/4 — toggle / hold — are NOT
-    VERIFIED and not built here)."""
+def validate_macro_events(events):
+    """Normalise + validate a macro event list. Accepts tuples
+    (delay_before_ms, hid_code, is_down) or dicts {delay, hid, down} (the
+    JS bridge shape) and returns a list of tuples. Raises ValueError on a
+    bad count, HID usage outside 0..255, or a delay outside 0..65535."""
+    out = []
+    for ev in list(events or ()):
+        if isinstance(ev, dict):
+            delay, hid, down = ev.get("delay", 0), ev.get("hid"), ev.get("down")
+        else:
+            delay, hid, down = ev
+        try:
+            delay = int(delay)
+            hid = int(hid)
+        except (TypeError, ValueError):
+            raise ValueError("macro event needs integer delay and hid: %r" % (ev,))
+        if not 0 <= hid <= 0xFF:
+            raise ValueError("macro HID usage must be 0..255, got %d" % hid)
+        if not 0 <= delay <= MACRO_MAX_DELAY_MS:
+            raise ValueError("macro delay must be 0..%d ms, got %d"
+                             % (MACRO_MAX_DELAY_MS, delay))
+        out.append((delay, hid, bool(down)))
+    if len(out) > MACRO_MAX_EVENTS:
+        raise ValueError("macro too long: max %d events" % MACRO_MAX_EVENTS)
+    return out
+
+
+def build_macro_table(slot, events, repeat_count=1, play_mode=MACRO_PLAY_ONCE):
+    """Build the 256-byte slot image. `events` = [(delay_before_ms,
+    hid_code, is_down), ...] (delay = wait BEFORE the event, the vendor-UI
+    and drivers/base.py convention); the wire's delay-after is derived by
+    shifting one step, exactly as setMacroValue does (L1244-1247). An
+    empty/None `events` builds the all-zero slot the vendor writes for an
+    unused slot (deletes it). repeat_count: "Operate Once" = 1, "Operate N
+    times" = N. play_mode: header byte 1 (MACRO_PLAY_*)."""
     slot = int(slot)
     if not 0 <= slot < MACRO_SLOTS:
         raise ValueError("macro slot out of range 0..9")
-    events = list(events or ())
-    if len(events) > MACRO_MAX_EVENTS:
-        raise ValueError("macro too long: max %d events" % MACRO_MAX_EVENTS)
+    events = validate_macro_events(events)
+    play_mode = int(play_mode)
+    if play_mode not in MACRO_PLAY_MODES:
+        raise ValueError("macro play mode must be 0..3, got %d" % play_mode)
+    repeat_count = int(repeat_count)
+    if not 0 <= repeat_count <= MACRO_MAX_REPEAT:
+        raise ValueError("macro repeat count must be 0..%d" % MACRO_MAX_REPEAT)
     table = [0] * MACRO_SLOT_BYTES
+    if not events:
+        return table
     table[0] = slot
-    table[1] = slot
+    table[1] = play_mode
     n = len(events) * 4
     table[2] = (n >> 8) & 0xFF
     table[3] = n & 0xFF
-    table[5] = int(repeat_count) & 0xFF
+    table[4] = (repeat_count >> 8) & 0xFF
+    table[5] = repeat_count & 0xFF
     off = 8
-    for hid_code, is_down, delay_ms in events:
-        delay = max(0, int(delay_ms))
-        table[off] = int(hid_code) & 0xFF
+    for i, (_delay_before, hid_code, is_down) in enumerate(events):
+        # wire delay = the NEXT step's wait-before; the last event gets 0
+        delay_after = events[i + 1][0] if i + 1 < len(events) else 0
+        table[off] = hid_code
         table[off + 1] = MACRO_EVENT_DOWN if is_down else MACRO_EVENT_UP
-        table[off + 2] = (delay >> 8) & 0xFF
-        table[off + 3] = delay & 0xFF
+        table[off + 2] = (delay_after >> 8) & 0xFF
+        table[off + 3] = delay_after & 0xFF
         off += 4
     return table
 
 
-def build_macro_packets(slot, events, repeat_count=1):
+def build_macro_packets(slot, events, repeat_count=1, play_mode=MACRO_PLAY_ONCE):
     """Page a macro slot into its 5 cmd-25 write packets
     ([25, slot, page_hi, page_lo, len, payload...], 58-byte chunks).
     CONFIRMED-BY-CAPTURE byte-for-byte, including events split across the
     chunk boundary."""
-    table = build_macro_table(slot, events, repeat_count)
+    table = build_macro_table(slot, events, repeat_count, play_mode)
     packets = []
     chunk = 58
     for page, start in enumerate(range(0, MACRO_SLOT_BYTES, chunk)):
@@ -881,8 +1027,14 @@ def parse_macro_chunk(body, slot):
 
 def parse_macro_table(table):
     """Decode a 256-byte macro slot image. Returns None for an empty slot
-    (all 0xFF), else {"slot", "repeat_count", "events": [(hid_code, is_down,
-    delay_ms), ...]}. Inverse of build_macro_table()."""
+    (all 0xFF = never written, or a zero event length = the vendor's
+    all-zero "unused" image), else {"slot", "play_mode", "repeat_count",
+    "events": [(delay_before_ms, hid_code, is_down), ...]} — the delays are
+    shifted back from the wire's delay-after exactly as the vendor's read
+    handler does (deobfuscated.js L505-512): event 0 waits 0 ms, event i
+    waits what the wire stored on event i-1. The last event's wire delay
+    (always 0 from the vendor) is dropped. Inverse of build_macro_table().
+    Mouse-button events (type nibble 1) are decoded by state only."""
     table = list(table)
     if len(table) < 8:
         return None
@@ -890,21 +1042,88 @@ def parse_macro_table(table):
         return None
     n = ((table[2] << 8) | table[3]) & ~3
     n = min(n, MACRO_SLOT_BYTES - 8)
-    events = []
+    if n <= 0:
+        return None
+    wire = []
     for off in range(8, 8 + n, 4):
-        events.append((table[off],
-                       table[off + 1] == MACRO_EVENT_DOWN,
-                       (table[off + 2] << 8) | table[off + 3]))
-    return {"slot": table[0], "repeat_count": table[5], "events": events}
+        wire.append((table[off], bool((table[off + 1] >> 4) & 1),
+                     (table[off + 2] << 8) | table[off + 3]))
+    events = []
+    prev_after = 0
+    for hid, down, after in wire:
+        events.append((prev_after, hid, down))
+        prev_after = after
+    return {"slot": table[0] & 0x7F, "play_mode": table[1],
+            "repeat_count": (table[4] << 8) | table[5], "events": events}
 
 
 def macro_keymap_entry(macro_slot, hid_code):
     """The 4-byte keymap-table entry that binds a macro to a key:
     [type=0x10, original hid code, macro slot, 0]. CONFIRMED-BY-CAPTURE
     (keymap slot 96 `10 10 00 00` = macro 0 on M, slot 95 `10 11 01 00` =
-    macro 1 on N). NOTE: writing this entry means rewriting the ENTIRE
-    528-byte keymap layer, exactly like any other remap."""
-    return [0x10, int(hid_code) & 0xFF, int(macro_slot) & 0xFF, 0]
+    macro 1 on N; deobfuscated.js L1048-1052 builds exactly these bytes and
+    L317-327 reads code3 back as the slot). NOTE: writing this entry means
+    rewriting the ENTIRE 528-byte keymap layer, exactly like any other
+    remap."""
+    return [KEYMAP_TYPE_MACRO, int(hid_code) & 0xFF, int(macro_slot) & 0xFF, 0]
+
+
+def parse_macro_bindings(table_528):
+    """{key index: macro slot} for every type-0x10 entry in a 528-byte keymap
+    layer image (the read-back of read_keymap_layer)."""
+    out = {}
+    t = list(table_528 or ())
+    for idx in range(min(len(t) // 4, 132)):
+        if t[idx * 4] == KEYMAP_TYPE_MACRO:
+            out[idx] = t[idx * 4 + 2]
+    return out
+
+
+def compose_base_keymap(read_back, default_hids, layer_indices=None,
+                        overrides=None):
+    """Merge a base-layer READ-BACK with the board's known defaults into the
+    528-byte image a base-layer write must carry.
+
+    CONFIRMED-BY-CAPTURE (webhid-capture-win60.json frames 123-132): a
+    never-written board answers the base-layer read with ALL ZEROS while its
+    default keymap works, so a zero entry means "firmware default", not
+    "unbound" — and the vendor never writes zeros for a real key (its
+    setKeyValue fills every slot from curDevice.keys, L1023-1069). After a
+    write the board echoes the written table (frames 7511-7520), so a
+    NON-zero entry is board truth (a remap or a macro/advanced binding made
+    by any driver) and is kept verbatim.
+
+    `default_hids` {index: hid}, `layer_indices` = Fn-type keys (code1 = 1),
+    `overrides` {index: hid} = Aether's own pending plain remaps (applied as
+    [0, hid, 0, 0], the same entry build_base_keymap_table writes)."""
+    table = bytearray(528)
+    rb = bytes(read_back or b"")[:528]
+    table[:len(rb)] = rb
+    layer_indices = set(layer_indices or ())
+    for idx, hid in (default_hids or {}).items():
+        idx = int(idx)
+        off = idx * 4
+        if off + 4 > len(table):
+            continue
+        if not any(table[off:off + 4]):
+            table[off] = 1 if idx in layer_indices else 0
+            table[off + 1] = int(hid) & 0xFF
+    for idx, hid in (overrides or {}).items():
+        off = int(idx) * 4
+        if off + 4 <= len(table):
+            table[off:off + 4] = bytes([0, int(hid) & 0xFF, 0, 0])
+    return table
+
+
+def build_base_keymap_raw(table_528):
+    """Page a ready-made 528-byte BASE-layer image (cmd 24, header [1]=0) —
+    the raw counterpart of build_fn_keymap_table for callers that compose
+    the table themselves (compose_base_keymap + a macro entry patch)."""
+    table = bytearray(528)
+    if table_528:
+        n = min(len(table_528), 528)
+        table[:n] = bytes(table_528[:n])
+    return _paged_keymap_packets(table, layer_byte=0)
 
 
 def parse_trigger_read(body):

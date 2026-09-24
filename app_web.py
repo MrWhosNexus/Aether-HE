@@ -9,6 +9,7 @@ per-key colors to the board's global lighting command.
 import json
 import logging
 import os
+import re
 import sys
 import threading
 import time
@@ -715,15 +716,21 @@ class Api:
         """Whole-board trigger write. With a keymap loaded the board's REAL
         indices are used (Win60 indices run to 131 with a 22-column stride,
         so `range(64)` covered barely half the keys); `key_count` only
-        matters for the legacy no-keymap path."""
+        matters for the legacy no-keymap path. Fixed mode (0) passes no RT
+        intervals so the driver preserves each key's stored pair (the
+        vendor never sends 0/0 — see Win60Driver.set_actuation)."""
         try:
-            if int(mode) not in self._TRIGGER_MODES:
+            mode = int(mode)
+            if mode not in self._TRIGGER_MODES:
                 return {"ok": False, "error": f"invalid trigger mode {mode}"}
             km = getattr(self, "km", None)
             idxs = list(km.indices()) if km else list(range(int(key_count)))
-            self.driver.set_actuation(idxs, int(mode),
-                                      float(travel_mm), float(rt_press_mm),
-                                      float(rt_release_mm))
+            if mode == 0:
+                self.driver.set_actuation(idxs, 0, float(travel_mm), None, None)
+            else:
+                self.driver.set_actuation(idxs, mode,
+                                          float(travel_mm), float(rt_press_mm),
+                                          float(rt_release_mm))
             return {"ok": True, "keys": len(idxs)}
         except Exception as e:
             return self._fail(e)
@@ -808,13 +815,17 @@ class Api:
             if edited is not None and not (set(idxs) & edited):
                 continue
             mode, travel, i1, i2 = cfg
-            log.info("trigger pkt: mode=%d travel=%.2fmm i1=%d i2=%d keys=%d %s",
-                     mode, travel * _UNIT_MM, i1, i2,
+            log.info("trigger pkt: mode=%d travel=%.2fmm i1=%s i2=%s keys=%d %s",
+                     mode, travel * _UNIT_MM,
+                     "keep" if i1 is None else i1, "keep" if i2 is None else i2,
                      len(idxs), sorted(idxs)[:8])
+            # Fixed mode carries no intervals of its own: None tells the
+            # driver to keep each key's STORED RT pair (read-modify-write),
+            # which is what the vendor driver sends in mode 0.
             self.driver.set_actuation(list(idxs), int(mode),
                                       travel * _UNIT_MM,
-                                      i1 * _UNIT_MM,
-                                      i2 * _UNIT_MM)
+                                      None if i1 is None else i1 * _UNIT_MM,
+                                      None if i2 is None else i2 * _UNIT_MM)
             threading.Event().wait(0.005)
 
     def set_trigger_codes(self, codes, travel_mm, rt_press_mm=0.0, rt_release_mm=0.0, mode=0):
@@ -829,14 +840,19 @@ class Api:
         travel_mm = self._clamp_mm("travelRange", travel_mm)
         if mode != 0:
             # RT sensitivities are only meaningful (and only range-checked)
-            # in a rapid-trigger mode; fixed mode sends whatever it was given
-            # (the UI sends 0) so the wire bytes for mode 0 are unchanged.
+            # in a rapid-trigger mode.
             rt_press_mm = self._clamp_mm("rtRange", rt_press_mm)
             rt_release_mm = self._clamp_mm("rtRange", rt_release_mm)
-        cfg = (mode,
-               _mm_to_raw(travel_mm),
-               _mm_to_raw(rt_press_mm),
-               _mm_to_raw(rt_release_mm))
+            cfg = (mode,
+                   _mm_to_raw(travel_mm),
+                   _mm_to_raw(rt_press_mm),
+                   _mm_to_raw(rt_release_mm))
+        else:
+            # Fixed mode: the UI sends 0/0, but the vendor driver never
+            # writes zero intervals — it re-sends each key's stored pair
+            # (CONFIRMED-BY-CAPTURE frame 1842). None = "keep stored"; the
+            # driver reads the pair back and preserves it per key.
+            cfg = (0, _mm_to_raw(travel_mm), None, None)
         for i in idxs:
             self._trigger_state[i] = cfg
         try:
@@ -996,12 +1012,16 @@ class Api:
             return self._fail(e)
 
     # ---- key remap (per-board keymap table) ----
-    def _flush_remaps(self):
-        # Base layer with our remap overrides, then the Fn layer replayed from
-        # the connect-time snapshot (both-layer semantics live in the driver).
+    def _flush_remaps(self, restore_indices=()):
+        # Read-modify-write over the board's current base layer: only our
+        # remap overrides and the keys being reset (`restore_indices`)
+        # change; bindings made outside Aether (vendor macros, advanced
+        # keys) survive. Then the Fn layer is replayed (the driver aborts
+        # before writing anything if no Fn table can be had).
         defaults = {i: self.km.by_index[i]["hid"] for i in self.km.by_index}
         self.driver.write_keymap(defaults, dict(self._remaps),
-                                 self.km.layer_indices, self._fn_layer_raw)
+                                 self.km.layer_indices, self._fn_layer_raw,
+                                 restore_indices=list(restore_indices))
 
     def set_remap(self, codes, target_hid):
         """Remap the selected keys to emit `target_hid` (USB HID usage code)."""
@@ -1024,11 +1044,15 @@ class Api:
             return {"ok": False, "error": "no keymap"}
         try:
             if not codes:
+                restore = set(self._remaps)
                 self._remaps = {}
             else:
-                for i in self.km.indices_for_codes(codes):
+                restore = set(self.km.indices_for_codes(codes))
+                for i in restore:
                     self._remaps.pop(i, None)
-            self._flush_remaps()
+            # The reset keys must be named explicitly: with a read-modify-
+            # write the old override would otherwise survive on the board.
+            self._flush_remaps(restore_indices=restore)
             return {"ok": True}
         except Exception as e:
             return self._fail(e)
@@ -1360,6 +1384,231 @@ class Api:
             return {"ok": False, "error": str(e)}
         return self._adv(lambda d: d.clear_advanced_key(idx))
 
+    # ---- macros (feature "macros"; Win60: cmd-25 slots + cmd-24 type-0x10 binds) ----
+    #
+    # The driver owns the wire (slot images, keymap read-modify-write); this
+    # layer translates design codes <-> key indices, JS event dicts <->
+    # driver tuples, and keeps macro NAMES, which the firmware does not store,
+    # in settings.json under `macroNames` (merged, so UI profile saves keep it).
+    MACRO_NAMES_KEY = "macroNames"
+    MACRO_NAME_MAX = 32
+
+    def _keymap_context(self):
+        """Keymap context a whole-layer bind needs to compose its write (see
+        Win60Driver.bind_macro): the board's default hid per index, the
+        Fn-type indices, Aether's pending plain remaps and the connect-time
+        Fn snapshot."""
+        km = getattr(self, "km", None)
+        if not km:
+            return {}
+        return {
+            "default_hids": {i: km.by_index[i]["hid"] for i in km.by_index},
+            "layer_indices": set(km.layer_indices),
+            "overrides": dict(getattr(self, "_remaps", None) or {}),
+            "fn_layer_raw": getattr(self, "_fn_layer_raw", None),
+        }
+
+    def _macro_names(self):
+        r = self.load_settings()
+        s = r.get("settings") if r.get("ok") else None
+        names = (s or {}).get(self.MACRO_NAMES_KEY) if isinstance(s, dict) else None
+        return dict(names) if isinstance(names, dict) else {}
+
+    def _set_macro_name(self, slot, name):
+        names = self._macro_names()
+        if name:
+            names[str(int(slot))] = name
+        else:
+            names.pop(str(int(slot)), None)
+        r = self.save_settings({self.MACRO_NAMES_KEY: names})
+        if not r.get("ok"):
+            raise RuntimeError("could not persist macro name: %s" % r.get("error"))
+
+    @staticmethod
+    def _macro_events_json(events):
+        return [{"delay": int(d), "hid": int(h), "down": bool(down)}
+                for d, h, down in events]
+
+    @staticmethod
+    def _macro_events(events, drv):
+        """JS event dicts [{delay, hid, down}] (or tuples) -> the driver's
+        (delay_before_ms, hid, is_down) tuples, validated against the
+        driver's own limits (slot count/size, hid 0..255, delay range)."""
+        out = []
+        for ev in list(events or ()):
+            if isinstance(ev, dict):
+                delay, hid, down = ev.get("delay", 0), ev.get("hid"), ev.get("down")
+            else:
+                delay, hid, down = ev
+            try:
+                delay, hid = int(delay), int(hid)
+            except (TypeError, ValueError):
+                raise ValueError("macro event needs integer delay and hid: %r" % (ev,))
+            if not 0 <= hid <= 0xFF:
+                raise ValueError("macro HID usage must be 0..255, got %d" % hid)
+            if not 0 <= delay <= drv.MACRO_MAX_DELAY_MS:
+                raise ValueError("macro delay must be 0..%d ms, got %d"
+                                 % (drv.MACRO_MAX_DELAY_MS, delay))
+            out.append((delay, hid, bool(down)))
+        if len(out) > drv.MACRO_MAX_EVENTS:
+            raise ValueError("macro too long: max %d events" % drv.MACRO_MAX_EVENTS)
+        return out
+
+    @staticmethod
+    def _macro_slot(slot, drv):
+        if not drv.supports("macros"):
+            raise UnsupportedFeature(drv.name, "macros")
+        slot = int(slot)
+        if not 0 <= slot < drv.MACRO_SLOTS:
+            raise ValueError("macro slot must be 0..%d" % (drv.MACRO_SLOTS - 1))
+        return slot
+
+    @staticmethod
+    def _macro_playback(play_mode, repeat_count, drv):
+        if play_mode is not None:
+            play_mode = int(play_mode)
+            if play_mode not in drv.MACRO_PLAY_MODES:
+                raise ValueError("play mode must be one of %s"
+                                 % (list(drv.MACRO_PLAY_MODES),))
+        if repeat_count is not None:
+            repeat_count = int(repeat_count)
+            if not 1 <= repeat_count <= drv.MACRO_MAX_REPEAT:
+                raise ValueError("repeat count must be 1..%d" % drv.MACRO_MAX_REPEAT)
+        return play_mode, repeat_count
+
+    def _macro_json(self, slot, m, names):
+        events = m["events"] if isinstance(m, dict) else list(m or [])
+        out = {"slot": int(slot), "name": names.get(str(int(slot)), ""),
+               "events": self._macro_events_json(events)}
+        if isinstance(m, dict):
+            out["play_mode"] = int(m.get("play_mode", 0))
+            out["repeat_count"] = int(m.get("repeat_count", 1))
+        return out
+
+    def _macro_bindings_by_code(self):
+        """{design code: slot} from the board's base layer (raises)."""
+        binds = self.driver.read_macro_bindings()
+        out = {}
+        for idx, slot in binds.items():
+            code = self.km.code_of(int(idx)) if self.km else None
+            out[code or ("idx%d" % idx)] = int(slot)
+        return out
+
+    def list_macros(self):
+        """Every stored macro + which keys point at one:
+        {ok, macros: [{slot, name, play_mode, repeat_count, events}],
+         bindings: {code: slot} | null, bindings_error?, slots, max_events}."""
+        drv = getattr(self, "driver", None)
+        if drv is None:
+            return {"ok": False, "error": "not connected"}
+        try:
+            names = self._macro_names()
+            stored = drv.list_macros()
+            macros = [self._macro_json(s, m, names) for s, m in sorted(stored.items())]
+            out = {"ok": True, "macros": macros,
+                   "slots": drv.MACRO_SLOTS,
+                   "max_events": drv.MACRO_MAX_EVENTS,
+                   "max_delay_ms": drv.MACRO_MAX_DELAY_MS,
+                   "max_repeat": drv.MACRO_MAX_REPEAT,
+                   "play_modes": list(drv.MACRO_PLAY_MODES)}
+            try:
+                out["bindings"] = self._macro_bindings_by_code()
+            except UnsupportedFeature:
+                out["bindings"] = None
+            except Exception as e:
+                out["bindings"] = None
+                out["bindings_error"] = str(e)
+            return out
+        except Exception as e:
+            return self._fail(e)
+
+    def read_macro(self, slot):
+        drv = getattr(self, "driver", None)
+        if drv is None:
+            return {"ok": False, "error": "not connected"}
+        try:
+            slot = self._macro_slot(slot, drv)
+            m = drv.read_macro(slot)
+            return {"ok": True,
+                    "macro": None if m is None else self._macro_json(slot, m, self._macro_names())}
+        except Exception as e:
+            return self._fail(e)
+
+    def save_macro(self, slot, name, events, play_mode=0, repeat_count=1):
+        """Validate + store one macro slot. `events` = [{delay, hid, down}]
+        (delay = ms BEFORE the event); an empty list deletes the slot (use
+        delete_macro to also release the keys pointing at it)."""
+        drv = getattr(self, "driver", None)
+        if drv is None:
+            return {"ok": False, "error": "not connected"}
+        try:
+            slot = self._macro_slot(slot, drv)
+            evs = self._macro_events(events, drv)
+            if not evs:
+                raise ValueError("a macro needs at least one event")
+            play_mode, repeat_count = self._macro_playback(
+                0 if play_mode is None else play_mode,
+                1 if repeat_count is None else repeat_count, drv)
+            name = str(name or "").strip()[:self.MACRO_NAME_MAX]
+            drv.write_macro(slot, evs, play_mode=play_mode, repeat_count=repeat_count)
+            self._set_macro_name(slot, name)
+            return {"ok": True, "slot": slot, "events": len(evs)}
+        except Exception as e:
+            return self._fail(e)
+
+    def delete_macro(self, slot):
+        """Erase a slot (all-zero image, as the vendor writes for unused
+        slots) and restore every key that pointed at it to its default."""
+        drv = getattr(self, "driver", None)
+        if drv is None:
+            return {"ok": False, "error": "not connected"}
+        try:
+            slot = self._macro_slot(slot, drv)
+            released = []
+            with self._lock:
+                try:
+                    binds = drv.read_macro_bindings()
+                except UnsupportedFeature:
+                    binds = {}
+                ctx = self._keymap_context()
+                for idx, s in binds.items():
+                    if int(s) == slot:
+                        drv.unbind_key(int(idx), **ctx)
+                        released.append(self.km.code_of(int(idx)) if self.km else int(idx))
+                drv.write_macro(slot, None)
+            self._set_macro_name(slot, "")
+            return {"ok": True, "slot": slot, "released": released}
+        except Exception as e:
+            return self._fail(e)
+
+    def bind_macro(self, code, slot, play_mode=None, repeat_count=None):
+        """Point the key at design code `code` to macro slot `slot`. With
+        `play_mode`/`repeat_count` the slot's header is updated too (they
+        live in the slot on the Win60, not in the keymap entry)."""
+        drv = getattr(self, "driver", None)
+        if drv is None:
+            return {"ok": False, "error": "not connected"}
+        try:
+            idx = self._key_indices([code])[0]
+            slot = self._macro_slot(slot, drv)
+            play_mode, repeat_count = self._macro_playback(play_mode, repeat_count, drv)
+            drv.bind_macro(idx, slot, play_mode, repeat_count, **self._keymap_context())
+            return {"ok": True, "code": code, "index": idx, "slot": slot}
+        except Exception as e:
+            return self._fail(e)
+
+    def unbind_macro(self, code):
+        """Restore the key at design code `code` to its plain default entry."""
+        drv = getattr(self, "driver", None)
+        if drv is None:
+            return {"ok": False, "error": "not connected"}
+        try:
+            idx = self._key_indices([code])[0]
+            drv.unbind_key(idx, **self._keymap_context())
+            return {"ok": True, "code": code, "index": idx}
+        except Exception as e:
+            return self._fail(e)
+
     # ---- board submission (schema-validated file write) ----
     def _submissions_dir(self):
         base = os.path.dirname(self._settings_path())   # <root>/AetherHE
@@ -1490,16 +1739,37 @@ class Api:
                 log.warning("gamepad capture stopped: %s", e)
                 break
 
+    #: One hex byte token for send_raw: "1f", "0x1F", "7". Three-digit
+    #: tokens ("100") are rejected here rather than masked or passed as a
+    #: >255 value that hidapi would refuse mid-report.
+    _HEX_BYTE = re.compile(r"^(?:0[xX])?[0-9a-fA-F]{1,2}$")
+
     def send_raw(self, hex_str):
+        """Developer console: send one raw output report. The hex string is
+        the FULL report (report id first, e.g. "01 07 00 00 00 0e ..."),
+        zero-padded to 64 bytes. Every token must be a byte; the frame then
+        goes through the active driver's never-send guard (Win60:
+        protocol.dangerous_command_reason — factory reset, trigger reset,
+        blind calibration arm; MINI: DANGEROUS_CMDS) instead of straight to
+        the handle, so a typo can't brick or wipe the board."""
         try:
-            payload = [int(x, 16) for x in hex_str.replace(",", " ").split()]
-            if len(payload) < 64:
-                payload += [0] * (64 - len(payload))
-            with self._lock:
-                self.dev.write(payload)
+            tokens = str(hex_str or "").replace(",", " ").split()
+            if not tokens:
+                return {"ok": False, "error": "empty report"}
+            payload = []
+            for t in tokens:
+                if not self._HEX_BYTE.match(t):
+                    return {"ok": False,
+                            "error": f"invalid hex byte {t!r} (expected 00..ff)"}
+                payload.append(int(t, 16))
+            if len(payload) > 64:
+                return {"ok": False,
+                        "error": f"report too long: {len(payload)} bytes (max 64)"}
+            payload += [0] * (64 - len(payload))
+            self.driver.send_raw(payload)          # guarded per board
             return {"ok": True}
         except Exception as e:
-            return {"ok": False, "error": str(e)}
+            return self._fail(e)
 
     # ---- host-driven multi-color effects (per-key, driver stream) ----
     def _send_frame(self, colors_by_index):

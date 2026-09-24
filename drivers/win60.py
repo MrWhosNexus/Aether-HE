@@ -29,6 +29,13 @@ class Win60Driver(BoardDriver):
     })
     DEADBAND_SCOPE = "per-key"
 
+    #: Macro storage limits (cmd 25; see protocol.py's macro section).
+    MACRO_SLOTS = protocol.MACRO_SLOTS
+    MACRO_MAX_EVENTS = protocol.MACRO_MAX_EVENTS
+    MACRO_MAX_DELAY_MS = protocol.MACRO_MAX_DELAY_MS
+    MACRO_MAX_REPEAT = protocol.MACRO_MAX_REPEAT
+    MACRO_PLAY_MODES = protocol.MACRO_PLAY_MODES
+
     #: How long read_deadband_table() waits before set_deadband aborts.
     DEADBAND_READ_TIMEOUT_S = 1.5
 
@@ -56,10 +63,37 @@ class Win60Driver(BoardDriver):
         return info
 
     # ---- lighting ----
+    #: Firmware slider scales when the profile declares none (the WIN 60 HE
+    #: registry says 0..4 / 0..4 — re-confirmed on hardware via readLightList
+    #: cmd 10, see data/board_registry.json lighting._note).
+    LIGHT_BRIGHTNESS_RANGE = (0, 4)
+    LIGHT_SPEED_RANGE = (0, 4)
+
+    def _clamp_light(self, brightness, speed):
+        """Clamp the cmd-7/8 brightness and speed BYTES to the board's
+        registry `lighting.brightnessMin..Max` / `speedMin..Max`. The wire
+        field is one byte and the builder masks with & 0xFF, so an
+        unclamped 5 on a 0..4 board is an undefined step and 256 would
+        silently wrap to OFF. Only the firmware paths use these units; the
+        host effect engine's 0..100 brightness is baked into the streamed
+        colors and never reaches this byte."""
+        lt = getattr(self.profile, "lighting", None) or {}
+        b_lo = int(lt.get("brightnessMin", self.LIGHT_BRIGHTNESS_RANGE[0]))
+        b_hi = int(lt.get("brightnessMax", self.LIGHT_BRIGHTNESS_RANGE[1]))
+        s_lo = int(lt.get("speedMin", self.LIGHT_SPEED_RANGE[0]))
+        s_hi = int(lt.get("speedMax", self.LIGHT_SPEED_RANGE[1]))
+        b = min(b_hi, max(b_lo, int(brightness)))
+        s = min(s_hi, max(s_lo, int(speed)))
+        if (b, s) != (int(brightness), int(speed)):
+            log.warning("lighting brightness/speed %s/%s clamped to %d/%d "
+                        "(%s registry range)", brightness, speed, b, s, self.name)
+        return b, s
+
     def set_lighting(self, mode, fg, bg=(0, 0, 0), brightness=4, speed=4,
                      direction=0, full_color=0, power_on=True):
+        brightness, speed = self._clamp_light(brightness, speed)
         self._write(protocol.build_light(
-            int(mode), int(brightness), int(speed),
+            int(mode), brightness, speed,
             tuple(int(c) for c in fg), tuple(int(c) for c in bg),
             int(direction), int(full_color), bool(power_on)))
 
@@ -84,12 +118,13 @@ class Win60Driver(BoardDriver):
         pattern as set_deadband). A failed read ABORTS before any write —
         never blind-darken the keys the user didn't touch."""
         colors = {int(k): v for k, v in (colors_by_index or {}).items()}
+        brightness, speed = self._clamp_light(brightness, speed)
         if cumulative:
             base = self.read_per_key_rgb(
                 slot=slot, timeout_s=self.CUSTOM_READ_TIMEOUT_S)
             base.update(colors)                       # read failure raised
             colors = base
-        self._write(protocol.build_light(10, int(brightness), int(speed),
+        self._write(protocol.build_light(10, brightness, speed,
                                          (255, 255, 255)))
         for pkt in protocol.build_custom_light(colors, slot=int(slot)):
             self._write(pkt)
@@ -137,8 +172,16 @@ class Win60Driver(BoardDriver):
     def begin_host_stream(self):
         """Put the board into per-key Custom mode for the effect engine
         (full brightness — the engine bakes brightness into the colors)."""
-        self._write(protocol.build_light(10, 4, 4, (255, 255, 255)))
+        brightness, speed = self._clamp_light(*self._full_light())
+        self._write(protocol.build_light(10, brightness, speed, (255, 255, 255)))
         self._last_pkts = None
+
+    def _full_light(self):
+        """(brightnessMax, speedMax) from the registry — the byte pair that
+        means "full" on THIS board (4/4 on the WIN 60 HE, unchanged)."""
+        lt = getattr(self.profile, "lighting", None) or {}
+        return (int(lt.get("brightnessMax", self.LIGHT_BRIGHTNESS_RANGE[1])),
+                int(lt.get("speedMax", self.LIGHT_SPEED_RANGE[1])))
 
     def stream_frame(self, colors_by_index, force=False):
         """Stream one per-key RGB frame; only changed 54-byte pages are
@@ -159,15 +202,64 @@ class Win60Driver(BoardDriver):
 
     # ---- actuation / trigger (cmd 33) ----
     def set_actuation(self, indices, mode, travel_mm,
-                      rt_press_mm=0.0, rt_release_mm=0.0):
+                      rt_press_mm=None, rt_release_mm=None):
+        """Trigger write (cmd 33). Modes 12/13 send the given RT intervals.
+
+        Mode 0 (fixed actuation) with the intervals left as None PRESERVES
+        each key's STORED interval pair — READ-MODIFY-WRITE, the vendor's
+        behavior: setAnyTriggerValue always copies key.trigger.interval1/2
+        (deobfuscated.js L1532-1538), which readTriggerData filled at mount,
+        so "Rapid Trigger -> OFF" goes out as mode 0 with the old RT pair
+        still in place (CONFIRMED-BY-CAPTURE frame 1842: `00 ... 2c 2c 78
+        78`, frame 1849: `aa aa 78 78`) and the factory pair is 1/1 (frame
+        173 read-back, frame 922 `64 64 01 01`). Aether used to send 0/0
+        here, which the vendor never does. Keys whose stored pair cannot be
+        read back fall back to protocol.TRIGGER_DEFAULT_INTERVAL_RAW (1/1).
+        Explicit intervals in mode 0 are sent exactly as given (unchanged
+        byte path for callers that want that)."""
+        mode = int(mode)
+        idxs = [int(i) for i in indices]
+        if mode == 0 and (rt_press_mm is None or rt_release_mm is None):
+            self._set_fixed_preserving_intervals(idxs, float(travel_mm))
+            return
         self._write(protocol.build_trigger(
-            int(mode), list(indices),
-            float(travel_mm), float(rt_press_mm), float(rt_release_mm)))
+            mode, idxs, float(travel_mm),
+            float(rt_press_mm or 0.0), float(rt_release_mm or 0.0)))
+
+    #: Consecutive unanswered readTriggerData queries after which the
+    #: mode-0 read-back gives up (a silent board would otherwise cost
+    #: 61 x TRIGGER_READ_TIMEOUT_S before the fallback write).
+    TRIGGER_READ_MAX_MISSES = 3
+
+    def _set_fixed_preserving_intervals(self, idxs, travel_mm):
+        travel_raw = protocol.mm_to_raw(travel_mm)
+        default = (protocol.TRIGGER_DEFAULT_INTERVAL_RAW,
+                   protocol.TRIGGER_DEFAULT_INTERVAL_RAW)
+        # Atomic across the read -> group -> write (see transaction()).
+        with self.transaction():
+            stored = {}
+            if getattr(self.dev, "_dev", None) is not None:   # readable handle
+                stored = self.read_trigger_config(
+                    idxs, stop_after_misses=self.TRIGGER_READ_MAX_MISSES)
+            missing = [i for i in idxs if i not in stored]
+            if missing:
+                log.warning("mode-0 trigger write: %d/%d keys did not answer "
+                            "readTriggerData; using the factory RT pair %s for "
+                            "them", len(missing), len(idxs), default)
+            groups = {}                                    # (i1, i2) -> [idx]
+            for i in idxs:
+                c = stored.get(i)
+                pair = (c["interval1"], c["interval2"]) if c else default
+                groups.setdefault(pair, []).append(i)
+            for (i1, i2), keys in groups.items():
+                self._write(protocol.build_trigger_raw(0, keys, travel_raw, i1, i2))
+                if len(groups) > 1:
+                    time.sleep(0.005)
 
     #: Per-key wait for the readTriggerData reply before moving on.
     TRIGGER_READ_TIMEOUT_S = 0.04
 
-    def read_trigger_config(self, indices, timeout_s=None):
+    def read_trigger_config(self, indices, timeout_s=None, stop_after_misses=None):
         """{device index: {"mode", "travel", "interval1", "interval2"}} via
         one cmd-33 sub-5 readTriggerData query per key (raw trigger units,
         0.01 mm on this board). Holds the outer lock for the whole sweep.
@@ -180,10 +272,14 @@ class Win60Driver(BoardDriver):
         during the sweep, reported live depth as the stored actuation.
         Replies are matched to the requested key by the echoed row/col, so a
         stale frame can never be booked against the wrong key. Keys that do
-        not answer are simply absent from the result."""
+        not answer are simply absent from the result. `stop_after_misses`
+        (optional) ends the sweep early after that many CONSECUTIVE
+        unanswered keys — a board that is not answering at all costs one
+        short timeout instead of one per key."""
         if timeout_s is None:
             timeout_s = self.TRIGGER_READ_TIMEOUT_S
         out = {}
+        misses = 0
         with self._lock:
             if not self.dev.is_open():
                 self.dev.open()
@@ -199,6 +295,7 @@ class Win60Driver(BoardDriver):
                 except Exception:
                     break
                 deadline = time.time() + timeout_s
+                got = False
                 while time.time() < deadline:
                     try:
                         r = self.dev.read(64, timeout_ms=0)
@@ -216,7 +313,11 @@ class Win60Driver(BoardDriver):
                     if p and p["index"] == idx:
                         out[idx] = {k: p[k] for k in
                                     ("mode", "travel", "interval1", "interval2")}
+                        got = True
                         break
+                misses = 0 if got else misses + 1
+                if stop_after_misses is not None and misses >= stop_after_misses:
+                    break
         return out
 
     def read_actuation(self, keymap):
@@ -345,22 +446,77 @@ class Win60Driver(BoardDriver):
         self._write(protocol.build_poll_rate(int(rate)))
 
     # ---- keymap / remap (cmd 24, both layers) ----
-    def write_keymap(self, default_hids, overrides, layer_indices, fn_layer_raw):
-        """Base layer with overrides, then the Fn layer replayed verbatim —
-        the official driver writes both on every Apply; writing only the
-        base leaves the firmware stuck in function mode. If no Fn snapshot
-        exists we skip the Fn write rather than wipe the user's mappings
-        with zeros (was Api._flush_remaps)."""
-        for pkt in protocol.build_base_keymap_table(default_hids, overrides,
-                                                    layer_indices=layer_indices):
-            self._write(pkt)
-            time.sleep(0.005)
-        if fn_layer_raw is not None and any(fn_layer_raw):
-            for pkt in protocol.build_fn_keymap_table(fn_layer_raw):
-                self._write(pkt)
-                time.sleep(0.005)
-        else:
-            log.warning("skipping Fn-layer write: no snapshot captured at connect")
+    def write_keymap(self, default_hids, overrides, layer_indices, fn_layer_raw,
+                     restore_indices=()):
+        """Base-layer remap — READ-MODIFY-WRITE over the board's CURRENT
+        table, then the Fn layer replayed, the way the official driver
+        writes both layers on every Apply (writing only the base leaves the
+        firmware stuck in function mode).
+
+        The base table is read back and composed with the layout defaults
+        (protocol.compose_base_keymap: an all-zero read-back entry means
+        "firmware default", any other stored entry — a vendor macro binding
+        `10 <hid> <slot> 00`, an advanced key, a remap made elsewhere — is
+        kept verbatim, exactly as the vendor's own read handler treats it,
+        deobfuscated.js L302-431). Only `overrides` ({index: hid} ->
+        `[0, hid, 0, 0]`) and `restore_indices` (back to the layout default
+        entry) change. CONFIRMED-BY-CAPTURE: from the factory all-zero table
+        (frame 97 read-back) this reproduces the vendor's "remap Z -> B"
+        write (frames 2063-2082) byte-for-byte. The old rebuild-from-layout
+        path zeroed every binding Aether did not make.
+
+        Fn layer: the board's current Fn table is preferred, else
+        `fn_layer_raw` (the connect-time snapshot). If NEITHER is available
+        the whole write is ABORTED before the first base packet — the old
+        "skip the Fn write" behavior is exactly what left the board in Fn
+        mode. An all-zero Fn table is a legitimate one and IS written (the
+        vendor replays it, frames 2084-2102; the old `any()` check skipped
+        it). Write-only stubs (no readable handle) keep the legacy layout
+        rebuild, and still need an explicit Fn table."""
+        default_hids = {int(k): int(v) for k, v in (default_hids or {}).items()}
+        overrides = {int(k): int(v) for k, v in (overrides or {}).items()}
+        layer_set = set(int(i) for i in (layer_indices or ()))
+        restore = [int(i) for i in (restore_indices or ())
+                   if int(i) in default_hids and int(i) not in overrides]
+
+        with self.transaction():
+            if not self.dev.is_open():
+                self.dev.open()
+            if getattr(self.dev, "_dev", None) is None:
+                # No readable handle: legacy rebuild, byte-for-byte — but
+                # never without the Fn layer (see above).
+                if fn_layer_raw is None:
+                    raise RuntimeError(
+                        "no Fn-layer table available; aborting remap (the base "
+                        "layer alone would leave the board stuck in Fn mode)")
+                for pkt in protocol.build_base_keymap_table(
+                        default_hids, overrides, layer_indices=layer_set):
+                    self._write(pkt)
+                    time.sleep(0.005)
+                for pkt in protocol.build_fn_keymap_table(fn_layer_raw):
+                    self._write(pkt)
+                    time.sleep(0.005)
+                return
+            fn = fn_layer_raw
+            if fn is None:
+                fn = self.read_keymap_layer(fn_layer=True,
+                                            timeout_s=self.KEYMAP_READ_TIMEOUT_S)
+            if fn is None:
+                raise RuntimeError(
+                    "Fn-layer read failed and no connect-time snapshot exists; "
+                    "aborting remap before any write (the base layer alone "
+                    "would leave the board stuck in Fn mode)")
+
+            def patch(table):
+                for idx in restore:
+                    off = idx * 4
+                    if off + 4 <= len(table):
+                        table[off:off + 4] = bytes([1 if idx in layer_set else 0,
+                                                    default_hids[idx] & 0xFF, 0, 0])
+
+            # _rmw_base_layer aborts on a failed base read before writing,
+            # and with `fn` guaranteed above it can never take its skip path.
+            self._rmw_base_layer(patch, default_hids, layer_set, overrides, fn)
 
     def read_keymap_layer(self, fn_layer=False, timeout_s=1.5):
         """Send initKeyValue and reassemble the 528-byte [code1, hidCode,
@@ -460,6 +616,27 @@ class Win60Driver(BoardDriver):
         see protocol.build_music_rhythm for why Aether's light path does
         not (yet) mirror that ordering."""
         self._write(protocol.build_music_rhythm(bool(on)))
+
+    def send_raw(self, report):
+        """Developer-console raw output report. Validates the shape (64
+        bytes, report id 1, every value a byte) and refuses the never-send
+        frames in protocol.dangerous_command_reason (factory reset, trigger
+        reset, blind calibration arm) BEFORE anything reaches the wire.
+        Raises ValueError (shape) / RuntimeError (guarded frame)."""
+        report = list(report)
+        if any((not isinstance(b, int)) or not 0 <= b <= 0xFF for b in report):
+            raise ValueError("raw report bytes must be integers 0..255")
+        if len(report) != 1 + protocol.BODY:
+            raise ValueError("raw report must be %d bytes (report id + %d)"
+                             % (1 + protocol.BODY, protocol.BODY))
+        if report[0] != protocol.REPORT_ID:
+            raise ValueError("%s output reports use report id %d, got %d"
+                             % (self.name, protocol.REPORT_ID, report[0]))
+        reason = protocol.dangerous_command_reason(report[1:])
+        if reason:
+            raise RuntimeError("refusing to send raw frame to %s: %s"
+                               % (self.name, reason))
+        self._write(report)
 
     # ---- capture-verified readers (all CONFIRMED-BY-CAPTURE framing) ----
     def _drain_input(self):
@@ -586,28 +763,186 @@ class Win60Driver(BoardDriver):
             raise RuntimeError("max-trigger-travel read failed (cmd 33 sub 4)")
         return out
 
-    # ---- macros (cmd 25) ----
-    def write_macro(self, slot, events, repeat_count=1):
-        """Write one 256-byte macro slot (cmd 25, CONFIRMED-BY-CAPTURE
-        format — NOT the MINI's). `events` = [(hid_code, is_down, delay_ms)].
-        NOTE: the macro only fires once a key is bound to it via a keymap
-        entry protocol.macro_keymap_entry(slot, hid) — a full 528-byte
-        keymap rewrite, which is the caller's job (the shared BoardDriver
-        macro API is tracked separately)."""
-        for pkt in protocol.build_macro_packets(int(slot), events,
-                                                int(repeat_count)):
-            self._write(pkt)
-            time.sleep(0.005)
+    # ---- macros (cmd 25 storage + cmd 24 type-0x10 keymap binds) ----
+    # Storage format CONFIRMED-BY-CAPTURE (NOT the MINI's) — see the macro
+    # section of protocol.py for the byte layout and vendor-JS citations.
+    # Event tuples follow the drivers/base.py contract:
+    # (delay_before_ms, hid_usage, is_down).
 
-    def read_macro(self, slot, timeout_s=1.5):
+    #: Per-slot wait for the 5-chunk cmd-25 read reply.
+    MACRO_READ_TIMEOUT_S = 1.5
+    #: Wait for each keymap-layer read inside a bind/unbind RMW.
+    KEYMAP_READ_TIMEOUT_S = 1.5
+
+    @staticmethod
+    def _macro_slot(index):
+        idx = int(index)
+        if not 0 <= idx < protocol.MACRO_SLOTS:
+            raise ValueError("macro slot must be 0..%d, got %d"
+                             % (protocol.MACRO_SLOTS - 1, idx))
+        return idx
+
+    def write_macro(self, index, events, play_mode=protocol.MACRO_PLAY_ONCE,
+                    repeat_count=1):
+        """Store `events` in macro slot `index` (5 cmd-25 pages). An empty/None
+        event list writes the vendor's all-zero image, i.e. deletes the slot.
+        `play_mode` is header byte 1 (protocol.MACRO_PLAY_*; only ONCE and
+        REPEAT are capture-verified) and `repeat_count` the BE16 count.
+        Validation (slot, event count, hid 0..255, delay 0..65535) happens in
+        the builder BEFORE any byte is sent. NOTE: a macro only fires once a
+        key points at the slot — see bind_macro()."""
+        slot = self._macro_slot(index)
+        pkts = protocol.build_macro_packets(slot, events, int(repeat_count),
+                                            int(play_mode))
+        with self.transaction():          # never interleave the 5 pages
+            for pkt in pkts:
+                self._write(pkt)
+                time.sleep(0.005)
+
+    def read_macro(self, index, timeout_s=None):
         """Read one macro slot back (cmd 25, [1]=slot|0x80). Returns
-        protocol.parse_macro_table()'s dict, None for an empty slot
-        (all 0xFF), and raises RuntimeError if the read didn't complete."""
+        protocol.parse_macro_table()'s dict {"slot", "play_mode",
+        "repeat_count", "events"}, None for an empty slot, and raises
+        RuntimeError if the 5-chunk read didn't complete."""
+        slot = self._macro_slot(index)
+        if timeout_s is None:
+            timeout_s = self.MACRO_READ_TIMEOUT_S
         raw = self._read_paged_table(
-            protocol.build_read_macro(int(slot)),
-            parse=lambda body: protocol.parse_macro_chunk(body, int(slot)),
+            protocol.build_read_macro(slot),
+            parse=lambda body: protocol.parse_macro_chunk(body, slot),
             total=protocol.MACRO_SLOT_BYTES,
             timeout_s=timeout_s)
         if raw is None:
             raise RuntimeError("macro read failed (cmd 25, slot %d)" % slot)
         return protocol.parse_macro_table(raw)
+
+    def list_macros(self, timeout_s=None):
+        """{slot: read_macro() dict} for every NON-empty slot — the vendor's
+        initMacroValue sweep (cmd 25, [1] = 0x80..0x89). All-or-nothing:
+        a slot that doesn't answer raises rather than being reported empty."""
+        out = {}
+        with self.transaction():
+            for slot in range(protocol.MACRO_SLOTS):
+                m = self.read_macro(slot, timeout_s=timeout_s)
+                if m is not None:
+                    out[slot] = m
+        return out
+
+    def read_macro_bindings(self, fn_layer=False, timeout_s=None):
+        """{key index: macro slot} for every type-0x10 entry of a keymap
+        layer (base by default). Raises RuntimeError on a partial read."""
+        if timeout_s is None:
+            timeout_s = self.KEYMAP_READ_TIMEOUT_S
+        table = self.read_keymap_layer(fn_layer=fn_layer, timeout_s=timeout_s)
+        if table is None:
+            raise RuntimeError("keymap read failed (cmd 24, layer %s)"
+                               % ("fn" if fn_layer else "base"))
+        return protocol.parse_macro_bindings(table)
+
+    def _rmw_base_layer(self, patch, default_hids=None, layer_indices=(),
+                        overrides=None, fn_layer_raw=None):
+        """Read the base keymap layer, merge it with the known defaults
+        (protocol.compose_base_keymap — zero read-back entries mean
+        "firmware default" on this board), apply `patch(table)`, write the
+        full 528-byte base layer back and replay the Fn layer, the way the
+        vendor writes both layers on every Apply (and write_keymap does —
+        the base layer alone leaves the firmware stuck in Fn mode, so the
+        Fn table is resolved FIRST and the whole op ABORTS before the first
+        packet if neither the board's current Fn layer nor the connect-time
+        snapshot is available). Atomic under transaction(); a failed base
+        read likewise aborts before any write so other keys' bindings are
+        never replaced by guesses. Returns the written base table."""
+        with self.transaction():
+            if not self.dev.is_open():
+                self.dev.open()
+            base = self.read_keymap_layer(fn_layer=False,
+                                          timeout_s=self.KEYMAP_READ_TIMEOUT_S)
+            if base is None:
+                raise RuntimeError(
+                    "keymap read failed; aborting write (refusing to rewrite "
+                    "the base layer from assumed defaults)")
+            # The board's CURRENT Fn layer is preferred over the connect-time
+            # snapshot (an all-zero Fn table is legitimate and IS written —
+            # the vendor replays it, capture frames 2084-2102).
+            fn = self.read_keymap_layer(fn_layer=True,
+                                        timeout_s=self.KEYMAP_READ_TIMEOUT_S)
+            if fn is None:
+                fn = fn_layer_raw
+            if fn is None:
+                raise RuntimeError(
+                    "Fn-layer read failed and no connect-time snapshot exists; "
+                    "aborting before any write (the base layer alone would "
+                    "leave the board stuck in Fn mode)")
+            table = protocol.compose_base_keymap(base, default_hids,
+                                                 layer_indices, overrides)
+            patch(table)
+            for pkt in protocol.build_base_keymap_raw(table):
+                self._write(pkt)
+                time.sleep(0.005)
+            for pkt in protocol.build_fn_keymap_table(fn):
+                self._write(pkt)
+                time.sleep(0.005)
+            return bytes(table)
+
+    def bind_macro(self, key_index, macro_index, play_mode=None, loop_count=None,
+                   default_hids=None, layer_indices=(), overrides=None,
+                   fn_layer_raw=None):
+        """Point key-table record `key_index` at macro slot `macro_index`
+        with the CONFIRMED-BY-CAPTURE entry [0x10, key's default hid, slot,
+        0] (deobfuscated.js L1048-1052), preserving every other record via
+        _rmw_base_layer. On this board the playback mode and repeat count
+        live in the MACRO SLOT HEADER, not the keymap entry, so when
+        `play_mode` / `loop_count` are given the slot is read back and
+        rewritten with the new header (same events) first — a slot that is
+        empty cannot be bound with a mode (ValueError). `default_hids` /
+        `layer_indices` / `overrides` / `fn_layer_raw` are the Api's keymap
+        context (see Api._keymap_context)."""
+        key_index = int(key_index)
+        slot = self._macro_slot(macro_index)
+        if not 0 <= key_index < 132:
+            raise ValueError("key index must be 0..131, got %d" % key_index)
+        default_hids = dict(default_hids or {})
+        with self.transaction():
+            if play_mode is not None or loop_count is not None:
+                cur = self.read_macro(slot)
+                if cur is None:
+                    raise ValueError("macro slot %d is empty; save the macro "
+                                     "before binding it with a play mode" % slot)
+                self.write_macro(
+                    slot, cur["events"],
+                    play_mode=cur["play_mode"] if play_mode is None else int(play_mode),
+                    repeat_count=cur["repeat_count"] if loop_count is None else int(loop_count))
+
+            def patch(table):
+                off = key_index * 4
+                hid = default_hids.get(key_index)
+                if hid is None:
+                    # no default known: keep whatever hid the board reports
+                    hid = table[off + 1] if table[off] in (0, protocol.KEYMAP_TYPE_MACRO) else 0
+                table[off:off + 4] = bytes(protocol.macro_keymap_entry(slot, hid))
+
+            return self._rmw_base_layer(patch, default_hids, layer_indices,
+                                        overrides, fn_layer_raw)
+
+    def unbind_key(self, key_index, default_hids=None, layer_indices=(),
+                   overrides=None, fn_layer_raw=None):
+        """Restore key-table record `key_index` to its plain default entry
+        [code1, default hid, 0, 0] — what the vendor writes when a macro is
+        removed from a key (capture: M back to `00 10 00 00`). Other records
+        preserved (same RMW as bind_macro)."""
+        key_index = int(key_index)
+        if not 0 <= key_index < 132:
+            raise ValueError("key index must be 0..131, got %d" % key_index)
+        default_hids = dict(default_hids or {})
+        layer_set = set(layer_indices or ())
+
+        def patch(table):
+            off = key_index * 4
+            hid = default_hids.get(key_index)
+            if hid is None:
+                hid = table[off + 1]          # keep the hid the entry carries
+            table[off:off + 4] = bytes([1 if key_index in layer_set else 0,
+                                        int(hid) & 0xFF, 0, 0])
+
+        return self._rmw_base_layer(patch, default_hids, layer_indices,
+                                    overrides, fn_layer_raw)

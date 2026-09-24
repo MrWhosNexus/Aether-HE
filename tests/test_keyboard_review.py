@@ -303,9 +303,11 @@ def test_api_set_trigger_codes_validates_mode_and_clamps_ranges():
     a = _api()
     r = a.set_trigger_codes(["KeyA"], 1.5, 0.3, 0.3, mode=5)
     assert r["ok"] is False and not a.driver.calls
-    # fixed mode: intervals pass through untouched (UI sends 0)
+    # fixed mode: the UI's 0/0 intervals are NOT sent — None asks the driver
+    # to keep each key's stored RT pair (the vendor never writes 0/0)
     a.set_trigger_codes(["KeyA"], 9.9, 0, 0, mode=0)
-    assert a.driver.calls[-1] == ("act", [22], 0, pytest.approx(3.4), 0.0, 0.0)
+    assert a.driver.calls[-1] == ("act", [22], 0, pytest.approx(3.4), None, None)
+    assert a._trigger_state[22] == (0, 340, None, None)
     # RT mode: travel and sensitivities clamped to the registry ranges
     a.set_trigger_codes(["KeyB"], 0.01, 0.0, 7.0, mode=13)
     assert a.driver.calls[-1] == ("act", [131], 13, pytest.approx(0.1),
@@ -317,8 +319,10 @@ def test_api_set_trigger_codes_validates_mode_and_clamps_ranges():
 def test_api_set_trigger_all_uses_keymap_indices_not_range_64():
     a = _api()
     assert a.set_trigger_all(1.7) == {"ok": True, "keys": 3}
-    assert a.driver.calls == [("act", [0, 22, 131], 0, 1.7, 0.0, 0.0)]
+    assert a.driver.calls == [("act", [0, 22, 131], 0, 1.7, None, None)]
     assert a.set_trigger_all(1.7, mode=7)["ok"] is False
+    assert a.set_trigger_all(1.7, 0.3, 0.2, mode=12)["ok"] is True
+    assert a.driver.calls[-1] == ("act", [0, 22, 131], 12, 1.7, 0.3, 0.2)
 
 
 def test_api_set_deadband_codes_clamps_to_registry_range():

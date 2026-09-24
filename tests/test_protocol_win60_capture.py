@@ -87,15 +87,23 @@ _DB_TABLE = protocol.assemble_deadband_table(
     [protocol.parse_deadband_chunk(b) for b in _DB_READ_CHUNKS])
 _PHYS = [i for i in range(132) if _DB_TABLE[2 * i] or _DB_TABLE[2 * i + 1]]
 
-# Captured macro payloads (WIN60_CAPTURE_NOTES.md section 5, cross-checked
-# against the vendor UI's own recorded event list).
-_M1_EVENTS = [(0x04, True, 126), (0x04, False, 202), (0x05, True, 122),
-              (0x05, False, 203), (0x06, True, 122), (0x06, False, 0)]
-_M2_EVENTS = [(0x14, True, 77), (0x14, False, 108), (0x1A, True, 76),
-              (0x1A, False, 109), (0x08, True, 77), (0x08, False, 110),
-              (0x15, True, 78), (0x15, False, 109), (0x17, True, 77),
-              (0x17, False, 108), (0xE1, True, 92), (0x1E, True, 94),
-              (0x1E, False, 93), (0xE1, False, 0)]
+# Captured macro payloads (WIN60_CAPTURE_NOTES.md section 5), in the
+# drivers/base.py event order (delay_before_ms, hid, is_down). The delays
+# are EXACTLY the vendor UI's own recorded list for macro 1 — "0ms A, 126ms
+# A, 202ms B, 122ms B, 203ms C, 122ms C" — i.e. the wait BEFORE each step;
+# the builder shifts them onto the wire's delay-after slot (deobfuscated.js
+# L1244-1247), which is why the wire shows 7E on the FIRST event.
+_M1_EVENTS = [(0, 0x04, True), (126, 0x04, False), (202, 0x05, True),
+              (122, 0x05, False), (203, 0x06, True), (122, 0x06, False)]
+_M2_EVENTS = [(0, 0x14, True), (77, 0x14, False), (108, 0x1A, True),
+              (76, 0x1A, False), (109, 0x08, True), (77, 0x08, False),
+              (110, 0x15, True), (78, 0x15, False), (109, 0x17, True),
+              (77, 0x17, False), (108, 0xE1, True), (92, 0x1E, True),
+              (94, 0x1E, False), (93, 0xE1, False)]
+_M1_PARSED = {"slot": 0, "play_mode": protocol.MACRO_PLAY_ONCE,
+              "repeat_count": 1, "events": _M1_EVENTS}
+_M2_PARSED = {"slot": 1, "play_mode": protocol.MACRO_PLAY_REPEAT,
+              "repeat_count": 3, "events": _M2_EVENTS}
 
 
 # ------------------------------------------------------------ dead band ----
@@ -199,27 +207,45 @@ def _macro_write_group(slot, header_len_lo):
 
 def test_macro1_packets_match_capture():
     wire = _macro_write_group(0, 0x18)          # 6 events -> 24 B
-    built = [p[1:] for p in protocol.build_macro_packets(0, _M1_EVENTS, 1)]
+    built = [p[1:] for p in protocol.build_macro_packets(
+        0, _M1_EVENTS, 1, protocol.MACRO_PLAY_ONCE)]
     assert built == wire
-    # absolute offsets in chunk 0: header [slot, slot, lenBE16, 0, repeat]
+    # absolute offsets in chunk 0: header [slot, playMode, lenBE16, countBE16]
     b0 = wire[0]
-    assert b0[5] == 0 and b0[6] == 0            # slot twice
+    assert b0[5] == 0 and b0[6] == 0            # slot 0, mode 0 = once
     assert b0[7] == 0x00 and b0[8] == 0x18      # 24 event bytes, BIG-endian
-    assert b0[10] == 1                          # repeat: "Operate Once"
-    # first event A down, 126 ms BE at payload offset 8
+    assert b0[9] == 0 and b0[10] == 1           # repeat count 1, BIG-endian
+    # first event A down; wire delay = the NEXT step's 126 ms, BE, at +8
     assert b0[13:17] == [0x04, 0x10, 0x00, 0x7E]
+    # last event C up carries 0 (no step after it)
+    assert b0[33:37] == [0x06, 0x00, 0x00, 0x00]
 
 
 def test_macro2_packets_match_capture_across_chunk_boundary():
     wire = _macro_write_group(1, 0x38)          # 14 events -> 56 B
-    built = [p[1:] for p in protocol.build_macro_packets(1, _M2_EVENTS, 3)]
+    built = [p[1:] for p in protocol.build_macro_packets(
+        1, _M2_EVENTS, 3, protocol.MACRO_PLAY_REPEAT)]
     assert built == wire
     b0, b1 = wire[0], wire[1]
-    assert b0[10] == 3                          # repeat: "Operate 3 times"
+    assert b0[5] == 1 and b0[6] == 1            # slot 1, mode 1 = N times
+    assert b0[9] == 0 and b0[10] == 3           # repeat: "Operate 3 times"
     # the 13th event (Shift-1 release) splits across the chunk boundary:
     # `1e 00` ends chunk 0, `00 5d` opens chunk 1, then Shift up.
     assert b0[61:63] == [0x1E, 0x00]
     assert b1[5:9] == [0x00, 0x5D, 0xE1, 0x00]
+
+
+def test_macro_header_byte1_is_play_mode_not_slot():
+    """The JS writes MacroKey.type into byte 1 (setMacroValue L1235) — the
+    captured 00/01 only LOOKED like the slot repeated. Slot 2 played once
+    must carry 02 00, not 02 02 (which would mean 'toggle', unverified)."""
+    t = protocol.build_macro_table(2, _M1_EVENTS, 1, protocol.MACRO_PLAY_ONCE)
+    assert t[0] == 2 and t[1] == 0
+    t = protocol.build_macro_table(2, _M1_EVENTS, 5, protocol.MACRO_PLAY_REPEAT)
+    assert t[1] == 1 and t[4:6] == [0, 5]
+    # the count is big-endian 16-bit (L1237-1238)
+    t = protocol.build_macro_table(0, _M1_EVENTS, 0x1234, protocol.MACRO_PLAY_REPEAT)
+    assert t[4:6] == [0x12, 0x34]
 
 
 def test_macro_parse_round_trips_captured_table():
@@ -229,7 +255,23 @@ def test_macro_parse_round_trips_captured_table():
         page = (b[2] << 8) | b[3]
         table[page * 58:page * 58 + b[4]] = bytes(b[5:5 + b[4]])
     parsed = protocol.parse_macro_table(table)
-    assert parsed == {"slot": 1, "repeat_count": 3, "events": _M2_EVENTS}
+    assert parsed == _M2_PARSED
+    # and the parse feeds straight back into a byte-identical build
+    again = protocol.build_macro_table(parsed["slot"], parsed["events"],
+                                       parsed["repeat_count"], parsed["play_mode"])
+    assert bytes(again) == bytes(table)
+
+
+def test_macro_empty_slot_zero_image_matches_vendor():
+    """The vendor writes ALL ZEROS for every unused slot on each save (10
+    slot writes per Apply in the capture, e.g. frames 2104-2195); an empty
+    event list builds exactly that, and it parses back as empty."""
+    zero_writes = _outs(lambda b: b[0] == 0x19 and b[1] == 3 and b[2] == 0
+                        and b[3] == 0 and not any(b[5:63]))
+    assert zero_writes, "capture has all-zero slot writes"
+    built = [p[1:] for p in protocol.build_macro_packets(3, [], 1)]
+    assert built[0] == zero_writes[0][1]
+    assert protocol.parse_macro_table([0] * 256) is None
 
 
 def test_macro_empty_slot_reads_back_all_ff():
@@ -380,8 +422,8 @@ class ReadableDevice:
             self._dev.frames.extend(self.reply_fn(list(payload)) or [])
         return len(payload)
 
-    # Handle reads now go through the wrapper (like the real AulaDevice), not
-    # device._dev directly, so read_actuation stays inner-lock-guarded.
+    # Handle reads go through the wrapper (like the real AulaDevice), not
+    # device._dev directly, so driver read sweeps stay inner-lock-guarded.
     def read(self, n, timeout_ms=0):
         return self._dev.read(n) if self._dev is not None else []
 
@@ -483,8 +525,10 @@ def test_driver_read_deadband_table_from_captured_chunks():
 def test_driver_write_macro_emits_capture_identical_packets():
     dev = ReadableDevice()
     d = Win60Driver(None, dev, threading.RLock())
-    d.write_macro(1, _M2_EVENTS, repeat_count=3)
-    assert dev.writes == protocol.build_macro_packets(1, _M2_EVENTS, 3)
+    d.write_macro(1, _M2_EVENTS, play_mode=protocol.MACRO_PLAY_REPEAT,
+                  repeat_count=3)
+    assert dev.writes == protocol.build_macro_packets(
+        1, _M2_EVENTS, 3, protocol.MACRO_PLAY_REPEAT)
     assert [w[1:] for w in dev.writes] == _macro_write_group(1, 0x38)
 
 
@@ -492,7 +536,7 @@ def test_driver_read_macro_round_trip():
     dev = ReadableDevice(_capture_reply_fn)
     d = Win60Driver(None, dev, threading.RLock())
     parsed = d.read_macro(1, timeout_s=0.5)
-    assert parsed == {"slot": 1, "repeat_count": 3, "events": _M2_EVENTS}
+    assert parsed == _M2_PARSED
 
 
 def test_driver_device_info_from_captured_replies():

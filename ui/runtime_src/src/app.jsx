@@ -48,10 +48,25 @@ const wsArr = (key, label) => {
 const WIDGETS = {
   actuation: wsArr("ACTUATION_WIDGETS", "Actuation"),
   keymap:    wsArr("KEYMAP_WIDGETS", "Keymap"),
+  macros:    wsArr("MACROS_WIDGETS", "Macros"),
   lighting:  wsArr("LIGHTING_WIDGETS", "Lighting"),
   socd:      wsArr("SOCD_WIDGETS", "SOCD"),
   gamepad:   wsArr("GAMEPAD_WIDGETS", "Gamepad"),
   settings:  wsArr("SETTINGS_WIDGETS", "Settings"),
+};
+
+// Sections that exist only when the active board declares the capability
+// (registry flag === true). With NO board data at all (bridge down, plain
+// browser) the gate fails open like every other capability gate; a "wip"
+// (source-only) or false flag hides the tab, so other boards never see a
+// Macros section they cannot drive.
+const SECTION_CAPS = { macros: "macros" };
+const sectionAllowed = (id, board) => {
+  const cap = SECTION_CAPS[id];
+  if (!cap) return true;
+  const caps = board && board.capabilities;
+  if (!caps || typeof caps !== "object") return true;   // fail-open on unknown
+  return caps[cap] === true;
 };
 
 /* ============================================================
@@ -1460,10 +1475,19 @@ function App() {
   // The whole existing tree, unchanged — board-awareness overlays are appended
   // after <main> and the tree is (optionally) wrapped in the BoardContext
   // provider below.
+  // Capability-gated tabs: filter the section list per board, and if the
+  // open section just became unavailable (board switch / first board data)
+  // fall back to the Keymap tab rather than showing an orphaned workspace.
+  const sectionDefs = useMemo(
+    () => SECTION_DEFS.filter(sdef => sectionAllowed(sdef.id, board)), [board]);
+  useEffect(() => {
+    if (!sectionAllowed(section, board)) setSection("keymap");
+  }, [section, board]);
+
   const tree = (
     <>
       <DesktopTopBar
-        sections={SECTION_DEFS}
+        sections={sectionDefs}
         active={section}
         onSelect={setSection}
         connected={connected} connecting={connecting} onTogglePair={togglePair}

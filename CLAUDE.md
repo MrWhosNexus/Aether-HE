@@ -52,6 +52,15 @@ venv-web/bin/python ui/runtime_src/build_runtime.py
   `idx=r[7]*22+r[8],depth=(r[9]|r[10]<<8)/100` — offsets confirmed correct by capture).
 - **Calibration**: cmd33 sub `r[6]∈{8,15}`; `r[7]==1` → bitmask `r[8:30]` (idx=bit*22+col) of
   calibrated keys; `r[7]==0` → complete.
+- **Macros (cmd 25)**: 10 slots x 256 B, paged 4x58+24 (`[1]=slot` write, `slot|0x80` read; never-
+  written slot reads all 0xFF, vendor writes all-0x00 for unused). Header `[slot, playMode, lenBE16,
+  countBE16, 0, 0]` — byte 1 is the vendor macroType (0 once, 1 repeat N; 2 toggle / 3 hold UNVERIFIED),
+  NOT the slot repeated. Events `[hid, 0x10 down|0x00 up, delayAfterBE16]`; Aether/base-driver tuples are
+  `(delay_BEFORE_ms, hid, is_down)` and protocol.py shifts by one at the wire (deobfuscated.js L1244/L505).
+  A key fires a macro via base-keymap entry `[0x10, default_hid, slot, 0]` (cmd 24) — `Win60Driver.bind_macro`
+  is a base-layer RMW (`protocol.compose_base_keymap`: zero read-back = firmware default) + Fn replay.
+  Api: `list_macros/read_macro/save_macro/delete_macro/bind_macro/unbind_macro`; names live in
+  settings.json `macroNames`. UI: `ui/runtime_src/workspaces/macros.jsx` (tab gated on registry `macros`).
 - **Device interface**: prefer usage_page `0xFF1B`; Linux reports 0x0 so it falls back to the
   highest interface_number (iface 2). Windows usually reports the usage page correctly.
 

@@ -381,12 +381,18 @@ def test_undeclared_capabilities_default_false():
 
 
 def test_win60_capabilities():
-    """Board A: everything hardware-verified is true; macros stays 'wip' (SOURCE-ONLY)."""
+    """Board A: everything hardware-verified is true. macros moved 'wip' ->
+    True: the cmd-25 slot format + the type-0x10 keymap bind are
+    CONFIRMED-BY-CAPTURE and pinned byte-for-byte by
+    tests/test_protocol_win60_capture.py / tests/test_win60_macros.py, and
+    the driver (Win60Driver.write_macro/read_macro/bind_macro) + Api +
+    UI paths exist — 'wip' is defined in the registry as SOURCE-ONLY, which
+    would now misstate the evidence (the same gate/driver disagreement the
+    MINI 60's macros flag hit)."""
     p = boards.load_registry().by_slug("aula-win60-he")
     for flag in ("lighting", "actuation", "perKeyRgb", "rapidTrigger",
-                 "socd", "deadzone", "calibration", "gamepad"):
+                 "socd", "deadzone", "calibration", "gamepad", "macros"):
         assert p.cap(flag) is True, f"win60 {flag} should be True"
-    assert p.cap("macros") == "wip"
     assert p.deadzone_scope == "per-key"
 
 
