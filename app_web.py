@@ -265,7 +265,9 @@ class Api:
                         except Exception:
                             time.sleep(0.05); continue
                         if not got:
-                            time.sleep(0.005)
+                            # Idle: 100 Hz is plenty — each pass drains up to
+                            # 256 queued reports, so nothing is lost.
+                            time.sleep(0.01)
             else:
                 # Unknown board: fresh read-only handle, never written to.
                 dev = hid.device()
@@ -319,10 +321,16 @@ class Api:
             th = getattr(self, "_cap_thread", None)
             if th:
                 th.join(timeout=0.3)
+            self._cap_thread = None
             if getattr(self, "_cap_shared", False):
                 # Shared app handle: disarm the stream we armed, but never close it —
                 # the app owns self.dev and keeps using it.
                 self._disarm_capture()
+                # open_capture paused the shared live reader (set self.reader
+                # = None) but left its owners registered. Anyone still
+                # claiming it (analog tab / gamepad / reactive effects) would
+                # otherwise be stranded on a dead stream, so bring it back.
+                self._restore_shared_reader()
             else:
                 dev = getattr(self, "_cap_dev", None)
                 if dev:
@@ -582,37 +590,71 @@ class Api:
     def _acquire_reader(self, who, make):
         """Register `who` as needing the shared live reader; start it (via
         `make`) if it isn't already running. Returns the reader, or None when
-        there is no keymap to read."""
-        self._reader_users.add(who)
-        if self.reader is None and self.km:
-            self.reader = make()
-            self.reader.start()
-        return self.reader
+        there is no keymap to read.
+
+        Reader lifecycle runs under the outer RLock: pywebview dispatches API
+        calls on worker threads, so an analog-tab open racing an effect start
+        could otherwise both see `reader is None` and start TWO readers on one
+        handle (one of them leaked). Lock order stays outer -> inner: reader
+        threads only ever take the device's inner lock, so stop()/join() under
+        the outer lock cannot deadlock."""
+        with self._lock:
+            self._reader_users.add(who)
+            if self.reader is None and self.km:
+                self.reader = make()
+                self.reader.start()
+            return self.reader
 
     def _release_reader(self, who):
         """Drop `who`; stop the shared reader only when nobody else needs it —
         so turning gamepad capture off can't strand the analog tab's stream."""
-        self._reader_users.discard(who)
-        if not self._reader_users and self.reader is not None:
+        # Detach under the lock, but JOIN outside it: the calibration reader's
+        # on_change renders through driver.stream_frame, which takes this same
+        # outer lock — joining it while holding the lock would stall the join.
+        r = None
+        with self._lock:
+            self._reader_users.discard(who)
+            if not self._reader_users and self.reader is not None:
+                r, self.reader = self.reader, None
+        if r is not None:
             try:
-                self.reader.stop()
+                r.stop()
             except Exception:
                 pass
-            self.reader = None
+
+    def _restore_shared_reader(self):
+        """Re-create the shared live reader if it is gone but still claimed
+        (open_capture pauses it while a board-submission capture borrows the
+        handle). The reactive-effect depth source (_ensure_reactive) resolves
+        self.reader on every call, so it picks the new instance up by itself.
+        Never raises."""
+        try:
+            if not self._reader_users or self.reader is not None or not self.km:
+                return
+            if not self.dev.is_open():
+                return
+            self.reader = self.driver.make_live_reader(self.km)
+            self.reader.start()
+        except Exception as e:
+            log.warning("could not restore live reader after capture: %s", e)
 
     def _stop_readers(self):
         """Stop and clear BOTH readers and all ownership. Every disconnect /
         board-switch path runs this so no reader thread is left spinning on a
         handle that is about to close."""
-        self._reader_users.clear()
-        for attr in ("reader", "calib_reader"):
-            r = getattr(self, attr, None)
-            if r is not None:
-                try:
-                    r.stop()
-                except Exception:
-                    pass
-                setattr(self, attr, None)
+        stopping = []
+        with self._lock:
+            self._reader_users.clear()
+            for attr in ("reader", "calib_reader"):
+                r = getattr(self, attr, None)
+                if r is not None:
+                    setattr(self, attr, None)
+                    stopping.append(r)
+        for r in stopping:            # joins happen outside the lock (see above)
+            try:
+                r.stop()
+            except Exception:
+                pass
 
     def disconnect(self):
         self.stop_multicolor()
@@ -649,13 +691,40 @@ class Api:
         return self.set_light(mode, r, g, b, brightness, speed)
 
     # ---- actuation / trigger ----
+    #: Trigger MODE bytes the decoded protocols accept (Win60 cmd 33 byte
+    #: sub[0], CONFIRMED-BY-CAPTURE for all three; the MINI driver maps 12/13
+    #: onto its RT flag). Anything else would program an undefined mode.
+    _TRIGGER_MODES = (0, 12, 13)
+
+    def _clamp_mm(self, range_key, mm):
+        """Clamp a millimetre value to the active board's declared
+        `actuation.<range_key>` ([min, max], registry) when it declares one;
+        pass-through otherwise. The UI sliders already stay in range, but
+        values also arrive from settings.json profiles and any bridge caller,
+        and the firmware ranges (WIN 60 HE: 0.08..3.40 mm travel) are what
+        readMaxTriggerTravel reports — never send it something outside."""
+        mm = float(mm)
+        rng = (getattr(self.board, "actuation", None) or {}).get(range_key)
+        if rng:
+            lo, hi = float(rng[0]), float(rng[1])
+            mm = min(hi, max(lo, mm))
+        return mm
+
     def set_trigger_all(self, travel_mm, rt_press_mm=0.0, rt_release_mm=0.0,
                         key_count=64, mode=0):
+        """Whole-board trigger write. With a keymap loaded the board's REAL
+        indices are used (Win60 indices run to 131 with a 22-column stride,
+        so `range(64)` covered barely half the keys); `key_count` only
+        matters for the legacy no-keymap path."""
         try:
-            self.driver.set_actuation(list(range(int(key_count))), int(mode),
+            if int(mode) not in self._TRIGGER_MODES:
+                return {"ok": False, "error": f"invalid trigger mode {mode}"}
+            km = getattr(self, "km", None)
+            idxs = list(km.indices()) if km else list(range(int(key_count)))
+            self.driver.set_actuation(idxs, int(mode),
                                       float(travel_mm), float(rt_press_mm),
                                       float(rt_release_mm))
-            return {"ok": True}
+            return {"ok": True, "keys": len(idxs)}
         except Exception as e:
             return self._fail(e)
 
@@ -668,14 +737,23 @@ class Api:
                 idxs = self.km.indices_for_codes(codes or []) if codes else self.km.indices()
                 if not idxs:
                     idxs = self.km.indices()
-                # The analog tab needs a reader over THESE indices, so replace
-                # any existing one; register as an owner so gamepad/reactive
-                # turning off can't stop it out from under the tab.
-                self._reader_users.add("analog")
-                if self.reader:
-                    self.reader.stop()
-                self.reader = self.driver.make_live_reader(self.km, idxs)
-                self.reader.start()
+                with self._lock:
+                    # The analog tab needs a reader over THESE indices, so
+                    # replace any existing one; register as an owner so
+                    # gamepad/reactive turning off can't stop it out from
+                    # under the tab. If another owner (reactive effect,
+                    # gamepad) already shares the reader it needs the WHOLE
+                    # board, so the replacement must cover every key — a
+                    # subset would silently blind the running effect.
+                    others = self._reader_users - {"analog"}
+                    self._reader_users.add("analog")
+                    if others and len(idxs) < len(self.km.indices()):
+                        idxs = self.km.indices()
+                    old, self.reader = self.reader, None
+                    if old:
+                        old.stop()       # LiveReader only takes the inner lock
+                    self.reader = self.driver.make_live_reader(self.km, idxs)
+                    self.reader.start()
             else:
                 self.driver.open_trigger_test(list(range(64)))
             return {"ok": True, "keys": len(idxs) if self.km else 64}
@@ -695,9 +773,20 @@ class Api:
             return self._fail(e)
 
     # ---- polling ----
+    #: Poll-rate codes the decoded protocol accepts: 1/2/4/8 = 1/2/4/8 kHz
+    #: (Win60 cmd 33 sub 9, CONFIRMED-BY-CAPTURE; the vendor's own read
+    #: handler rejects anything else). The write RESTARTS the keyboard, so an
+    #: undefined code is refused here rather than sent.
+    _POLL_CODES = (1, 2, 4, 8)
+
     def set_poll(self, rate):
         try:
-            self.driver.set_poll_rate(int(rate))
+            code = int(rate)
+            if code not in self._POLL_CODES:
+                return {"ok": False,
+                        "error": f"invalid poll-rate code {rate} "
+                                 f"(expected one of {list(self._POLL_CODES)})"}
+            self.driver.set_poll_rate(code)
             return {"ok": True}
         except Exception as e:
             return self._fail(e)
@@ -734,7 +823,17 @@ class Api:
         idxs = self.km.indices_for_codes(codes) if codes else []
         if not idxs:
             return {"ok": False, "error": "no keys"}
-        cfg = (int(mode),
+        mode = int(mode)
+        if mode not in self._TRIGGER_MODES:
+            return {"ok": False, "error": f"invalid trigger mode {mode}"}
+        travel_mm = self._clamp_mm("travelRange", travel_mm)
+        if mode != 0:
+            # RT sensitivities are only meaningful (and only range-checked)
+            # in a rapid-trigger mode; fixed mode sends whatever it was given
+            # (the UI sends 0) so the wire bytes for mode 0 are unchanged.
+            rt_press_mm = self._clamp_mm("rtRange", rt_press_mm)
+            rt_release_mm = self._clamp_mm("rtRange", rt_release_mm)
+        cfg = (mode,
                _mm_to_raw(travel_mm),
                _mm_to_raw(rt_press_mm),
                _mm_to_raw(rt_release_mm))
@@ -808,6 +907,10 @@ class Api:
         scope = getattr(self.driver, "DEADBAND_SCOPE", "per-key")
         if not idxs and scope != "global":
             return {"ok": False, "error": "no keys"}
+        # Registry deadzoneRange (0..0.5 mm on every decoded board); the wire
+        # field is one byte per value, so an unclamped 2.56 mm would wrap.
+        top_mm = self._clamp_mm("deadzoneRange", top_mm)
+        bottom_mm = self._clamp_mm("deadzoneRange", bottom_mm)
         top = _mm_to_raw(top_mm)
         bottom = _mm_to_raw(bottom_mm)
         # Preserve previously-set per-key values so applying to one selection
@@ -1016,25 +1119,35 @@ class Api:
             self._release_reader("gamepad")
             return {"ok": True}
         try:
-            self._acquire_reader("gamepad",
-                                 lambda: self.driver.make_live_reader(self.km))
+            # Open the virtual pad FIRST: it is the thing most likely to fail
+            # (no /dev/uinput access, no ViGEmBus), and a failure must not
+            # leave the analog stream armed on our behalf.
             if self.pad is None:
                 self.pad = gamepad.VirtualGamepad(self._pad_map).open()
+            self._acquire_reader("gamepad",
+                                 lambda: self.driver.make_live_reader(self.km))
             self._pad_stop.clear()
             if not self._pad_thread or not self._pad_thread.is_alive():
-                self._pad_thread = threading.Thread(target=self._gamepad_loop, daemon=True)
+                self._pad_thread = threading.Thread(target=self._gamepad_loop,
+                                                    name="aether-gamepad", daemon=True)
                 self._pad_thread.start()
             return {"ok": True}
         except Exception as e:
             if self.pad:
                 self.pad.close()
                 self.pad = None
+            # Drop the reader claim too, or a failed enable would keep the
+            # travel-test stream running with nobody consuming it.
+            self._release_reader("gamepad")
             # Surface a hint for the React UI when the failure is the missing
-            # kernel driver, so it can offer the one-click installer.
+            # kernel driver, so it can offer the one-click installer. Only when
+            # the vgamepad backend is actually loaded — with the package itself
+            # missing, running the driver installer would not help.
             msg = str(e)
             need_driver = (sys.platform.startswith("win")
+                           and gamepad.EVDEV_AVAILABLE
                            and "ViGEmBus" in msg)
-            return {"ok": False, "error": msg, "needs_vigembus": need_driver}
+            return dict(self._fail(e), needs_vigembus=need_driver)
 
     def set_gamepad_map(self, mappings):
         """Set the key→control mappings for the virtual gamepad. Each entry:
@@ -1045,6 +1158,9 @@ class Api:
                        str(m.get("key", "")), str(m.get("axis", "LX")),
                        int(m.get("direction", 1)), float(m.get("threshold_mm", 1.5)))
                    for m in (mappings or []) if m.get("key") and m.get("axis")]
+            bad = sorted({k.axis for k in kms if k.axis not in gamepad.KNOWN_AXES})
+            if bad:
+                return {"ok": False, "error": f"unknown gamepad control(s): {', '.join(bad)}"}
             self._pad_map = kms or None
             if self.pad:                      # live: reopen with new capabilities
                 was_on = self._pad_thread and self._pad_thread.is_alive()
@@ -1360,15 +1476,19 @@ class Api:
             return {"ok": False, "error": str(e)}
 
     def _gamepad_loop(self):
-        import time
-        while not self._pad_stop.is_set():
+        # ~120 Hz sampling of the live reader. VirtualGamepad.update() is a
+        # no-op on an unchanged frame, so an idle board costs a dict copy and
+        # a tuple compare per tick — no uinput/ViGEm traffic. Event.wait (not
+        # time.sleep) so set_gamepad_capture(False) returns promptly.
+        stop = self._pad_stop
+        while not stop.wait(1 / 120):
             try:
-                if self.pad and self.reader:
-                    self.pad.update(self.reader.snapshot())
+                pad, reader = self.pad, self.reader
+                if pad is not None and reader is not None:
+                    pad.update(reader.snapshot())
             except Exception as e:
                 log.warning("gamepad capture stopped: %s", e)
                 break
-            time.sleep(1 / 120)
 
     def send_raw(self, hex_str):
         try:
@@ -1406,11 +1526,26 @@ class Api:
                     "reactive", lambda: self.driver.make_live_reader(self.km))
             except UnsupportedFeature:
                 pass
-            rdr = self.reader
+            if self.reader is None:
+                self.fx.get_depths = None
+                return
             km = self.km
-            self.fx.get_depths = (lambda: {km.index_of_code[c]: mm
-                                           for c, mm in rdr.snapshot().items()
-                                           if c in km.index_of_code}) if rdr else None
+
+            def get_depths():
+                # Resolve the reader on EVERY call (never capture it): the
+                # analog tab replaces self.reader with a new instance, and a
+                # captured, stopped reader would leave the effect deaf.
+                rdr = self.reader
+                if rdr is None:
+                    return {}
+                by_idx = getattr(rdr, "snapshot_by_index", None)
+                if by_idx is not None:
+                    return by_idx()          # one dict copy, no remap
+                idx_of = km.index_of_code
+                return {idx_of[c]: mm for c, mm in rdr.snapshot().items()
+                        if c in idx_of}
+
+            self.fx.get_depths = get_depths
         else:
             self.fx.get_depths = None
             self._release_reader("reactive")

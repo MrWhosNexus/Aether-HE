@@ -164,11 +164,72 @@ class Win60Driver(BoardDriver):
             int(mode), list(indices),
             float(travel_mm), float(rt_press_mm), float(rt_release_mm)))
 
-    def read_actuation(self, keymap):
-        """{key name: travel mm} via the per-key cmd33/sub5 query (holds the
-        outer lock for the whole sweep, as Api.verify_actuation did)."""
+    #: Per-key wait for the readTriggerData reply before moving on.
+    TRIGGER_READ_TIMEOUT_S = 0.04
+
+    def read_trigger_config(self, indices, timeout_s=None):
+        """{device index: {"mode", "travel", "interval1", "interval2"}} via
+        one cmd-33 sub-5 readTriggerData query per key (raw trigger units,
+        0.01 mm on this board). Holds the outer lock for the whole sweep.
+
+        CONFIRMED-BY-CAPTURE reply layout — see protocol.parse_trigger_config.
+        The previous implementation (device_state.read_actuation) matched
+        raw r[5] == 5, which is the payload LENGTH byte (0x0c on this reply,
+        5 only on a live travel-test frame), and decoded travel from the
+        stream-frame offsets — so it either saw nothing or, with a key held
+        during the sweep, reported live depth as the stored actuation.
+        Replies are matched to the requested key by the echoed row/col, so a
+        stale frame can never be booked against the wrong key. Keys that do
+        not answer are simply absent from the result."""
+        if timeout_s is None:
+            timeout_s = self.TRIGGER_READ_TIMEOUT_S
+        out = {}
         with self._lock:
-            return device_state.read_actuation(self.dev, keymap)
+            if not self.dev.is_open():
+                self.dev.open()
+            self._drain_input()
+            try:
+                self.dev.set_nonblocking(True)
+            except Exception:
+                pass
+            for idx in indices:
+                idx = int(idx)
+                try:
+                    self.dev.write(protocol.build_read_trigger_config(idx))
+                except Exception:
+                    break
+                deadline = time.time() + timeout_s
+                while time.time() < deadline:
+                    try:
+                        r = self.dev.read(64, timeout_ms=0)
+                    except Exception:
+                        return out
+                    if not r:
+                        time.sleep(0.001)
+                        continue
+                    p = None
+                    for off in (1, 0):
+                        if len(r) > off:
+                            p = protocol.parse_trigger_config(list(r[off:]))
+                            if p:
+                                break
+                    if p and p["index"] == idx:
+                        out[idx] = {k: p[k] for k in
+                                    ("mode", "travel", "interval1", "interval2")}
+                        break
+        return out
+
+    def read_actuation(self, keymap):
+        """{key name: travel mm} for every key in `keymap` (see
+        read_trigger_config; was Api.verify_actuation)."""
+        idxs = [int(k["index"]) for k in keymap.keys]
+        cfg = self.read_trigger_config(idxs)
+        out = {}
+        for k in keymap.keys:
+            c = cfg.get(int(k["index"]))
+            if c is not None:
+                out[k["name"]] = round(c["travel"] * protocol.TRIGGER_UNIT_MM, 2)
+        return out
 
     # ---- dead band / switch / poll ----
     def set_deadband(self, raw_by_index, top_mm=None, bottom_mm=None):
@@ -220,10 +281,65 @@ class Win60Driver(BoardDriver):
             timeout_s=timeout_s)
         return raw
 
+    #: How long read_switch_table() waits before set_switch aborts.
+    SWITCH_READ_TIMEOUT_S = 1.5
+
     def set_switch(self, switch_by_index):
-        for pkt in protocol.build_switch_table(dict(switch_by_index or {})):
-            self._write(pkt)
-            time.sleep(0.005)
+        """Per-key switch profile (cmd 37) — READ-MODIFY-WRITE.
+
+        The old constant fill (`default_switch=1` for every key not in the
+        patch) sent HM1 to every key the user did NOT select on each apply:
+        WASD -> TC1 followed by Space -> HH1 put WASD back on HM1. The
+        vendor builds the table from each key's own stored switch value
+        (CONFIRMED-BY-CAPTURE frames 298-301 read / 1578-1581 write), so we
+        read the current 132-byte table (cmd 37 sub 2), patch only the
+        requested indices, and write it back. A failed read ABORTS the
+        write. Write-only stubs (no raw handle) keep the constant-fill
+        behavior byte-for-byte, as set_deadband does."""
+        patch = dict(switch_by_index or {})
+        with self.transaction():
+            if not self.dev.is_open():
+                self.dev.open()
+            if getattr(self.dev, "_dev", None) is None:
+                for pkt in protocol.build_switch_table(patch):
+                    self._write(pkt)
+                    time.sleep(0.005)
+                return
+            base = self.read_switch_table(timeout_s=self.SWITCH_READ_TIMEOUT_S)
+            if base is None:
+                raise RuntimeError(
+                    "switch-table read failed; aborting write (refusing to "
+                    "overwrite the other keys' switch profiles with a default)")
+            for pkt in protocol.build_switch_table(patch, base_table=base):
+                self._write(pkt)
+                time.sleep(0.005)
+
+    def read_switch_table(self, timeout_s=1.5):
+        """The board's current 132-byte per-key switch table (cmd 37 sub 2;
+        CONFIRMED-BY-CAPTURE framing: 3 chunks, 58+58+16). bytes(132) only
+        if every page arrived; None otherwise."""
+        return self._read_paged_table(
+            protocol.build_read_switch_table(),
+            parse=protocol.parse_switch_chunk,
+            total=protocol.SWITCH_TABLE_BYTES,
+            timeout_s=timeout_s)
+
+    def read_switch_list(self, timeout_s=1.0):
+        """Switch profile ids the firmware offers (cmd 37 sub 0; the WIN 60
+        HE answers [1, 2, 3, 5]). Raises RuntimeError on no reply."""
+        out = {}
+
+        def sink(body):
+            ids = protocol.parse_switch_list(body)
+            if ids is None:
+                return False
+            out["ids"] = ids
+            return True
+
+        if not self._read_frames(protocol.build_read_switch_list(), sink,
+                                 timeout_s):
+            raise RuntimeError("switch-list read failed (cmd 37 sub 0)")
+        return out["ids"]
 
     def set_poll_rate(self, rate):
         self._write(protocol.build_poll_rate(int(rate)))

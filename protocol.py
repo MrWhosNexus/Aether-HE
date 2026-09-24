@@ -49,6 +49,12 @@ def _keymask(indices):
     """22-byte bitmask: byte[i%22] |= 1<<(i//22) — the driver's key-select form."""
     mask = [0] * 22
     for i in indices:
+        i = int(i)
+        # 22 columns x 8 bit-rows is all a byte mask can address; a larger
+        # index would set bit 8+ and produce a >255 byte that hidapi rejects
+        # (or, masked, silently select the wrong key).
+        if not 0 <= i < 22 * 8:
+            raise ValueError(f"key index {i} outside the 22x8 key mask")
         mask[i % 22] |= 1 << (i // 22)
     return mask
 
@@ -403,18 +409,109 @@ def _paged_table_packets(cmd, values, page_size=58):
     return packets
 
 
-def build_switch_table(switch_by_index, default_switch=1, key_count=132):
+SWITCH_TABLE_BYTES = 132   # one switch-profile id per device index
+
+
+def build_switch_table(switch_by_index, default_switch=1, key_count=132,
+                       base_table=None):
     """Set magnetic switch profile per device index.
 
     The vendor driver sends a 132-byte table through cmd 37, sub 1, in 58-byte
     pages. Values are switch profile ids from the driver's switch list.
+
+    `base_table` (additive, optional): the board's CURRENT 132-byte table
+    (build_read_switch_table() -> assemble_switch_table()) so only the
+    requested indices change. Without it every other key is filled with
+    `default_switch` — which silently rewrites every key the caller did NOT
+    select (select WASD -> TC1, then Space -> HH1 sends WASD back to HM1).
+    CONFIRMED-BY-CAPTURE (webhid-capture-win60.json frames 1578-1581): the
+    vendor builds the table from each key's own stored `switch` value and
+    writes 0 on unpopulated slots, not a constant.
     """
-    values = [int(default_switch)] * int(key_count)
+    n = int(key_count)
+    if base_table is not None:
+        values = [int(v) & 0xFF for v in list(base_table)[:n]]
+        values.extend([0] * (n - len(values)))
+    else:
+        values = [int(default_switch)] * n
     for idx, switch_id in (switch_by_index or {}).items():
         idx = int(idx)
+        sid = int(switch_id)
+        if not 0 <= sid <= 0xFF:
+            raise ValueError(f"switch id {sid} is not a byte")
         if 0 <= idx < len(values):
-            values[idx] = int(switch_id)
+            values[idx] = sid
     return _paged_table_packets(37, values)
+
+
+def build_read_switch_list():
+    """Ask which switch profiles the firmware offers (driver: initSwitchList,
+    cmd 37 [1]=0). CONFIRMED-BY-CAPTURE: OUT `25 00`, answered with
+    `25 00 00 00 06 00 04 01 02 03 05` — parse with parse_switch_list()."""
+    return _wrap(_pkt(37))
+
+
+def parse_switch_list(body):
+    """Decode the cmd-37 sub-0 reply BODY (report id stripped) into the
+    list of switch ids the board supports, or None. Vendor layout
+    (agreement.js initSwitchList handler): payload = body[5:5+body[4]],
+    count = payload[0]<<8 | payload[1] (BE16), ids = payload[2:2+count].
+    The WIN 60 HE answers [1, 2, 3, 5] = HM1, HH1, CY1, TC1."""
+    if len(body) < 7 or body[0] != 37 or body[1] != 0:
+        return None
+    length = body[4]
+    if length < 2 or 5 + length > len(body):
+        return None
+    payload = list(body[5:5 + length])
+    count = (payload[0] << 8) | payload[1]
+    ids = payload[2:2 + count]
+    if len(ids) != count:
+        return None
+    return ids
+
+
+def build_read_switch_table():
+    """Ask for the current 132-byte per-key switch table (driver:
+    initKeySwitch, cmd 37 [1]=2). CONFIRMED-BY-CAPTURE: OUT `25 02`,
+    answered with 3 chunks (58 + 58 + 16) shaped like the write pages:
+    body = [37, 2, page_hi, page_lo, len, payload...]. Parse each with
+    parse_switch_chunk() and reassemble with assemble_switch_table()."""
+    d = _pkt(37)
+    d[1] = 2
+    return _wrap(d)
+
+
+def parse_switch_chunk(body):
+    """Decode one cmd-37 sub-2 read-reply chunk BODY. Returns
+    {"page": n, "data": [...]} or None (writes echo with [1]=1, the
+    switch LIST reply carries [1]=0)."""
+    if len(body) < 6 or body[0] != 37 or body[1] != 2:
+        return None
+    page = (body[2] << 8) | body[3]
+    length = body[4]
+    if length == 0 or 5 + length > len(body):
+        return None
+    return {"page": page, "data": list(body[5:5 + length])}
+
+
+def assemble_switch_table(chunks):
+    """Merge parse_switch_chunk() results into the flat 132-byte table.
+    Returns bytes(132) only when every page (0..2, 58-byte stride)
+    arrived; None on a partial read so callers refuse to write a
+    half-zeroed table."""
+    table = bytearray(SWITCH_TABLE_BYTES)
+    seen = set()
+    for ch in chunks:
+        if not ch:
+            continue
+        start = ch["page"] * 58
+        data = ch["data"][:max(0, SWITCH_TABLE_BYTES - start)]
+        if not data:
+            continue
+        table[start:start + len(data)] = bytes(data)
+        seen.add(ch["page"])
+    n_pages = (SWITCH_TABLE_BYTES + 57) // 58
+    return bytes(table) if len(seen) >= n_pages else None
 
 
 DEADBAND_TABLE_BYTES = 264   # 132 keys x [top, bottom], 0.01 mm units
@@ -448,9 +545,15 @@ def build_deadband_table(deadband_by_index, default_top=4, default_bottom=5,
     for idx, pair in (deadband_by_index or {}).items():
         idx = int(idx)
         if 0 <= idx < int(key_count):
-            top, bottom = pair
-            values[idx * 2] = int(top)
-            values[idx * 2 + 1] = int(bottom)
+            top, bottom = int(pair[0]), int(pair[1])
+            # One byte each on the wire; the pager masks with & 0xFF, so an
+            # out-of-range value would silently wrap (2.56 mm -> 0.00 mm).
+            if not (0 <= top <= 0xFF and 0 <= bottom <= 0xFF):
+                raise ValueError(
+                    f"dead band {top}/{bottom} for key {idx} outside 0..255 "
+                    f"(0.01 mm units)")
+            values[idx * 2] = top
+            values[idx * 2 + 1] = bottom
     return _paged_table_packets(38, values)
 
 
@@ -507,6 +610,10 @@ def build_prcs_power(on):
 def build_prcs(prcs_list):
     """prcs_list: list of dicts {model, key1_hid, key2_hid}. Up to 20, sent as
     two packets of 10. Returns a list of payloads."""
+    if len(prcs_list) > 20:
+        # The vendor table is exactly 2 pages x 10 entries; anything past
+        # that would be dropped silently while the UI reported success.
+        raise ValueError("at most 20 SOCD/PRCS pairs (got %d)" % len(prcs_list))
     out = []
     for page in range(2):
         d = _pkt(36); d[1] = 0; d[2] = (page >> 8) & 0xFF; d[3] = page & 0xFF; d[4] = 40
@@ -801,15 +908,61 @@ def macro_keymap_entry(macro_slot, hid_code):
 
 
 def parse_trigger_read(body):
-    """Decode a cmd-33 sub-5 trigger-read response body (without report id).
+    """Decode a cmd-33 LIVE TRAVEL-TEST stream frame body (report id
+    stripped) — the frames the vendor handler matches with body[5] == 0x01
+    (agreement.js: `r[0]==33 && r[5]==1 -> depth = r[9]<<8 | r[8]`).
 
-    body[i] == r[i+1] for the raw 64-byte report r. Per the hardware-verified
-    sub-5 travel layout (see device_state.LiveReader): r[7]=row, r[8]=col,
-    r[9]/r[10]=depth lo/hi. In body terms row=body[6], col=body[7],
-    depth lo/hi = body[8]/body[9]. travel is in 0.01 mm units.
+    body[i] == r[i+1] for the raw 64-byte report r: row=body[6], col=body[7],
+    depth lo/hi = body[8]/body[9], in 0.01 mm units. This is NOT the layout
+    of the cmd-33 sub-5 per-key config read-back (readTriggerData) — for
+    that reply use parse_trigger_config(); the two frames share a command
+    byte and nothing else.
     """
     return {
         "row": body[6],
         "col": body[7],
         "travel": body[8] | (body[9] << 8),
+    }
+
+
+def build_read_trigger_config(index):
+    """Ask for one key's stored trigger config (driver: readTriggerData,
+    cmd 33 sub 5): OUT `21 00 00 00 18 05 <row> <col>` with row = index // 22,
+    col = index % 22. CONFIRMED-BY-CAPTURE (frame 172: `18 05 01 00`)."""
+    index = int(index)
+    d = _pkt(33)
+    d[4] = 24
+    d[5] = 5
+    d[6] = index // 22
+    d[7] = index % 22
+    return _wrap(d)
+
+
+def parse_trigger_config(body):
+    """Decode the cmd-33 sub-5 readTriggerData reply BODY (report id
+    stripped). Returns None unless the body is that reply.
+
+    CONFIRMED-BY-CAPTURE (webhid-capture-win60.json frame 173, answering the
+    row-1/col-0 request):
+        21 00 00 00 0c 05 00 aa aa 01 01 00 00 00 00 01 00
+                    len sub mode tr tr i1 i2 -- -- -- -- row col
+    decoded with the vendor's own field expressions (agreement.js
+    readTriggerData): mode = body[6], travel = body[11]<<8 | body[7],
+    interval1 = body[13]<<8 | body[9], interval2 = body[14]<<8 | body[10];
+    row/col echo at body[15]/body[16], so index = row*22 + col. All travel
+    values are in the board's trigger unit (0.01 mm on the WIN 60 HE), so
+    `aa` = 170 = 1.70 mm. Note the payload length byte body[4] is 0x0c —
+    a reader that tests body[4] (raw r[5]) == 5 never sees this reply.
+    """
+    if len(body) < 17 or body[0] != 33 or body[5] != 5:
+        return None
+    row, col = body[15], body[16]
+    return {
+        "mode": body[6],
+        "travel": (body[11] << 8) | body[7],
+        "interval1": (body[13] << 8) | body[9],
+        "interval2": (body[14] << 8) | body[10],
+        "row": row,
+        "col": col,
+        "index": row * 22 + col,
     }
