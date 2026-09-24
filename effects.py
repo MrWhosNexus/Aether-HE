@@ -38,6 +38,21 @@ _SPAWN_NORM = 30.0 / FPS
 # place but forget the other).
 PRESS_REACTIVE = ("reactive", "ripple", "speedres", "cross", "fireworks")
 
+# Hard ceiling on live particles (stars / ripples / bursts / drops) per zone.
+# Every spawner already prunes by age, so this never trips in normal use — it
+# is a memory backstop so a wedged clock or a pathological spawn burst can't
+# turn a per-frame O(particles x keys) loop into unbounded growth.
+_MAX_PARTICLES = 96
+
+# Shared read-only "no depths" value so the loop doesn't allocate a fresh dict
+# every frame when no reader is attached. Generators only ever .get() from it.
+_NO_DEPTHS = {}
+
+# Monotonic clock for pacing/animation time: time.time() can jump (NTP slew,
+# manual clock set, Windows time sync) which would freeze or fast-forward every
+# time-based generator and mis-size the pacing sleep.
+_now = time.monotonic
+
 
 def _scale(rgb, f):
     if f >= 1.0: return rgb
@@ -113,7 +128,24 @@ class PerKeyEffectEngine:
         # board gets the full intended particle count, not 28/60 of it.
         self._spawn_norm = 30.0 / self.fps
         self._thread = None
+        # One Event PER RUN (replaced in start_zones, never cleared): a thread
+        # that outlives stop()'s bounded join — e.g. wedged in a USB write —
+        # keeps seeing ITS stop flag set and exits at its next check, instead
+        # of being revived by a clear() and streaming alongside the new run.
         self._stop = threading.Event()
+        self._stop.set()
+        # Generator dispatch table, built once (not per run).
+        self._gens = {
+            "twinkle": self._g_twinkle, "wave": self._g_wave, "breath": self._g_breath,
+            "ripple": self._g_ripple, "aurora": self._g_aurora,
+            "striation": self._g_striation, "radar": self._g_radar, "cross": self._g_cross,
+            "fireworks": self._g_fireworks, "frenzy": self._g_frenzy,
+            "reactive": self._g_reactive,
+            "neon": self._g_breath, "speedres": self._g_speedres, "static": self._g_static,
+            "rain": self._g_rain, "comet": self._g_comet, "tide": self._g_slopewave,
+            "autorip": self._g_autorip,
+            "calibrate": self._g_calibrate,
+        }
         self.zones = []
         self.base = {}            # static per-key colors under the zones
         self.global_bg = (0, 0, 0)
@@ -172,8 +204,10 @@ class PerKeyEffectEngine:
         ) for z in zones if z.get("indices")]
         self._base_frame = {i: self.global_bg for i in self.indices}
         self._base_frame.update(self.base)
-        self._stop.clear()
-        self._thread = threading.Thread(target=self._run, daemon=True)
+        stop_ev = threading.Event()
+        self._stop = stop_ev
+        self._thread = threading.Thread(target=self._run, args=(stop_ev, self.zones),
+                                        daemon=True)
         self._thread.start()
 
     def is_running(self):
@@ -181,35 +215,40 @@ class PerKeyEffectEngine:
 
     def stop(self):
         self._stop.set()
-        if self._thread:
-            self._thread.join(timeout=0.5)
+        th = self._thread
+        if th is not None and th is not threading.current_thread():
+            th.join(timeout=0.5)
         self._thread = None
+        self.last_frame = {}
 
-    def _run(self):
-        gens = {
-            "twinkle": self._g_twinkle, "wave": self._g_wave, "breath": self._g_breath,
-            "ripple": self._g_ripple, "aurora": self._g_aurora,
-            "striation": self._g_striation, "radar": self._g_radar, "cross": self._g_cross,
-            "fireworks": self._g_fireworks, "frenzy": self._g_frenzy,
-            "reactive": self._g_reactive,
-            "neon": self._g_breath, "speedres": self._g_speedres, "static": self._g_static,
-            "rain": self._g_rain, "comet": self._g_comet, "tide": self._g_slopewave,
-            "autorip": self._g_autorip,
-            "calibrate": self._g_calibrate,
-        }
-        t0 = time.time()
-        while not self._stop.is_set():
-            t_start = time.time()
+    def _run(self, stop_ev=None, zones=None):
+        # `stop_ev`/`zones` are bound to THIS run so a late-exiting old thread
+        # never reads the next run's state (see the per-run Event note above).
+        if stop_ev is None:
+            stop_ev = self._stop
+        if zones is None:
+            zones = self.zones
+        gens = self._gens
+        send = self._send
+        interval = self._frame_interval
+        default_gen = self._g_wave
+        t0 = _now()
+        while not stop_ev.is_set():
+            t_start = _now()
             t = t_start - t0
             # Live key-travel (mm) for press-reactive effects (reactive). Cheap no-op
             # callable returning {device_index: mm}; empty when no reader is attached.
-            self._depths = self.get_depths() if self.get_depths else {}
+            get_depths = self.get_depths
+            self._depths = get_depths() if get_depths else _NO_DEPTHS
+            # A fresh dict per frame is REQUIRED: last_frame is read concurrently
+            # by the UI mirror (get_light_frame) and the driver's diff cache keeps
+            # a reference, so the previous frame must never be mutated in place.
             frame = self._base_frame.copy()
-            for z in self.zones:
-                gens.get(z.mode, self._g_wave)(z, t, frame)
+            for z in zones:
+                gens.get(z.mode, default_gen)(z, t, frame)
             self.last_frame = frame   # for the in-app keyboard mirror
             try:
-                self._send(frame)      # palette already gamma-corrected; bg left linear
+                send(frame)            # palette already gamma-corrected; bg left linear
             except Exception:
                 break
             # Merge of two independent fixes, both needed:
@@ -218,13 +257,20 @@ class PerKeyEffectEngine:
             #   here  — pace to the BOARD's interval, not a hardcoded 1/FPS: the
             #           MINI 60 HE PRO sustains ~28 fps where the engine targets 60.
             # Using either alone loses the other's property.
-            elapsed = time.time() - t_start
-            time.sleep(max(0.0, self._frame_interval - elapsed))
+            elapsed = _now() - t_start
+            time.sleep(max(0.0, interval - elapsed))
 
     # ---- zone generators: (zone, t, frame) -> writes frame[idx] for idx in zone ----
     def _g_static(self, z, t, frame):
-        for i, idx in enumerate(z.indices):
-            frame[idx] = _scale(_palette_at(z.palette, i / max(1, len(z.indices)) * len(z.palette)), z.bright)
+        # Time-independent: compute the per-key colors once and replay them.
+        cols = z.state.get("static")
+        if cols is None:
+            n = max(1, len(z.indices))
+            cols = z.state["static"] = [
+                (idx, _scale(_palette_at(z.palette, i / n * len(z.palette)), z.bright))
+                for i, idx in enumerate(z.indices)]
+        for idx, c in cols:
+            frame[idx] = c
 
     def _g_twinkle(self, z, t, frame):
         life = 1.4 - z.speed
@@ -269,6 +315,8 @@ class PerKeyEffectEngine:
         if t - st["last_spawn"] >= spawn_int:
             st["last_spawn"] = t
             stars.append([t, random.choice(st["row_keys"]), random.choice(z.palette)])
+            if len(stars) > _MAX_PARTICLES:
+                del stars[:-_MAX_PARTICLES]
 
         for idx in z.indices:
             frame[idx] = _scale(z.bg, z.bright)
@@ -342,6 +390,8 @@ class PerKeyEffectEngine:
                 rips.append((t, self._nx_map[idx], self._ny_map[idx], random.choice(z.palette)))
             elif mm < 0.3 and idx in pressed:
                 pressed.discard(idx)
+        if len(rips) > _MAX_PARTICLES:
+            del rips[:-_MAX_PARTICLES]
         for idx in z.indices:
             frame[idx] = _scale(z.bg, z.bright)
         flow = 0.4 + z.speed * 2.5
@@ -371,6 +421,8 @@ class PerKeyEffectEngine:
         if t - z.state.get("last_spawn", 0.0) >= gap:
             z.state["last_spawn"] = t
             rips.append(t)                 # only the birth time — palette is the gradient
+            if len(rips) > _MAX_PARTICLES:
+                del rips[:-_MAX_PARTICLES]
         for idx in z.indices:
             frame[idx] = _scale(z.bg, z.bright)
         flow = 0.14 + z.speed * 0.7
@@ -461,6 +513,8 @@ class PerKeyEffectEngine:
                 crosses.append((t, idx // 22, idx % 22, random.choice(z.palette)))
             elif mm < 0.25 and idx in pressed:
                 pressed.discard(idx)
+        if len(crosses) > _MAX_PARTICLES:
+            del crosses[:-_MAX_PARTICLES]
         for idx in z.indices:
             frame[idx] = _scale(z.bg, z.bright)
         life = 0.45 + (1.0 - z.speed) * 0.7
@@ -487,6 +541,8 @@ class PerKeyEffectEngine:
             bursts.append((t, random.choice(z.palette), random.random(), random.random()))
         if random.random() < (0.22 + z.speed * 0.35) * self._spawn_norm:
             bursts.append((t, random.choice(z.palette), random.random(), random.random()))
+            if len(bursts) > _MAX_PARTICLES:
+                del bursts[:-_MAX_PARTICLES]
         alive = []
         for (t0, col, bx, by) in bursts:
             age = (t - t0) / (0.7 + (1 - z.speed) * 0.8)
@@ -513,6 +569,8 @@ class PerKeyEffectEngine:
                 bursts.append((t, random.choice(z.palette), self._nx_map[idx], self._ny_map[idx]))
             elif mm < 0.25 and idx in pressed:
                 pressed.discard(idx)
+        if len(bursts) > _MAX_PARTICLES:
+            del bursts[:-_MAX_PARTICLES]
         for idx in z.indices:
             frame[idx] = _scale(z.bg, z.bright)
         life = 0.6 + (1.0 - z.speed) * 0.6
@@ -547,12 +605,15 @@ class PerKeyEffectEngine:
             for k in cols:
                 cols[k].sort(key=lambda i: self._ny(i))
             z.state["cols"] = cols
+            z.state["col_keys"] = list(cols.keys())   # cached: no per-frame list()
         drops = z.state.setdefault("drops", [])
         fall = 2.6 + z.speed * 7.0                          # cells / second
         TRAIL = 5.0                                         # long fading tail
         if random.random() < (0.55 + z.speed * 0.9) * self._spawn_norm:   # dense curtain
-            ck = random.choice(list(cols.keys()))
+            ck = random.choice(z.state["col_keys"])
             drops.append([t, ck, random.choice(z.palette)])
+            if len(drops) > _MAX_PARTICLES:
+                del drops[:-_MAX_PARTICLES]
         up = z.direction == 2
         alive = []
         for d in drops:
@@ -631,24 +692,32 @@ class PerKeyEffectEngine:
         st = z.state                  # idx -> {"f": fade fraction, "pressed": bool}
         press_mm = 0.5                # depth at which a press fires
         release_mm = 0.25             # hysteresis so light taps still trigger once
-        # Time-based fade: scale the per-frame step by FPS/self.fps so the fade
-        # lasts the same wall-clock time on any board. At the 60 fps default the
-        # factor is 1.0 (Win60 unchanged); on the 28 fps MINI60 it was ~2.14x
-        # too slow because the decay was applied once per FRAME, not per second.
-        decay = (0.015 + z.speed * 0.04) * (FPS / self.fps)
+        # Time-based fade, like every other motion generator: the decay is a
+        # rate PER SECOND applied over the real elapsed time between frames, so
+        # the fade lasts the same wall-clock time on any board AND when the
+        # loop misses its interval (slow USB write, scheduler hiccup). The rate
+        # is the historical per-frame step at the 60 fps default times 60, so
+        # a Win60 frame at exactly 1/60 s subtracts precisely what it used to.
+        last_t = st.get("__t")
+        dt = 0.0 if last_t is None else max(0.0, t - last_t)
+        st["__t"] = t
+        decay = (0.015 + z.speed * 0.04) * FPS * dt
+        depths = self._depths
+        bg, bright, palette = z.bg, z.bright, z.palette
         for i, idx in enumerate(z.indices):
-            mm = self._depths.get(idx, 0.0)
-            s = st.get(idx) or {"f": 0.0, "pressed": False}
+            mm = depths.get(idx, 0.0)
+            s = st.get(idx)
+            if s is None:
+                s = st[idx] = {"f": 0.0, "pressed": False}
             if not s["pressed"] and mm >= press_mm:
                 s["pressed"] = True
                 s["f"] = 1.0
             elif s["pressed"] and mm < release_mm:
                 s["pressed"] = False
-            if not s["pressed"]:
+            if not s["pressed"] and s["f"] > 0.0:
                 s["f"] = max(0.0, s["f"] - decay)
-            st[idx] = s
-            col = z.palette[i % n] if n > 1 else z.palette[0]
-            frame[idx] = _scale(_lerp(z.bg, col, s["f"]), z.bright)
+            col = palette[i % n] if n > 1 else palette[0]
+            frame[idx] = _scale(_lerp(bg, col, s["f"]), bright)
 
 
 # Back-compat alias for stale imports.

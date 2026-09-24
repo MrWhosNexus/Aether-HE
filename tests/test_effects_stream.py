@@ -180,40 +180,225 @@ def test_frame_colors_identical_regardless_of_cap():
         assert frames[0] == frames[1], f"{mode} frame differs under cap"
 
 
-def _run_one_frame(eng):
-    """Start the engine, capture the first pacing sleep, stop. The sleep
-    interval IS the pacing contract (1/fps)."""
+def _run_one_frame(eng, monkeypatch, frame_cost=0.0):
+    """Start the engine under a FROZEN clock, capture the first pacing sleep,
+    stop. The loop sleeps `interval - elapsed` (drift-compensated pacing since
+    dd5155b), so with a real clock the value is 1/fps minus the ~30 us the
+    frame took and can never equal 1/fps exactly. The clock is stubbed so
+    `elapsed` is exactly `frame_cost`, making the contract testable as data:
+    sleep == 1/fps - frame_cost."""
     sleeps = []
-    orig_stop = eng._stop
+    # _run reads the clock three times per frame: t0 (once), t_start, and the
+    # end-of-frame stamp. Script them: the frame ends `frame_cost` after it
+    # started; any later reads just return the last value.
+    script = [0.0, 0.0, frame_cost]
+
+    def fake_now():
+        return script.pop(0) if len(script) > 1 else script[0]
 
     def fake_sleep(s):
         sleeps.append(s)
-        orig_stop.set()
+        eng._stop.set()               # the CURRENT run's flag (per-run Event)
 
-    real_sleep = effects.time.sleep
-    effects.time.sleep = fake_sleep
+    monkeypatch.setattr(effects, "_now", fake_now)
+    monkeypatch.setattr(effects.time, "sleep", fake_sleep)
     try:
         eng.start("static", [(255, 0, 0)], (0, 0, 0), 0.5, 1.0)
         eng._thread.join(timeout=2.0)
     finally:
-        effects.time.sleep = real_sleep
         eng.stop()
     return sleeps
 
 
-def test_run_loop_sleep_matches_declared_rate():
+def test_run_loop_sleep_matches_declared_rate(monkeypatch):
     sent = []
     eng = effects.PerKeyEffectEngine(FakeKM(), lambda f: sent.append(f),
                                      max_fps=28)
-    sleeps = _run_one_frame(eng)
+    sleeps = _run_one_frame(eng, monkeypatch)
     assert sent, "engine sent no frame"
     assert sleeps and sleeps[0] == pytest.approx(1.0 / 28.0)
 
     sent2 = []
     eng2 = effects.PerKeyEffectEngine(FakeKM(), lambda f: sent2.append(f))
-    sleeps2 = _run_one_frame(eng2)
+    sleeps2 = _run_one_frame(eng2, monkeypatch)
     assert sent2
     assert sleeps2 and sleeps2[0] == pytest.approx(1.0 / 60.0)  # Win60 pacing
+
+
+def test_run_loop_pacing_subtracts_frame_cost(monkeypatch):
+    """Drift compensation: a frame that took 5 ms sleeps 5 ms less, and a
+    frame slower than the interval never sleeps a negative amount."""
+    eng = _engine()
+    sleeps = _run_one_frame(eng, monkeypatch, frame_cost=0.005)
+    assert sleeps and sleeps[0] == pytest.approx(1.0 / 60.0 - 0.005)
+    eng2 = _engine(max_fps=28)
+    sleeps2 = _run_one_frame(eng2, monkeypatch, frame_cost=0.5)
+    assert sleeps2 and sleeps2[0] == 0.0
+
+
+def test_run_loop_uses_monotonic_clock():
+    """Pacing/animation time must come from time.monotonic — a wall-clock
+    (time.time) jump would freeze or fast-forward every time-based effect."""
+    assert effects._now is effects.time.monotonic
+
+
+# --------------------------------------------------- lifecycle / restart ----
+def test_restart_does_not_revive_a_late_exiting_thread(monkeypatch):
+    """stop() joins with a bounded timeout; a run wedged in a USB write can
+    outlive it. start() must hand the new run a FRESH stop Event rather than
+    clear() the old one, or the old thread resumes and two loops stream the
+    board at once (thread leak + interleaved frames)."""
+    import threading
+    release = threading.Event()
+    sends = []
+
+    def slow_send(frame):
+        sends.append(frame)
+        if len(sends) == 1:
+            release.wait(3.0)          # first run wedges inside its send
+
+    eng = effects.PerKeyEffectEngine(FakeKM(), slow_send)
+    monkeypatch.setattr(effects.time, "sleep", lambda s: None)
+    eng.start("static", [(255, 0, 0)], (0, 0, 0), 0.5, 1.0)
+    for _ in range(200):
+        if sends:
+            break
+        threading.Event().wait(0.01)
+    old_ev = eng._stop
+    old_thread = eng._thread
+    eng.stop()                          # join times out: thread still wedged
+    assert old_thread.is_alive() and old_ev.is_set()
+    eng.start("static", [(0, 255, 0)], (0, 0, 0), 0.5, 1.0)
+    assert eng._stop is not old_ev and not eng._stop.is_set()
+    assert old_ev.is_set(), "start() revived the old run's stop flag"
+    release.set()                       # un-wedge the old run
+    old_thread.join(2.0)
+    assert not old_thread.is_alive(), "old run kept streaming after restart"
+    eng.stop()
+
+
+def test_stop_is_safe_from_inside_the_run_thread():
+    """A send callback that stops the engine (e.g. on a fatal HID error)
+    must not try to join the current thread."""
+    import threading
+    done = threading.Event()
+    holder = {}
+
+    def send(frame):
+        holder["eng"].stop()
+        done.set()
+
+    eng = effects.PerKeyEffectEngine(FakeKM(), send)
+    holder["eng"] = eng
+    eng.start("static", [(255, 0, 0)], (0, 0, 0), 0.5, 1.0)
+    assert done.wait(2.0)
+    eng._stop.set()
+    assert not eng.is_running() or eng._thread is None
+
+
+# ----------------------------------------------- bounded per-zone memory ----
+def _zone(eng, mode, speed=0.5):
+    return effects.Zone(list(eng.indices), mode, [(255, 0, 0)], (0, 0, 0),
+                        speed, 1.0, 0)
+
+
+def test_particle_lists_are_pruned_by_age_and_hard_capped(monkeypatch):
+    """Every spawner prunes dead particles each frame, and none can exceed
+    the hard ceiling even if the clock stalls (t constant -> nothing ages)."""
+    monkeypatch.setattr(effects.random, "random", lambda: 0.0)   # always spawn
+    eng = _engine()
+    cap = effects._MAX_PARTICLES
+    for mode, key in (("rain", "drops"), ("frenzy", "bursts")):
+        z = _zone(eng, mode)
+        for _ in range(cap * 4):                 # stalled clock: t never moves
+            getattr(eng, "_g_" + mode)(z, 0.0, {})
+        assert len(z.state[key]) <= cap, mode
+        # ...and a moving clock prunes them all away (age-out), not just caps
+        for k in range(1, 400):
+            monkeypatch.setattr(effects.random, "random", lambda: 1.0)  # no spawn
+            getattr(eng, "_g_" + mode)(z, 0.0 + k * 0.05, {})
+        assert z.state[key] == [], mode
+        monkeypatch.setattr(effects.random, "random", lambda: 0.0)
+
+    # striation / autorip spawn on a timer: drive t forward with a huge gap so
+    # each frame spawns, but freeze the ageing by keeping t below lifetime...
+    # simpler: assert the cap is the only bound when the pruning can't run.
+    z = _zone(eng, "striation")
+    st = z.state
+    eng._g_striation(z, 0.0, {})
+    st["stars"] = [[0.0, st["row_keys"][0], (255, 0, 0)]] * (cap * 3)
+    st["last_spawn"] = -10.0
+    eng._g_striation(z, 0.0, {})
+    assert len(st["stars"]) <= cap
+    z = _zone(eng, "autorip")
+    z.state["rips"] = [0.0] * (cap * 3)
+    z.state["last_spawn"] = -10.0
+    eng._g_autorip(z, 0.0, {})
+    assert len(z.state["rips"]) <= cap
+
+
+def test_press_reactive_particles_are_capped_and_pruned():
+    """Ripple / cross / fireworks spawn one particle per press edge and drop
+    it once it ages out; a stalled clock cannot grow them past the cap."""
+    eng = _engine()
+    cap = effects._MAX_PARTICLES
+    for mode, key in (("ripple", "rips"), ("cross", "crosses"),
+                      ("fireworks", "bursts")):
+        z = _zone(eng, mode)
+        idx = eng.indices[0]
+        for _ in range(cap * 3):                 # press/release, t frozen
+            eng._depths = {idx: 1.0}
+            getattr(eng, "_g_" + mode)(z, 0.0, {})
+            eng._depths = {idx: 0.0}
+            getattr(eng, "_g_" + mode)(z, 0.0, {})
+        assert len(z.state[key]) <= cap, mode
+        getattr(eng, "_g_" + mode)(z, 100.0, {})  # everything aged out
+        assert z.state[key] == [], mode
+        assert z.state["pressed"] == set()
+
+
+def test_reactive_state_is_bounded_by_key_count():
+    eng = _engine()
+    z = _zone(eng, "reactive")
+    for k in range(500):
+        eng._depths = {eng.indices[k % 6]: 1.0 if k % 2 else 0.0}
+        eng._g_reactive(z, k / 60.0, {})
+    per_key = [k for k in z.state if not isinstance(k, str)]
+    assert len(per_key) == len(eng.indices)
+
+
+def test_static_generator_caches_its_frame():
+    """Static is time-independent: computed once per zone and replayed, so
+    the 60 fps loop does no palette math for it (driver diff cache then
+    elides the USB writes too)."""
+    eng = _engine()
+    z = _zone(eng, "static")
+    f1, f2 = {}, {}
+    eng._g_static(z, 0.0, f1)
+    cached = z.state["static"]
+    eng._g_static(z, 5.0, f2)
+    assert z.state["static"] is cached
+    assert f1 == f2 and set(f1) == set(eng.indices)
+
+
+def test_rain_column_key_list_is_cached(monkeypatch):
+    monkeypatch.setattr(effects.random, "random", lambda: 1.0)
+    eng = _engine()
+    z = _zone(eng, "rain")
+    eng._g_rain(z, 0.0, {})
+    assert sorted(z.state["col_keys"]) == sorted(z.state["cols"])
+
+
+def test_no_reader_uses_shared_empty_depths(monkeypatch):
+    """With no depth source the loop must not allocate a dict per frame."""
+    eng = _engine()
+    seen = []
+    eng._send = lambda f: seen.append(eng._depths)
+    monkeypatch.setattr(effects.time, "sleep", lambda s: eng._stop.set())
+    eng.start("wave", [(255, 0, 0)], (0, 0, 0), 0.5, 1.0)
+    eng._thread.join(2.0)
+    eng.stop()
+    assert seen and seen[0] is effects._NO_DEPTHS
 
 
 # ======================== matrix geometry: the 22-stride assumption ========
@@ -371,19 +556,145 @@ def test_reactive_fade_is_frame_rate_independent():
     (audit round 1 #4). Win60 (60 fps) behaviour is unchanged (factor 1.0)."""
     palette = [(255, 0, 0)]
 
-    def fade_after(cap, seconds):
+    def fade_after(cap, seconds, fps=None):
         eng = _engine(max_fps=cap)
+        fps = fps or eng.fps                     # actual delivered frame rate
         idx = eng.indices[0]
         z = effects.Zone([idx], "reactive", palette, (0, 0, 0), 0.1, 1.0, 0)
         eng._depths = {idx: 1.0}                 # press
         eng._g_reactive(z, 0.0, {})              # latch -> f == 1.0
         assert z.state[idx]["f"] == 1.0 and z.state[idx]["pressed"]
         eng._depths = {idx: 0.0}                 # release, then fade
-        for _ in range(round(eng.fps * seconds)):
-            eng._g_reactive(z, 0.0, {})
+        n = round(fps * seconds)
+        for k in range(1, n + 1):
+            eng._g_reactive(z, k / fps, {})      # real elapsed time advances
         return z.state[idx]["f"]
 
     f_win60 = fade_after(120, 0.4)   # capped to 60 fps
     f_mini60 = fade_after(28, 0.4)
     assert 0.0 < f_win60 < 1.0                   # partial fade (discriminating)
     assert abs(f_win60 - f_mini60) < 0.03, (f_win60, f_mini60)
+    # Historical Win60 contract: at exactly 60 fps each frame subtracts the
+    # old per-frame step (0.015 + speed*0.04), byte-for-byte.
+    expected = 1.0 - round(60 * 0.4) * (0.015 + 0.1 * 0.04)
+    assert f_win60 == pytest.approx(expected, abs=1e-6)
+    # ...and when the loop MISSES its interval (slow USB write: only 30 real
+    # frames in 0.4 s on a 60 fps engine) the fade still tracks wall time —
+    # the old FPS/self.fps scaling only fixed the declared rate, not the
+    # delivered one.
+    f_slow = fade_after(120, 0.4, fps=30)
+    assert abs(f_slow - f_win60) < 0.03, (f_slow, f_win60)
+
+
+# ------------------------------------------- live reader <-> engine wiring ----
+class _FakeHandle:
+    def __init__(self, reports=None):
+        self.reports = list(reports or [])
+    def set_nonblocking(self, v): pass
+    def read(self, n):
+        return self.reports.pop(0) if self.reports else []
+
+
+class _FakeDev:
+    def __init__(self, reports=None):
+        self._lock = threading.Lock()
+        self._dev = _FakeHandle(reports)
+        self.writes = []
+    def write(self, payload):
+        if self._dev is None:
+            raise IOError("device not open")
+        self.writes.append(list(payload))
+        return len(payload)
+
+
+def _travel_report(idx, mm):
+    raw = int(round(mm * 100))
+    r = [0] * 64
+    r[1] = 33; r[5] = 5; r[7] = idx // 22; r[8] = idx % 22
+    r[9] = raw & 0xFF; r[10] = raw >> 8
+    return r
+
+
+def test_livereader_snapshot_by_index_mirrors_code_snapshot():
+    import device_state
+    km = types.SimpleNamespace(indices=lambda: [46, 47],
+                               code_of_index={46: "W", 47: "E"},
+                               code_of=lambda i: {46: "W", 47: "E"}.get(i))
+    dev = _FakeDev([_travel_report(46, 1.23), _travel_report(47, 0.5),
+                    _travel_report(47, 0.01)])          # E released (noise)
+    lr = device_state.LiveReader(dev, km, indices=[46, 47])
+    lr.start()
+    for _ in range(200):
+        if lr.snapshot() == {"W": 1.23}:
+            break
+        threading.Event().wait(0.01)
+    assert lr.snapshot() == {"W": 1.23}
+    assert lr.snapshot_by_index() == {46: 1.23}          # engine-native key
+    lr.stop()
+    assert not lr._thread or not lr._thread.is_alive()
+    assert lr.snapshot() == {} and lr.snapshot_by_index() == {}   # no stale press
+    assert dev.writes[-1][1] == 33                     # close_trigger_test sent
+
+
+def test_livereader_restart_uses_fresh_stop_event():
+    import device_state
+    km = types.SimpleNamespace(indices=lambda: [0], code_of=lambda i: None)
+    lr = device_state.LiveReader(_FakeDev(), km, indices=[0])
+    lr.start(); ev1 = lr._stop
+    lr.stop(); assert ev1.is_set()
+    lr.start(); ev2 = lr._stop
+    assert ev2 is not ev1 and not ev2.is_set() and ev1.is_set()
+    assert lr._thread.is_alive()
+    lr.stop()
+
+
+def test_ensure_reactive_resolves_reader_lazily():
+    """The analog tab replaces Api.reader with a new instance. The engine's
+    depth source must follow that swap instead of holding the old (stopped)
+    reader, or a running press-reactive effect goes deaf."""
+    a = _api()
+    a.km = types.SimpleNamespace(index_of_code={"W": 46}, indices=lambda: [46])
+    a.fx = types.SimpleNamespace(get_depths=None)
+
+    class R:
+        def __init__(self, d): self.d = d
+        def start(self): pass
+        def stop(self): pass
+        def snapshot(self): return dict(self.d)
+        def snapshot_by_index(self): return {46: v for v in self.d.values()}
+
+    first = R({"W": 0.9})
+    a.driver = types.SimpleNamespace(make_live_reader=lambda km, idx=None: first)
+    a._ensure_reactive(["ripple"])
+    assert a.fx.get_depths() == {46: 0.9}
+    a.reader = R({"W": 0.2})                 # swapped by open_analog_codes
+    assert a.fx.get_depths() == {46: 0.2}
+    a.reader = None
+    assert a.fx.get_depths() == {}
+    a._ensure_reactive(["wave"])             # non-reactive: detached
+    assert a.fx.get_depths is None and "reactive" not in a._reader_users
+
+
+def test_open_analog_widens_to_full_board_when_effect_shares_reader():
+    a = _api()
+    a.km = types.SimpleNamespace(
+        indices=lambda: [1, 2, 3],
+        indices_for_codes=lambda codes: [1] if "A" in codes else [])
+    made = []
+
+    class R:
+        def __init__(self, idx): self.idx = idx; self.stopped = False
+        def start(self): pass
+        def stop(self): self.stopped = True
+
+    a.driver = types.SimpleNamespace(
+        make_live_reader=lambda km, idx=None: made.append(R(idx)) or made[-1])
+    a._reader_users = {"reactive"}
+    a.reader = R([1, 2, 3])
+    old = a.reader
+    assert a.open_analog_codes(["A"]) == {"ok": True, "keys": 3}
+    assert old.stopped and a.reader.idx == [1, 2, 3]    # effect still sees all
+    assert a._reader_users == {"reactive", "analog"}
+    a._reader_users = set(); a.reader = None
+    assert a.open_analog_codes(["A"]) == {"ok": True, "keys": 1}
+    assert a.reader.idx == [1]                           # analog alone: subset

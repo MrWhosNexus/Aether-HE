@@ -98,7 +98,10 @@ class LiveReader:
         self.dev = device
         self.km = keymap
         self.indices = list(indices or keymap.indices())
-        self.depths = {}          # code -> mm
+        self.depths = {}          # code -> mm   (bounded: one entry per key)
+        self._depths_idx = {}     # device index -> mm, same data for the
+                                  # effect engine (skips a per-frame code->index
+                                  # remap of the whole snapshot at 60 fps)
         # The firmware's travel-test stream is event-driven on depth change.
         # A key held at constant depth produces no further reports, so any
         # time-based "haven't heard from this key in N ms → released" rule
@@ -110,34 +113,56 @@ class LiveReader:
         self._thread = None
 
     def start(self):
-        if self._thread and self._thread.is_alive():
-            return
+        th = self._thread
+        if th is not None and th.is_alive():
+            if not self._stop.is_set():
+                return                      # already running
+            # A previous stop() timed out on the join (thread wedged in a
+            # read). Give it one more bounded chance to exit before replacing
+            # it, so two drains never race on the same handle.
+            th.join(timeout=0.5)
+            if th.is_alive():
+                return
         try:
             self.dev.write(protocol.build_open_trigger_test(self.indices))
         except Exception:
             return
-        self._stop.clear()
-        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._stop = threading.Event()      # per-run flag (never clear() a
+                                            # flag an old thread may still poll)
+        self._thread = threading.Thread(target=self._run, args=(self._stop,),
+                                        daemon=True)
         self._thread.start()
 
-    def _run(self):
+    def _run(self, stop_ev=None):
+        if stop_ev is None:
+            stop_ev = self._stop
         try:
             with self.dev._lock:
                 if self.dev._dev:
                     self.dev._dev.set_nonblocking(True)
         except Exception:
             pass
+        # Hoisted out of the hot loop: the re-arm packet is constant, and the
+        # index->design-code map is a plain dict lookup (no method call per
+        # report; the firmware can stream hundreds of reports a second).
+        open_pkt = protocol.build_open_trigger_test(self.indices)
+        code_of_index = getattr(self.km, "code_of_index", None)
+        code_of = (code_of_index.get if isinstance(code_of_index, dict)
+                   else self.km.code_of)
+        depths = self.depths
+        depths_idx = self._depths_idx
+        noise = self.NOISE_MM
         last_open = 0.0
         dead = 0   # consecutive dead-handle / failed-read cycles (self-teardown)
-        while not self._stop.is_set():
+        while not stop_ev.is_set():
             # Re-arm the travel-test stream periodically. Actuation/dead-band
             # config writes (also cmd 33) can stop the stream, so without this the
             # live depth silently dies a moment after entering the Actuation tab.
-            now = time.time()
+            now = time.monotonic()
             if now - last_open > 0.8:
                 last_open = now
                 try:
-                    self.dev.write(protocol.build_open_trigger_test(self.indices))
+                    self.dev.write(open_pkt)
                 except Exception:
                     pass
             # Drain the WHOLE hidraw backlog each cycle, keeping only the latest
@@ -166,12 +191,14 @@ class LiveReader:
                         if r[1] == 33 and r[5] == 5:
                             idx = r[7] * 22 + r[8]
                             depth = (r[9] | (r[10] << 8)) / 100.0
-                            code = self.km.code_of(idx)   # e.g. "W","LCtrl","1"
+                            code = code_of(idx)   # e.g. "W","LCtrl","1"
                             if code:
-                                if depth < self.NOISE_MM:
-                                    self.depths.pop(code, None)
+                                if depth < noise:
+                                    depths.pop(code, None)
+                                    depths_idx.pop(idx, None)
                                 else:
-                                    self.depths[code] = depth
+                                    depths[code] = depth
+                                    depths_idx[idx] = depth
                                 got = True
                 dead = 0   # a clean drain -> the handle is alive
             except Exception:
@@ -191,12 +218,24 @@ class LiveReader:
         # stops reporting while a key is held flat, so any decay rule would
         # erase held-key visibility. Release is handled in _run by clearing
         # the cache when a fresh report drops below NOISE_MM.
+        # dict(d) copies atomically under the GIL — safe against the reader
+        # thread mutating it; iterating d.items() from another thread is NOT.
         return dict(self.depths)
+
+    def snapshot_by_index(self):
+        """Same data as snapshot() keyed by DEVICE INDEX — the effect engine's
+        native key, so press-reactive effects don't remap every frame."""
+        return dict(self._depths_idx)
 
     def stop(self):
         self._stop.set()
-        if self._thread:
-            self._thread.join(timeout=0.5)
+        th = self._thread
+        if th is not None and th is not threading.current_thread():
+            th.join(timeout=0.5)
+            if not th.is_alive():
+                self._thread = None
+        self.depths.clear()
+        self._depths_idx.clear()
         try:
             self.dev.write(protocol.build_close_trigger_test())
         except Exception:
@@ -225,22 +264,25 @@ class CalibrationReader:
             return
         self.calibrated = set()
         self.done = False
-        self._stop.clear()
-        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._stop = threading.Event()      # per-run flag (see LiveReader.start)
+        self._thread = threading.Thread(target=self._run, args=(self._stop,),
+                                        daemon=True)
         self._thread.start()
 
-    def _run(self):
+    def _run(self, stop_ev=None):
         # Sole device owner during calibration. Uses a SHORT blocking read so it
         # parks (releasing the device lock) instead of busy-spinning on it — that
         # busy-spin is what starved writes and froze the UI. Renders LEDs itself,
         # only when the calibrated set changes, so there's no constant traffic.
+        if stop_ev is None:
+            stop_ev = self._stop
         if self.on_change:
             try:
                 self.on_change(self.calibrated)   # initial dim frame
             except Exception:
                 pass
         dead = 0   # consecutive failed reads (dead-handle self-teardown)
-        while not self._stop.is_set():
+        while not stop_ev.is_set():
             try:
                 r = self.dev.read(64, timeout_ms=40)
             except Exception:
@@ -276,8 +318,9 @@ class CalibrationReader:
 
     def stop(self):
         self._stop.set()
-        if self._thread:
-            self._thread.join(timeout=0.5)
+        th = self._thread
+        if th is not None and th is not threading.current_thread():
+            th.join(timeout=0.5)
         self._thread = None
 
 
