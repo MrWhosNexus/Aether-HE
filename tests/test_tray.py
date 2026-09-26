@@ -46,8 +46,10 @@ class StubIcon:
     def __init__(self):
         self.visible = True
         self.stopped = False
+        self.menu_updates = 0
 
     def stop(self): self.stopped = True
+    def update_menu(self): self.menu_updates += 1
 
 
 def make(available=True):
@@ -202,16 +204,85 @@ def test_api_tray_sync_normalises_effect_list():
     assert c.state()["effects"][1]["id"] == "rain"
 
 
-def test_autostart_command_starts_minimized(monkeypatch):
+def test_autostart_command_does_not_hardcode_minimized(monkeypatch):
+    """Hidden-vs-visible login launch is the settings.json toggle, so the
+    registry command stays stable when the user flips it."""
     import app_web
     api = app_web.Api.__new__(app_web.Api)
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "executable", r"C:\Apps\AetherHE\AetherHE.exe")
-    assert api._autostart_target() == r'"C:\Apps\AetherHE\AetherHE.exe" --minimized'
+    assert api._autostart_target() == r'"C:\Apps\AetherHE\AetherHE.exe"'
     monkeypatch.setattr(sys, "frozen", False, raising=False)
     monkeypatch.setattr(sys, "executable", r"C:\py\python.exe")
     cmd = api._autostart_target()
-    assert cmd.startswith(r'"C:\py\pythonw.exe" "') and cmd.endswith('app_web.py" --minimized')
+    assert cmd.startswith(r'"C:\py\pythonw.exe" "') and cmd.endswith('app_web.py"')
+
+
+# ---- start-minimized preference -------------------------------------------
+
+def test_start_minimized_pref_round_trip_preserves_other_keys(tmp_path):
+    p = str(tmp_path / "settings.json")
+    assert tray.start_minimized_pref(p) is False          # no file
+    with open(p, "w") as f:
+        json.dump({"profiles": [1, 2], "autoUpdate": True}, f)
+    assert tray.start_minimized_pref(p) is False
+    assert tray.set_start_minimized_pref(p, True) is True
+    assert tray.start_minimized_pref(p) is True
+    data = json.load(open(p))
+    assert data["profiles"] == [1, 2] and data["autoUpdate"] is True   # untouched
+    assert tray.set_start_minimized_pref(p, 0) is False
+    assert tray.start_minimized_pref(p) is False
+
+
+def test_start_minimized_pref_tolerates_corrupt_file(tmp_path):
+    p = str(tmp_path / "settings.json")
+    open(p, "w").write("{not json")
+    assert tray.start_minimized_pref(p) is False
+    assert tray.set_start_minimized_pref(p, True) is True
+    assert json.load(open(p)) == {"startMinimized": True}
+
+
+def test_api_tray_prefs(tmp_path, monkeypatch):
+    import app_web
+    api = app_web.Api.__new__(app_web.Api)
+    p = str(tmp_path / "settings.json")
+    monkeypatch.setattr(api, "_settings_path", lambda: p)
+    monkeypatch.setattr(tray, "backend_supported", lambda: True)
+    assert api.get_tray_prefs() == {"ok": True, "supported": True, "startMinimized": False}
+    assert api.set_start_minimized(True) == {"ok": True, "startMinimized": True}
+    assert api.get_tray_prefs()["startMinimized"] is True
+    assert json.load(open(p))["startMinimized"] is True
+
+
+def test_backend_supported_is_false_off_windows(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "linux")
+    assert tray.backend_supported() is False
+
+
+# ---- Hide window (tray menu) ----------------------------------------------
+
+def test_hide_main_tracks_visibility_for_the_menu():
+    api, c = make()
+    c.icon = StubIcon()
+    assert c.main_visible is True
+    c._on_hide()
+    assert c.main_window.hidden is True and c.main_visible is False
+    assert c.icon.menu_updates == 1
+    c._on_open()
+    assert c.main_window.hidden is False and c.main_visible is True
+    assert c.icon.menu_updates == 2
+
+
+def test_hide_main_without_window_reports_false():
+    api, c = make()
+    c.main_window = None
+    assert c.hide_main() is False
+
+
+def test_ui_bundle_has_start_minimized_toggle():
+    html = open(os.path.join(ROOT, "ui", "index_runtime.html"), encoding="utf-8").read()
+    assert "get_tray_prefs" in html and "set_start_minimized" in html
+    assert "Start minimized" in html
 
 
 def test_ui_bundle_carries_tray_hook_and_panel_exists():

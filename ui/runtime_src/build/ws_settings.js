@@ -183,6 +183,140 @@
     }, "Customize Colors"));
   }
 
+  /* ===== System widget: launch behaviour (Windows) =====
+     Two independent toggles, both read/written through the bridge:
+       Start on launch  → HKCU\...\Run entry (get_autostart / set_autostart)
+       Start minimized  → settings.json `startMinimized` (get_tray_prefs /
+                          set_start_minimized): every launch begins hidden in
+                          the tray with the lighting running.
+     The widget hides itself on platforms where neither is supported. */
+  const Toggle = ({
+    on,
+    onClick,
+    label,
+    desc
+  }) => /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between gap-3 rounded-lg border border-[var(--line)] bg-white/[0.02] p-2.5"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "min-w-0"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "font-display text-[12px] text-[var(--text)]"
+  }, label), /*#__PURE__*/React.createElement("div", {
+    className: "font-mono text-[10px] text-[var(--text-faint)] mt-0.5 leading-snug"
+  }, desc)), /*#__PURE__*/React.createElement("button", {
+    onClick: onClick,
+    role: "switch",
+    "aria-checked": on,
+    "aria-label": label,
+    className: `relative w-12 h-6 rounded-full border transition-colors shrink-0
+                  ${on ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-[rgba(5,11,14,0.5)] border-[var(--line)]"}`
+  }, /*#__PURE__*/React.createElement("span", {
+    className: `absolute top-0.5 rounded-full transition-all
+                        ${on ? "left-[26px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-[var(--text-faint)]"}`,
+    style: {
+      width: 18,
+      height: 18
+    }
+  })));
+  function SystemWidget() {
+    const [autostart, setAutostart] = useState({
+      supported: false,
+      enabled: false
+    });
+    const [tray, setTray] = useState({
+      supported: false,
+      startMinimized: false
+    });
+    const [err, setErr] = useState("");
+
+    // The bridge can mount after first paint (WebView2) — poll until it answers
+    // once, then stop; both reads are cheap registry/JSON lookups.
+    useEffect(() => {
+      let cancelled = false,
+        done = false;
+      const probe = () => {
+        const api = window.pywebview?.api;
+        if (!api || done) return;
+        done = true;
+        if (api.get_autostart) api.get_autostart().then(r => {
+          if (!cancelled && r && r.ok) setAutostart({
+            supported: !!r.supported,
+            enabled: !!r.enabled
+          });
+        }).catch(() => {});
+        if (api.get_tray_prefs) api.get_tray_prefs().then(r => {
+          if (!cancelled && r && r.ok) setTray({
+            supported: !!r.supported,
+            startMinimized: !!r.startMinimized
+          });
+        }).catch(() => {});
+      };
+      probe();
+      const id = setInterval(() => {
+        probe();
+        if (done) clearInterval(id);
+      }, 500);
+      return () => {
+        cancelled = true;
+        clearInterval(id);
+      };
+    }, []);
+    const flip = async (fn, next, apply, revert) => {
+      apply(next);
+      setErr("");
+      const api = window.pywebview?.api;
+      if (!api || !api[fn]) return;
+      try {
+        const r = await api[fn](next);
+        if (!(r && r.ok)) {
+          revert();
+          setErr(r && r.error || "failed");
+        }
+      } catch (e) {
+        revert();
+        setErr(String(e));
+      }
+    };
+    const toggleAutostart = () => flip("set_autostart", !autostart.enabled, v => setAutostart(s => ({
+      ...s,
+      enabled: v
+    })), () => setAutostart(s => ({
+      ...s,
+      enabled: !s.enabled
+    })));
+    const toggleMinimized = () => flip("set_start_minimized", !tray.startMinimized, v => setTray(s => ({
+      ...s,
+      startMinimized: v
+    })), () => setTray(s => ({
+      ...s,
+      startMinimized: !s.startMinimized
+    })));
+    if (!autostart.supported && !tray.supported) {
+      return /*#__PURE__*/React.createElement("div", {
+        className: "font-mono text-[10.5px] text-[var(--text-faint)] leading-relaxed"
+      }, "Launch options (start with the OS, start minimized to the tray) are available on Windows.");
+    }
+    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)] mb-3"
+    }, "Launch"), /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-col gap-2"
+    }, autostart.supported && /*#__PURE__*/React.createElement(Toggle, {
+      on: autostart.enabled,
+      onClick: toggleAutostart,
+      label: "Start on launch",
+      desc: "Open Aether automatically when you sign in to Windows."
+    }), tray.supported && /*#__PURE__*/React.createElement(Toggle, {
+      on: tray.startMinimized,
+      onClick: toggleMinimized,
+      label: "Start minimized",
+      desc: "Launch hidden in the system tray with your lighting running. Open the window from the tray icon."
+    })), err && /*#__PURE__*/React.createElement("div", {
+      className: "mt-2 font-mono text-[10px] text-rose-300/90"
+    }, err), /*#__PURE__*/React.createElement("div", {
+      className: "mt-3 font-mono text-[10px] text-[var(--text-faint)] leading-relaxed"
+    }, "Closing the window keeps Aether in the tray; right-click the icon for Open, Hide window, Mini mode and Exit."));
+  }
+
   /* ===== Backup/Import widget ===== */
   function BackupWidget(ctx) {
     const {
@@ -496,6 +630,20 @@
       h: 240
     },
     render: AboutWidget
+  }, {
+    id: "system",
+    title: "System",
+    default: {
+      x: 800,
+      y: 32,
+      w: 360,
+      h: 300
+    },
+    min: {
+      w: 300,
+      h: 220
+    },
+    render: SystemWidget
   }];
   window.AetherWorkspaces = window.AetherWorkspaces || {};
   window.AetherWorkspaces.SETTINGS_WIDGETS = SETTINGS_WIDGETS;

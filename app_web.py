@@ -1220,12 +1220,13 @@ class Api:
         Frozen exe → run the exe directly; source checkout → fall back to
         pythonw.exe + app_web.py so dev installs still work.
         """
-        # --minimized: start straight into the tray (effects run, no window),
-        # so a login launch is silent. The user opens the window from the icon.
+        # Whether the login launch shows a window is the Settings-tab "Start
+        # minimized" toggle (settings.json), read by main() — not baked into
+        # this command, so flipping the toggle needs no registry rewrite.
         if getattr(sys, "frozen", False):
-            return f'"{sys.executable}" {tray.MINIMIZED_FLAG}'
+            return f'"{sys.executable}"'
         py = sys.executable.replace("python.exe", "pythonw.exe")
-        return f'"{py}" "{os.path.join(HERE, "app_web.py")}" {tray.MINIMIZED_FLAG}'
+        return f'"{py}" "{os.path.join(HERE, "app_web.py")}"'
 
     def get_autostart(self):
         if not sys.platform.startswith("win"):
@@ -1302,6 +1303,21 @@ class Api:
         return {"ok": True, "path": p, "exists": os.path.exists(p)}
 
     # ---- tray mini mode ----
+    def get_tray_prefs(self):
+        """Settings-tab state: whether a tray backend exists on this platform
+        (the toggle hides otherwise) and the persisted "Start minimized" flag."""
+        return {"ok": True, "supported": tray.backend_supported(),
+                "startMinimized": tray.start_minimized_pref(self._settings_path())}
+
+    def set_start_minimized(self, on):
+        """Persist "Start minimized": every launch (double-click, Start on
+        launch) then begins hidden in the tray with the effects running."""
+        try:
+            val = tray.set_start_minimized_pref(self._settings_path(), bool(on))
+            return {"ok": True, "startMinimized": val}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     def tray_sync(self, state):
         """The React app's mirror of what the tray panel shows: current
         pattern/speed, connection, board name and this board's effect list.
@@ -2014,7 +2030,9 @@ def main():
     # but Chromium throttles hidden-page timers to 1 Hz, which would turn the
     # 70 ms lighting debounce into a one-second lag on the tray's speed
     # slider. This documented WebView2 switch keeps timers at full rate.
-    minimized = tray.wants_minimized(sys.argv[1:])
+    # Hidden start = the Settings toggle OR the --minimized CLI override.
+    minimized = (tray.wants_minimized(sys.argv[1:])
+                 or tray.start_minimized_pref(api._settings_path()))
     if sys.platform.startswith("win"):
         extra = "--disable-background-timer-throttling"
         cur = os.environ.get("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "")
@@ -2027,6 +2045,7 @@ def main():
         background_color="#07080d", hidden=minimized,
     )
     tray_ctl.main_window = window
+    tray_ctl.main_visible = not minimized
     window.events.closing += tray_ctl.on_main_closing
     api.tray = tray_ctl
     # Never pop a DevTools window at launch. pywebview ships
@@ -2050,11 +2069,8 @@ def main():
         # it must exist before the first close and — when starting minimized —
         # before there is anything else on screen to reach the app through.
         if not tray_ctl.start() and minimized:
-            log.warning("no tray backend; --minimized ignored, showing the window")
-            try:
-                w.show()
-            except Exception:
-                pass
+            log.warning("no tray backend; start-minimized ignored, showing the window")
+            tray_ctl.show_main()
         _on_start(w)
 
     webview.start(_boot, window, debug=debug, private_mode=False)

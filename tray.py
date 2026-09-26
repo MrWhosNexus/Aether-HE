@@ -37,10 +37,51 @@ PANEL_W, PANEL_H = 340, 500
 MINIMIZED_FLAG = "--minimized"
 
 
+PREF_KEY = "startMinimized"
+
+
 def wants_minimized(argv):
-    """True when the process was launched to start straight into the tray
-    (the Windows autostart entry passes this so login doesn't pop the window)."""
+    """True when the command line asks to start straight into the tray
+    (`--minimized`): a CLI override on top of the persisted preference."""
     return MINIMIZED_FLAG in (argv or [])
+
+
+def start_minimized_pref(settings_path):
+    """The Settings-tab "Start minimized" toggle, read from settings.json.
+    Missing/corrupt file → False (a normal, visible launch)."""
+    try:
+        with open(settings_path, encoding="utf-8") as f:
+            data = json.load(f)
+        return bool(isinstance(data, dict) and data.get(PREF_KEY))
+    except (OSError, ValueError):
+        return False
+
+
+def set_start_minimized_pref(settings_path, on):
+    """Merge the preference into settings.json without touching other keys
+    (same contract as Api.save_settings: never clobber what we don't own)."""
+    data = {}
+    try:
+        with open(settings_path, encoding="utf-8") as f:
+            loaded = json.load(f)
+        if isinstance(loaded, dict):
+            data = loaded
+    except (OSError, ValueError):
+        data = {}
+    data[PREF_KEY] = bool(on)
+    os.makedirs(os.path.dirname(settings_path) or ".", exist_ok=True)
+    with open(settings_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+    return bool(on)
+
+
+def backend_supported():
+    """Whether a tray backend can exist here at all (drives the Settings
+    toggle's visibility): Windows with pystray+Pillow importable."""
+    if not sys.platform.startswith("win"):
+        return False
+    pystray, _ = _load_pystray()
+    return pystray is not None
 
 
 def panel_position(screen_w, screen_h, cursor=None, w=PANEL_W, h=PANEL_H, margin=12):
@@ -138,6 +179,10 @@ class TrayController:
         self.icon = None
         self.available = False
         self._exiting = False
+        # pywebview doesn't expose window visibility, so track it here: it
+        # drives the tray menu's "Hide window" item (enabled only while the
+        # window is showing). main() sets it False for a --minimized start.
+        self.main_visible = True
         self._lock = threading.Lock()
         self._pystray = None
         self._Image = None
@@ -153,6 +198,8 @@ class TrayController:
             image = Image.open(ICON_PNG)
             menu = pystray.Menu(
                 pystray.MenuItem(f"Open {APP_NAME}", self._on_open, default=False),
+                pystray.MenuItem("Hide window", self._on_hide,
+                                 enabled=lambda item: self.main_visible),
                 pystray.MenuItem("Mini mode", self._on_panel, default=True, visible=True),
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem(f"Exit {APP_NAME}", self._on_exit),
@@ -172,13 +219,30 @@ class TrayController:
         A real exit (tray → Exit) sets `_exiting` first and lets it through."""
         if self._exiting or not self.available:
             return True
-        try:
-            self.main_window.hide()
-            self._notify_hidden()
-        except Exception as e:
-            log.warning("hide-on-close failed, quitting instead: %s", e)
+        if not self.hide_main():
+            log.warning("hide-on-close failed, quitting instead")
             return True
         return False
+
+    def hide_main(self):
+        """Hide the main window to the tray (close button, tray menu "Hide
+        window"). Returns False if there is no window or hiding raised."""
+        w = self.main_window
+        if w is None:
+            return False
+        try:
+            w.hide()
+        except Exception as e:
+            log.warning("hide main failed: %s", e)
+            return False
+        self.main_visible = False
+        self._notify_hidden()
+        if self.icon is not None:
+            try:
+                self.icon.update_menu()
+            except Exception:
+                pass
+        return True
 
     def exit(self):
         """Full teardown: stop the host engine (the board keeps its last frame),
@@ -258,6 +322,13 @@ class TrayController:
             w.show()
         except Exception as e:
             log.warning("show main failed: %s", e)
+            return
+        self.main_visible = True
+        if self.icon is not None:
+            try:
+                self.icon.update_menu()
+            except Exception:
+                pass
 
     def show_panel(self):
         wv = self.webview
@@ -309,6 +380,10 @@ class TrayController:
     def _on_open(self, icon=None, item=None):
         self.hide_panel()
         self.show_main()
+
+    def _on_hide(self, icon=None, item=None):
+        self.hide_panel()
+        self.hide_main()
 
     def _on_panel(self, icon=None, item=None):
         self.show_panel()
