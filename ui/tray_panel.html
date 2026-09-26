@@ -40,10 +40,14 @@
     font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); padding: 0 2px; }
   .label b { color: var(--text); font-variant-numeric: tabular-nums; letter-spacing: 0; font-size: 12px; }
 
-  .effects { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(3, 1fr);
-    gap: 6px; padding: 2px; scrollbar-width: thin; scrollbar-color: #2a2e3d transparent; }
-  .chip { border: 1px solid var(--line); background: var(--panel); border-radius: 9px; padding: 8px 6px;
-    text-align: center; cursor: pointer; font-size: 12px; white-space: nowrap; overflow: hidden;
+  /* grid-auto-rows: max-content — the container is height-limited (flex:1)
+     and chips clip overflow, so `auto` rows would collapse to 0 and hide the
+     labels; rows keep their content height and the list scrolls instead. */
+  .effects { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(4, 1fr);
+    grid-auto-rows: max-content; align-content: start; gap: 6px; padding: 2px;
+    scrollbar-width: thin; scrollbar-color: #2a2e3d transparent; }
+  .chip { border: 1px solid var(--line); background: var(--panel); border-radius: 9px; padding: 7px 4px 6px;
+    text-align: center; cursor: pointer; font-size: 11px; line-height: 1.15; white-space: nowrap; overflow: hidden;
     text-overflow: ellipsis; transition: border-color .12s, background .12s, color .12s; }
   .chip:hover { border-color: rgba(255,255,255,.2); }
   .chip.on { border-color: var(--accent); background: rgba(0,245,255,.12); color: var(--accent); }
@@ -67,7 +71,8 @@
   input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
     background: #fff; border: 3px solid var(--accent); box-shadow: 0 0 0 4px rgba(0,245,255,.15); }
   input[type=range]:active::-webkit-slider-thumb { box-shadow: 0 0 0 7px rgba(0,245,255,.22); }
-  .status { min-height: 14px; color: var(--muted); font-size: 11px; text-align: center; }
+  .status { height: 14px; color: var(--muted); font-size: 11px; text-align: center;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 </style>
 </head>
 <body>

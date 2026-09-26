@@ -33,7 +33,7 @@ PANEL_HTML = os.path.join(HERE, "ui", "tray_panel.html")
 ICON_PNG = os.path.join(HERE, "ui", "assets", "logo.png")
 
 APP_NAME = "Aether HE"
-PANEL_W, PANEL_H = 320, 470
+PANEL_W, PANEL_H = 340, 500
 MINIMIZED_FLAG = "--minimized"
 
 
