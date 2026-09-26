@@ -27,6 +27,9 @@ hidden = [
     # which PyInstaller's static analysis can't follow — bundle it explicitly
     # (with tools/ on pathex so the module is resolvable at build time).
     "validate_keymap",
+    # pystray picks its backend by name at import time; PyInstaller can't see it.
+    "pystray._win32",
+    "PIL.Image", "PIL.PngImagePlugin", "PIL.IcoImagePlugin",
 ]
 
 a = Analysis(

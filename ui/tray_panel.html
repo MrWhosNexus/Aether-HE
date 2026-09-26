@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Aether HE — mini mode</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #07080d; --panel: #0d0f17; --line: rgba(255,255,255,0.08);
+    --text: #e8eaf2; --muted: #8a90a6; --accent: #00f5ff; --accent-2: #ff1f5a;
+    --danger: #ff4d6d;
+  }
+  * { box-sizing: border-box; -webkit-user-select: none; user-select: none; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 13px/1.4 "Segoe UI Variable", "Segoe UI", Inter, system-ui, sans-serif; overflow: hidden; }
+  body { display: flex; flex-direction: column; padding: 12px; gap: 10px;
+    border: 1px solid var(--line); border-radius: 12px; }
+  header { display: flex; align-items: center; gap: 8px; padding: 2px 2px 0; }
+  header .logo { width: 18px; height: 18px; border-radius: 5px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
+  header .title { font-weight: 600; letter-spacing: .02em; flex: 1; }
+  header .dot { width: 7px; height: 7px; border-radius: 50%; background: #3a3f52; }
+  header .dot.on { background: #39ff8a; box-shadow: 0 0 8px #39ff8a99; }
+  header .board { color: var(--muted); font-size: 11px; max-width: 120px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  header .x { color: var(--muted); cursor: pointer; padding: 2px 6px; border-radius: 6px; }
+  header .x:hover { background: rgba(255,255,255,.06); color: var(--text); }
+
+  button.big { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--panel); color: var(--text); font: inherit; font-weight: 600; cursor: pointer;
+    transition: background .12s, border-color .12s, transform .06s; }
+  button.big:hover { border-color: rgba(255,255,255,.18); background: #121522; }
+  button.big:active { transform: translateY(1px); }
+  button.primary { border-color: rgba(0,245,255,.35); background: rgba(0,245,255,.10); color: var(--accent); }
+  button.primary:hover { background: rgba(0,245,255,.18); }
+  button.exit { color: var(--danger); border-color: rgba(255,77,109,.28); background: rgba(255,77,109,.06); }
+  button.exit:hover { background: rgba(255,77,109,.14); border-color: rgba(255,77,109,.45); }
+
+  .label { display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); padding: 0 2px; }
+  .label b { color: var(--text); font-variant-numeric: tabular-nums; letter-spacing: 0; font-size: 12px; }
+
+  .effects { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 6px; padding: 2px; scrollbar-width: thin; scrollbar-color: #2a2e3d transparent; }
+  .chip { border: 1px solid var(--line); background: var(--panel); border-radius: 9px; padding: 8px 6px;
+    text-align: center; cursor: pointer; font-size: 12px; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; transition: border-color .12s, background .12s, color .12s; }
+  .chip:hover { border-color: rgba(255,255,255,.2); }
+  .chip.on { border-color: var(--accent); background: rgba(0,245,255,.12); color: var(--accent); }
+  .chip .ico { display: block; font-size: 14px; line-height: 1; margin-bottom: 3px; opacity: .85; }
+  .empty { grid-column: 1 / -1; color: var(--muted); text-align: center; padding: 18px 6px; font-size: 12px; }
+
+  /* Speed ticker: a range slider with a value bubble riding the thumb and tick marks. */
+  .speed { position: relative; padding: 22px 2px 10px; }
+  .bubble { position: absolute; top: 0; transform: translateX(-50%); background: var(--accent); color: #041014;
+    font-weight: 700; font-size: 11px; padding: 2px 7px; border-radius: 6px; pointer-events: none;
+    font-variant-numeric: tabular-nums; transition: left .05s linear; }
+  .bubble::after { content: ""; position: absolute; left: 50%; bottom: -4px; transform: translateX(-50%);
+    border: 4px solid transparent; border-top-color: var(--accent); border-bottom: 0; }
+  .ticks { display: flex; justify-content: space-between; padding: 0 9px; margin-top: -2px; }
+  .ticks i { width: 1px; height: 5px; background: #2a2e3d; display: block; }
+  .ticks i:nth-child(5n+1) { height: 8px; background: #3d4358; }
+  .scale { display: flex; justify-content: space-between; color: var(--muted); font-size: 9.5px; padding: 2px 4px 0; }
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 6px; margin: 0;
+    background: linear-gradient(90deg, var(--accent) 0 var(--pct, 60%), #1a1d2a var(--pct, 60%) 100%);
+    border-radius: 999px; outline: none; cursor: pointer; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
+    background: #fff; border: 3px solid var(--accent); box-shadow: 0 0 0 4px rgba(0,245,255,.15); }
+  input[type=range]:active::-webkit-slider-thumb { box-shadow: 0 0 0 7px rgba(0,245,255,.22); }
+  .status { min-height: 14px; color: var(--muted); font-size: 11px; text-align: center; }
+</style>
+</head>
+<body>
+  <header>
+    <div class="logo"></div>
+    <div class="title">Aether HE</div>
+    <div class="board" id="board"></div>
+    <div class="dot" id="dot" title="disconnected"></div>
+    <div class="x" id="close" title="Hide">✕</div>
+  </header>
+
+  <button class="big primary" id="open">Open Aether HE</button>
+
+  <div class="label"><span>Effect</span><span id="effName"></span></div>
+  <div class="effects" id="effects"><div class="empty">Waiting for the app…</div></div>
+
+  <div class="label"><span>Speed</span><b id="speedVal">60</b></div>
+  <div class="speed">
+    <div class="bubble" id="bubble">60</div>
+    <input type="range" id="speed" min="0" max="100" step="1" value="60">
+    <div class="ticks" id="ticks"></div>
+    <div class="scale"><span>slow</span><span>fast</span></div>
+  </div>
+
+  <div class="status" id="status"></div>
+  <button class="big exit" id="exit">Exit Aether HE</button>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const api = () => (window.pywebview && window.pywebview.api) || null;
+  const call = (name, ...a) => {
+    const p = api();
+    if (!p || typeof p[name] !== "function") return Promise.resolve({ ok: false, error: "no bridge" });
+    try { return Promise.resolve(p[name](...a)); } catch (e) { return Promise.resolve({ ok: false, error: String(e) }); }
+  };
+
+  let state = { effects: [], pattern: null, speed: 60, connected: false, board: null, appName: "Aether HE" };
+  let dragging = false;
+
+  // 21 tick marks under the slider (every 5 units, taller every 25).
+  const ticks = $("ticks");
+  for (let i = 0; i <= 20; i++) { const t = document.createElement("i"); ticks.appendChild(t); }
+
+  const slider = $("speed"), bubble = $("bubble"), speedVal = $("speedVal");
+  const paintSpeed = (v) => {
+    const pct = Math.max(0, Math.min(100, v));
+    slider.style.setProperty("--pct", pct + "%");
+    speedVal.textContent = pct;
+    bubble.textContent = pct;
+    // Thumb centre travels from 9px to (width - 9px): keep the bubble on it.
+    const w = slider.clientWidth || 280;
+    bubble.style.left = (9 + (w - 18) * pct / 100) + "px";
+  };
+
+  const renderEffects = () => {
+    const box = $("effects");
+    box.innerHTML = "";
+    if (!state.effects.length) {
+      box.innerHTML = '<div class="empty">Open Aether HE once so it can list this board’s effects.</div>';
+      return;
+    }
+    state.effects.forEach(e => {
+      const d = document.createElement("div");
+      d.className = "chip" + (e.id === state.pattern ? " on" : "");
+      d.title = e.label || e.id;
+      d.innerHTML = (e.icon ? '<span class="ico">' + e.icon + '</span>' : "") + (e.label || e.id);
+      d.onclick = () => {
+        state.pattern = e.id; renderEffects();
+        call("set_effect", e.id).then(r => flash(r && r.ok ? "" : (r && r.error) || "failed"));
+      };
+      box.appendChild(d);
+    });
+    const cur = state.effects.find(e => e.id === state.pattern);
+    $("effName").textContent = cur ? cur.label : (state.pattern || "");
+  };
+
+  const render = () => {
+    $("dot").className = "dot" + (state.connected ? " on" : "");
+    $("dot").title = state.connected ? "connected" : "disconnected";
+    $("board").textContent = state.board || "";
+    document.querySelector("header .title").textContent = state.appName || "Aether HE";
+    $("open").textContent = "Open " + (state.appName || "Aether HE");
+    $("exit").textContent = "Exit " + (state.appName || "Aether HE");
+    renderEffects();
+    if (!dragging) { slider.value = state.speed; paintSpeed(Number(state.speed)); }
+  };
+
+  let flashT = null;
+  const flash = (msg) => {
+    $("status").textContent = msg || "";
+    clearTimeout(flashT);
+    if (msg) flashT = setTimeout(() => { $("status").textContent = ""; }, 2500);
+  };
+
+  const refresh = () => call("get_state").then(r => {
+    if (r && r.ok) { state = Object.assign(state, r); render(); }
+  });
+  window.__aetherPanelRefresh = refresh;
+
+  // Speed ticker: paint instantly on every input event; push to the app at
+  // most every 60ms so a drag doesn't queue hundreds of bridge calls.
+  let pushT = null, pending = null;
+  slider.addEventListener("input", () => {
+    dragging = true;
+    const v = Number(slider.value);
+    paintSpeed(v);
+    pending = v;
+    if (!pushT) pushT = setTimeout(() => {
+      pushT = null;
+      const val = pending; pending = null;
+      state.speed = val;
+      call("set_speed", val);
+    }, 60);
+  });
+  const endDrag = () => {
+    dragging = false;
+    if (pending != null) { const val = pending; pending = null; clearTimeout(pushT); pushT = null;
+      state.speed = val; call("set_speed", val); }
+  };
+  slider.addEventListener("change", endDrag);
+  slider.addEventListener("pointerup", endDrag);
+  slider.addEventListener("keyup", endDrag);
+
+  $("open").onclick = () => call("open_main");
+  $("close").onclick = () => call("hide_panel");
+  $("exit").onclick = () => { flash("Exiting…"); call("exit_app"); };
+  window.addEventListener("keydown", e => { if (e.key === "Escape") call("hide_panel"); });
+  window.addEventListener("resize", () => paintSpeed(Number(slider.value)));
+
+  // The bridge can mount after first paint on WebView2 — poll briefly, then
+  // keep the panel fresh while it is visible (the app echoes tray changes).
+  let tries = 0;
+  const boot = () => { if (api()) { refresh(); } else if (tries++ < 50) setTimeout(boot, 100); };
+  window.addEventListener("pywebviewready", refresh);
+  boot();
+  setInterval(() => { if (!document.hidden && !dragging) refresh(); }, 1500);
+  paintSpeed(60);
+})();
+</script>
+</body>
+</html>

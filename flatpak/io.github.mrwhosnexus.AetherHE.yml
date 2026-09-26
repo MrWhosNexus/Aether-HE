@@ -50,7 +50,7 @@ modules:
       # the app before the window opens.
       - cp -r app_web.py aula_device.py protocol.py protocol_sonix.py protocol_sayo.py
         protocol_mini60.py boards.py drivers effects.py device_state.py gamepad.py
-        theme.py version.py updater.py tools data ui /app/share/aether/
+        theme.py version.py updater.py tray.py tools data ui /app/share/aether/
       # Launcher
       - install -Dm755 flatpak/aether.sh /app/bin/aether
       # Desktop integration

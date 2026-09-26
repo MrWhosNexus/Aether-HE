@@ -33,6 +33,11 @@ venv-web/bin/python ui/runtime_src/build_runtime.py
   120 bump was tried and reverted because it saturated the USB pipe. Per-board caps come
   from `lighting.hostEngineMaxFps` in the registry (MINI 60 HE PRO measured at 28).
 - `gamepad.py` — Linux uinput virtual gamepad (LINUX ONLY; self-disables elsewhere).
+- `tray.py` — tray residency (pystray, Windows): closing the window HIDES it and the effect
+  engine keeps streaming; `--minimized` (autostart entry) starts hidden. The icon opens a
+  mini-mode panel (`ui/tray_panel.html`: Open / effect grid / speed slider / Exit). The panel
+  never drives the board: it sets `pattern`/`speed` in the React app via `window.__aetherTraySet`
+  and reads state from `Api.tray_sync` (pushed by app.jsx). Without pystray, close quits as before.
 - `ui/runtime_src/src/{app,sections,keyboard}.jsx` — the edited UI; `vendor/` is unmodified.
 
 ## HID protocol cheat-sheet (verified on hardware)

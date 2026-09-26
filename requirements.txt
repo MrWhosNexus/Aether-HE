@@ -14,6 +14,11 @@ hidapi>=0.14
 evdev>=1.9;   sys_platform == "linux"
 vgamepad>=0.1; sys_platform == "win32"
 
+# System-tray residency (tray.py): close-to-tray keeps the effects running,
+# with a mini-mode panel on the icon. Optional — without it, close quits.
+pystray>=0.19; sys_platform == "win32"
+Pillow>=10;    sys_platform == "win32"
+
 # Optional helpers:
 #   pyusb        — USB reset for a stuck interface (cycle_modes.py); needs a libusb backend.
 #   customtkinter — only for the legacy Tkinter UI (main.py); not needed for app_web.py.

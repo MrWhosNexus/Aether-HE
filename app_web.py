@@ -25,6 +25,7 @@ import effects
 import device_state
 import gamepad
 import updater
+import tray
 from tools import board_submission
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -1219,10 +1220,12 @@ class Api:
         Frozen exe → run the exe directly; source checkout → fall back to
         pythonw.exe + app_web.py so dev installs still work.
         """
+        # --minimized: start straight into the tray (effects run, no window),
+        # so a login launch is silent. The user opens the window from the icon.
         if getattr(sys, "frozen", False):
-            return f'"{sys.executable}"'
+            return f'"{sys.executable}" {tray.MINIMIZED_FLAG}'
         py = sys.executable.replace("python.exe", "pythonw.exe")
-        return f'"{py}" "{os.path.join(HERE, "app_web.py")}"'
+        return f'"{py}" "{os.path.join(HERE, "app_web.py")}" {tray.MINIMIZED_FLAG}'
 
     def get_autostart(self):
         if not sys.platform.startswith("win"):
@@ -1297,6 +1300,29 @@ class Api:
         Settings tab so users can find / back up / wipe the file."""
         p = self._settings_path()
         return {"ok": True, "path": p, "exists": os.path.exists(p)}
+
+    # ---- tray mini mode ----
+    def tray_sync(self, state):
+        """The React app's mirror of what the tray panel shows: current
+        pattern/speed, connection, board name and this board's effect list.
+        Pushed by app.jsx on every change; tray.TrayApi.get_state reads it, so
+        the panel never has to evaluate JS in the (hidden) main window."""
+        if not isinstance(state, dict):
+            return {"ok": False, "error": "state must be an object"}
+        cur = dict(getattr(self, "_tray_state", None) or {})
+        cur.update({
+            "pattern": state.get("pattern"),
+            "speed": state.get("speed", cur.get("speed", 60)),
+            "connected": bool(state.get("connected")),
+            "board": state.get("board"),
+            "effects": [
+                {"id": str(e.get("id")), "label": str(e.get("label") or e.get("id")),
+                 "icon": str(e.get("icon") or "")}
+                for e in (state.get("effects") or []) if isinstance(e, dict) and e.get("id")
+            ],
+        })
+        self._tray_state = cur
+        return {"ok": True}
 
     # ---- advanced keys + per-key remap (MINI 60 HE PRO family) ----
     #
@@ -1982,11 +2008,27 @@ def main():
     # Fragments are client-side only and safe on every backend.
     from pathlib import Path
     url = Path(INDEX).as_uri() + f"#v={int(os.path.getmtime(INDEX))}"
+    # Tray residency: closing the window hides it and the effect engine keeps
+    # streaming; `--minimized` (the autostart entry) starts hidden. The React
+    # app in a hidden WebView2 still runs — it is what applies tray changes —
+    # but Chromium throttles hidden-page timers to 1 Hz, which would turn the
+    # 70 ms lighting debounce into a one-second lag on the tray's speed
+    # slider. This documented WebView2 switch keeps timers at full rate.
+    minimized = tray.wants_minimized(sys.argv[1:])
+    if sys.platform.startswith("win"):
+        extra = "--disable-background-timer-throttling"
+        cur = os.environ.get("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "")
+        if extra not in cur:
+            os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = (cur + " " + extra).strip()
+    tray_ctl = tray.TrayController(api, webview)
     window = webview.create_window(
         "Aether", url, js_api=api,
         width=1340, height=900, min_size=(1160, 800),
-        background_color="#07080d",
+        background_color="#07080d", hidden=minimized,
     )
+    tray_ctl.main_window = window
+    window.events.closing += tray_ctl.on_main_closing
+    api.tray = tray_ctl
     # Never pop a DevTools window at launch. pywebview ships
     # OPEN_DEVTOOLS_IN_DEBUG=True, and its Edge/Chromium backend does
     # `if _state['debug'] and OPEN_DEVTOOLS_IN_DEBUG: OpenDevToolsWindow()`,
@@ -2003,7 +2045,19 @@ def main():
     # private_mode=False comes from main: it gives the webview a persistent
     # profile so localStorage survives a restart. Kept — only `debug` is
     # overridden here, because debug=True is what pops the DevTools window.
-    webview.start(_on_start, window, debug=debug, private_mode=False)
+    def _boot(w):
+        # The tray icon needs no GUI loop of ours (pystray runs detached), but
+        # it must exist before the first close and — when starting minimized —
+        # before there is anything else on screen to reach the app through.
+        if not tray_ctl.start() and minimized:
+            log.warning("no tray backend; --minimized ignored, showing the window")
+            try:
+                w.show()
+            except Exception:
+                pass
+        _on_start(w)
+
+    webview.start(_boot, window, debug=debug, private_mode=False)
 
 
 if __name__ == "__main__":

@@ -1046,6 +1046,34 @@ function App() {
     try { localStorage.setItem("aether-autoconnect", autoConnect ? "1" : "0"); } catch {}
   }, [autoConnect]);
 
+  // ---- tray "mini mode" bridge --------------------------------------------
+  // The tray panel (tray.py) never touches the board itself: it sets
+  // `pattern`/`speed` HERE through window.__aetherTraySet, so the same
+  // per-board dispatch + settings persistence run as for a click in the
+  // Lighting tab — and it reads state back from Api.tray_sync, which we push
+  // whenever anything it shows changes (the effect list is the exact grid the
+  // Lighting tab offers for the active board).
+  useEffect(() => {
+    window.__aetherTraySet = (patch) => {
+      if (!patch) return;
+      if (typeof patch.pattern === "string") setPattern(patch.pattern);
+      if (patch.speed != null && Number.isFinite(Number(patch.speed)))
+        setSpeed(Math.max(0, Math.min(100, Math.round(Number(patch.speed)))));
+    };
+    return () => { delete window.__aetherTraySet; };
+  }, []);
+  useEffect(() => {
+    const bl = (board && board.lighting) || null;
+    const LB = window.AetherWorkspaces && window.AetherWorkspaces.LIGHTING_BOARD;
+    const grid = (LB && LB.modeGridFor) ? LB.modeGridFor(bl) : [];
+    apiCall("tray_sync", {
+      pattern, speed, connected: !!connected,
+      board: (board && board.name) || null,
+      effects: grid.map(m => ({ id: m.id, label: m.label, icon: m.icon || "" })),
+    });
+    // `board` by slug, not identity: the 5 s roster poll rebuilds the object.
+  }, [pattern, speed, connected, board && board.slug]);
+
   // One-shot auto-connect on launch, only if the user opted in. Fires once,
   // after hydration resolves `autoConnect` from settings.json, so a persisted
   // preference is honored. Guarded by a ref so it never fires twice.
