@@ -29,4 +29,6 @@ Lighting cmd `0x07`: `[5]`=mode, `[6]`=brightness(inferred), `[8..10]`=RGB, `[14
 
 Analog travel reports (cmd `0x21`, streamed only when driver's **Travel Test** toggle is ON): subtype at data `[4]`. Subtype `5` = simple per-key travel: `[6],[7]`=key id, `[8],[9]`=depth 16-bit LE in **0.01mm units** (0..~400 = 0..4.00mm). Subtype `3` = detailed calibration (raw Hall ADC ~2535 rest .. ~1431 bottomed). Parsed by `parse_travel()`. STILL TBD: the Travel-Test *enable* command, and the key-id→name map (capture by toggling Travel Test + tapping keys individually). The `0x21 .. 18 02 ..` SEND is the actuation-write command (per-key trigger in 0.01mm).
 
+**Later corrections (v0.5.0):** the per-key trigger CONFIG read (cmd 33 sub 5 reply, `body[5]==5` is the sub-command in the reply body; `r[5]==5` in the raw report is the LENGTH byte) decodes as `mode=body[6]`, `travel=body[11]<<8|body[7]`, `i1=body[13]<<8|body[9]`, `i2=body[14]<<8|body[10]` — vendor L966-969, capture frame 173. The live travel-test stream is the `body[5]==1` layout (`idx=r[7]*22+r[8]`, `depth=(r[9]|r[10]<<8)/100`). Switch-profile table = cmd 0x25 (read `25 02`, 58+58+16 bytes; write per-key stored values, 0 on empty slots). Macros = cmd 25 (0x19), see `CLAUDE.md`. Full record: [[aula-win60-v0.5.0-tray-macros-review]].
+
 See [[aula-win60-hidapi-usage-page-quirk]].

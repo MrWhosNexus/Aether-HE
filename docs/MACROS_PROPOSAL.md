@@ -1,6 +1,8 @@
 # Aether HE — Macros Proposal (v0.4.0 candidate)
 
-> Status: **Draft**. Open question — exact user request from r/keyboards
+> Status: **Superseded (v0.5.0).** Macros shipped as ONBOARD firmware macros for the Win60 HE (cmd 25, 10 slots, bound via base-keymap entry `[0x10, hid, slot, 0]`), not the host-side JSON playback proposed here. See `docs/context/aula-win60-v0.5.0-tray-macros-review.md` and the Macros line in `CLAUDE.md`. Kept for the host-playback idea (mouse events, per-profile macros) which is still unbuilt.
+>
+> Original status: **Draft**. Open question — exact user request from r/keyboards
 > `1tmoypx/comment/ovukxbz` couldn't be retrieved (Reddit blocking + no
 > Wayback snapshot). This proposal covers the 80%-case shape of "macros" so a
 > first PR is meaningful even before the comment comes in. Adjust scope when

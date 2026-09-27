@@ -133,6 +133,11 @@ begin hidden in the tray (also `AetherHE.exe --minimized`). Pair it with
 *Start on launch* for lighting that comes up with Windows. A second launch
 while Aether is already running just brings the existing window up.
 
+**Macros (Win60 HE, v0.5.0):** the **Macros** tab reads the board's 10 macro
+slots, records keystrokes with their timing (or lets you build a sequence by
+hand), saves to a slot with Once / Repeat ×N playback, and binds the slot to a
+key. Macros run on the keyboard's firmware, so they work with the app closed.
+
 **Virtual gamepad (optional):** The Gamepad tab needs the ViGEmBus kernel
 driver. It's bundled with the build — when you first toggle gamepad capture
 and the driver isn't present, the UI shows an **"Install ViGEmBus"** button

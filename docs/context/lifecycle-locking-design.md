@@ -1,7 +1,10 @@
 # Design note — thread / handle lifecycle & locking fix
 
-Status: **proposal, pre-implementation.** Covers the 7 "lifecycle cluster" defects from the
-2026-07-22 audit (rounds 2–3). No code changed yet. Branch: `lifecycle-fixes`.
+Status: **implemented.** Fixes A/B/C landed in `6ebb884`, `8bcd249`, `617157e` (2026-07); the
+single-active-reader rule from B.2 — the one piece that was still missing — landed in v0.5.0
+(`eec898c`: `Api._reader_paused()` parks the LiveReader around every RMW read-back and
+`_restore_shared_reader()` brings it back for its registered owners). Covers the 7 "lifecycle
+cluster" defects from the 2026-07-22 audit (rounds 2–3).
 
 ## Why this is a design note and not a patch
 
@@ -113,17 +116,17 @@ writes on the cold path, not the 60fps hot path, and correctness beats a few ms 
 
 ## Implementation checklist (mapped to defects + tests)
 
-- [ ] Outer lock → `RLock`; add `transaction()`; wrap RMW methods. **(1)** — test: two threads RMW the
+- [x] (`6ebb884`) Outer lock → `RLock`; add `transaction()`; wrap RMW methods. **(1)** — test: two threads RMW the
       same key table concurrently, assert both edits survive (currently one is lost).
-- [ ] `AulaDevice.set_nonblocking`; route `read_actuation` through locked methods. **(2)** — test: a
+- [x] (`8bcd249`, reader parking `eec898c`) `AulaDevice.set_nonblocking`; route `read_actuation` through locked methods. **(2)** — test: a
       `LiveReader` running while `read_actuation` sweeps → no exception, no torn report (stub handle
       asserting no concurrent `_dev` access).
-- [ ] `_stop_readers()`; rewrite `disconnect()` to the contract order; `_calibrating` + disarm-on-abort.
+- [x] (`617157e`) `_stop_readers()`; rewrite `disconnect()` to the contract order; `_calibrating` + disarm-on-abort.
       **(3,6)** — test: calibrate → disconnect asserts `set_calibration(False)` was sent and both
       readers stopped.
-- [ ] Reader dead-handle self-teardown in both `_run()` loops. **(4,5)** — test: close the handle
+- [x] (`617157e`) Reader dead-handle self-teardown in both `_run()` loops. **(4,5)** — test: close the handle
       under a running reader → thread exits within a bounded time (not spinning).
-- [ ] Reader ownership set. **(7)** — test: gamepad-off with no other owner stops the reader; with the
+- [x] (`617157e`, locked bookkeeping `09dc94a`) Reader ownership set. **(7)** — test: gamepad-off with no other owner stops the reader; with the
       analog tab open, it keeps running.
 
 ## Risk / tradeoffs

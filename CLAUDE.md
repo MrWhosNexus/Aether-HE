@@ -7,7 +7,9 @@ calls into a Python `Api` (exposed as `window.pywebview.api`).
 
 Built and verified on **Linux/CachyOS**. A **Windows port** is in progress (see
 "Porting to Windows" below). Detailed engineering notes are in `docs/context/`
-(carried over from the dev sessions) — read those for protocol/effect specifics.
+(carried over from the dev sessions) — read those for protocol/effect specifics. Latest release
+record: `docs/context/aula-win60-v0.5.0-tray-macros-review.md`; hardware checks still owed:
+`docs/HARDWARE_TEST_CHECKLIST.md`.
 
 ## Run
 ```
@@ -27,7 +29,8 @@ venv-web/bin/python ui/runtime_src/build_runtime.py
 - `protocol.py` — HID packet builders, reverse-engineered from the official driver
   (`driver_src/dec_agreement/deobfuscated.js`). Report ID 1; 64-byte reports.
 - `device_state.py` — `KeyMap` (key index↔design-code↔xy), `LiveReader` (travel-test stream),
-  `CalibrationReader`.
+  `CalibrationReader`. The LiveReader drains and DISCARDS every non-travel report, so any driver
+  read-back (remap/switch/mode-0 actuation/macros) must run inside `Api._reader_paused()`.
 - `effects.py` — host-driven **per-key** lighting engine (firmware effects only hold one
   fg+bg, so multi-color animations are streamed from the host via cmd 9). `FPS = 60`: a
   120 bump was tried and reverted because it saturated the USB pipe. Per-board caps come

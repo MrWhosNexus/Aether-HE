@@ -13,10 +13,10 @@
 | ID | Owner | Severity | Description | Status | Dependencies | Files | Acceptance criteria |
 |----|-------|----------|-------------|--------|--------------|-------|---------------------|
 | AUDIT-SWEEP | Implementer | n/a | Read every file in inventory; populate `audit/findings.md` with severity-ranked findings + reproducers. | pending | Phase 0 complete | all source files in inventory | One entry per file (even if "no issues"); every entry has severity + reproducer + proposed fix. |
-| FIX-001 | Implementer | HIGH | `aula_device.find_vendor_interface`: verify `0xFF1B` usage-page match works on Windows; document Linux fallback to highest interface_number; add tests for both branches. | pending | AUDIT-SWEEP | `aula_device.py`, `tests/test_aula_device.py` (new) | Test on Win opens vendor collection, not keyboard HID; test on Linux falls back to iface 2; full suite passes. Hardware test required. |
+| FIX-001 | Implementer | HIGH | `aula_device.find_vendor_interface`: verify `0xFF1B` usage-page match works on Windows; document Linux fallback to highest interface_number; add tests for both branches. | in-progress (v0.5.0 `ab5ef69`: fallback ranks vendor usage pages above keyboard collections, `open()` closes a held handle; hardware check pending — `docs/HARDWARE_TEST_CHECKLIST.md`) | AUDIT-SWEEP | `aula_device.py`, `tests/test_aula_device.py` (new) | Test on Win opens vendor collection, not keyboard HID; test on Linux falls back to iface 2; full suite passes. Hardware test required. |
 | FIX-002 | Implementer | HIGH | Add golden-frame tests for `protocol.py` (cmd 7 lighting, cmd 9 per-key, cmd 33 actuation). Assert exact bytes. | pending | AUDIT-SWEEP | `tests/test_protocol.py` (new), `protocol.py` | Exact-byte assertions for one known value per command; full suite passes. Hardware test required. |
-| FIX-003 | Implementer | HIGH | `effects.py` per-frame spawner math: verify FPS independence at 60/120/240 fps; no per-frame list/dict allocations in hot loop. | pending | AUDIT-SWEEP | `effects.py`, `tests/test_effects.py` (new) | Density assertion holds across FPS values; allocator assertion holds. Hardware test required. |
-| FIX-004 | Implementer | HIGH | `gamepad.py` vgamepad (Windows) port; self-disable when vgamepad or evdev is missing. | pending | AUDIT-SWEEP | `gamepad.py`, `tests/test_gamepad.py` (new) | Win+Linux branches both exist; missing-dep self-disable tested; app still launches with dep missing. |
+| FIX-003 | Implementer | HIGH | `effects.py` per-frame spawner math: verify FPS independence at 60/120/240 fps; no per-frame list/dict allocations in hot loop. | done (v0.5.0 `09dc94a`: monotonic pacing, dt-based reactive, cached static/rain, `_MAX_PARTICLES`, tests in `tests/test_effects_stream.py`) | AUDIT-SWEEP | `effects.py`, `tests/test_effects.py` (new) | Density assertion holds across FPS values; allocator assertion holds. Hardware test required. |
+| FIX-004 | Implementer | HIGH | `gamepad.py` vgamepad (Windows) port; self-disable when vgamepad or evdev is missing. | done (pre-existing port hardened in v0.5.0 `ab5ef69`: idle-skip writes, cached ViGEmBus probe, axis validation; `tests/test_gamepad_device.py`) | AUDIT-SWEEP | `gamepad.py`, `tests/test_gamepad.py` (new) | Win+Linux branches both exist; missing-dep self-disable tested; app still launches with dep missing. |
 | FIX-005 | Implementer | MED | `boards.py` registry: corrupt JSON → default board; missing file → default board; hot-reload does not break in-flight sessions. | pending | AUDIT-SWEEP | `boards.py`, `tests/test_boards.py` | All three failure modes tested; `python -m pytest tests/` passes. |
 | POLISH-001 | Implementer | LOW | `.gitignore` completeness — add `venv-web/`, `dist/`, `graphify-out/cache/`, `build/`, `__pycache__/`, `*.pyc`, `*.spec`. | pending | Phase 4 entry | `.gitignore` | After commit, `git status` does not show files in those paths. |
 | POLISH-002 | Implementer | LOW | Remove tracked files from gitignored paths (single commit with POLISH-001). | pending | POLISH-001 | repo index | `git ls-files` shows no files in gitignored paths. |
@@ -36,7 +36,11 @@
 
 ## Recently completed (move here from Active when DONE)
 
-(empty — populate as tasks close)
+| ID | Description | Commit(s) |
+|----|-------------|-----------|
+| FIX-003 | effects.py hot-loop allocations + FPS independence | `09dc94a` |
+| FIX-004 | gamepad Windows backend hardening | `ab5ef69` |
+| REL-0.5.0 | Codebase review fixes, Win60 macros, tray/mini mode, Start minimized, single-instance + own WebView2 profile, version 0.5.0 | `a588261`..`eec898c` |
 
 ---
 
@@ -44,4 +48,4 @@
 
 (See `agents/handoffs/` for files. Format: `[role]-[YYYY-MM-DD-HHMM].md`.)
 
-(empty — populate as sessions end.)
+| `implementer-2026-09-27-0400.md` | v0.5.0 release session — hardware verification pending |
