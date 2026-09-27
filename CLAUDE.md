@@ -39,6 +39,10 @@ venv-web/bin/python ui/runtime_src/build_runtime.py
   icon opens a mini-mode panel (`ui/tray_panel.html`: Open / effect grid / speed slider / Exit). The panel
   never drives the board: it sets `pattern`/`speed` in the React app via `window.__aetherTraySet`
   and reads state from `Api.tray_sync` (pushed by app.jsx). Without pystray, close quits as before.
+- `single_instance.py` — Windows named mutex + "show" event: a second launch pokes the running
+  instance (window comes up) and exits. main() also gives WebView2 its OWN profile folder
+  (`%LOCALAPPDATA%\AetherHE\webview`): the pywebview default is shared by every build, and a
+  second process holding it → WebView2 init fails with HRESULT 0x8007139F (blank window).
 - `ui/runtime_src/src/{app,sections,keyboard}.jsx` — the edited UI; `vendor/` is unmodified.
 
 ## HID protocol cheat-sheet (verified on hardware)

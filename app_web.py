@@ -26,6 +26,7 @@ import device_state
 import gamepad
 import updater
 import tray
+import single_instance
 from tools import board_submission
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -2013,6 +2014,16 @@ def _on_start(window):
 def main():
     if not os.path.exists(INDEX):
         raise SystemExit(f"UI not found: {INDEX}")
+    # One instance: a second launch while Aether sits in the tray used to die
+    # in WebView2 (0x8007139F: profile folder held by the other process).
+    # Now it asks the running instance to show its window, then exits.
+    inst = single_instance.SingleInstance()
+    if not inst.acquire():
+        if inst.poke_existing():
+            log.info("Aether is already running — brought its window up")
+        else:
+            log.warning("Aether is already running but could not be reached")
+        return
     api = Api()
     # Pass an explicit file:// URI: pywebview only treats a string as a local
     # file when it exists on disk verbatim, and a "?v=" cache-buster query
@@ -2071,9 +2082,22 @@ def main():
         if not tray_ctl.start() and minimized:
             log.warning("no tray backend; start-minimized ignored, showing the window")
             tray_ctl.show_main()
+        # A later launch pokes us: bring the window up (and drop the panel).
+        inst.listen(lambda: (tray_ctl.hide_panel(), tray_ctl.show_main()))
         _on_start(w)
 
-    webview.start(_boot, window, debug=debug, private_mode=False)
+    # Aether's OWN WebView2 profile. pywebview's default is the shared
+    # %LOCALAPPDATA%\pywebview folder — every pywebview app and every older
+    # Aether build (the installer's autostart entry, for one) open the same
+    # one, and WebView2 refuses a folder another process holds with different
+    # options (0x8007139F). localStorage moves with it: setup-done/zoom/
+    # auto-connect flags reset once; settings.json is untouched.
+    storage = os.path.join(os.path.dirname(api._settings_path()), "webview")
+    try:
+        webview.start(_boot, window, debug=debug, private_mode=False,
+                      storage_path=storage)
+    finally:
+        inst.release()
 
 
 if __name__ == "__main__":
