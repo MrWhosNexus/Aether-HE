@@ -10,7 +10,12 @@ on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:        # allow a manual run from the Actions tab
+  workflow_dispatch:        # manual run from the Actions tab (or the API)
+    inputs:
+      tag:
+        description: "Release tag to create and publish (e.g. v0.5.0). Leave empty for a build-only run."
+        required: false
+        default: ""
 
 permissions:
   contents: write           # create releases + upload assets
@@ -105,7 +110,13 @@ jobs:
     # would otherwise skip this job when linux failed; the explicit windows
     # check keeps the Windows installer a hard requirement rather than
     # degrading the whole gate.
-    if: always() && startsWith(github.ref, 'refs/tags/') && needs.windows.result == 'success'
+    # Two ways in: a pushed v* tag, or a manual dispatch that names the tag —
+    # action-gh-release then creates that tag at the built commit itself, so
+    # a release can be cut from an environment that can't push tags.
+    if: >-
+      always() && needs.windows.result == 'success' &&
+      (startsWith(github.ref, 'refs/tags/') ||
+       (github.event_name == 'workflow_dispatch' && inputs.tag != ''))
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -131,6 +142,10 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
+          # On a tag push inputs.tag is empty and ref_name IS the tag, so this
+          # is byte-identical to the old behaviour there.
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          target_commitish: ${{ github.sha }}
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: ${{ steps.assets.outputs.files }}
