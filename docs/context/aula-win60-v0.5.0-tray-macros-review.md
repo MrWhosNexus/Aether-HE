@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: reference
   release: v0.5.0
-  commits: 09dc94a..eec898c (10 commits on main, tagged v0.5.0)
+  commits: 09dc94a..eec898c code + 1175533 docs + 185f8d7 CI; tag v0.5.0 = 185f8d7
 ---
 
 # v0.5.0 — what changed and why (2026-09-24 → 2026-09-27)
@@ -31,8 +31,11 @@ release ran on a physical board before tagging** — see the hardware section.
 
 The first two commits fail two tests each only because their `app_web.py`
 half was committed in `a588261` (three agents edited concurrently and the
-shared file was committed once). History was NOT rewritten: `main` and the
-`v0.5.0` tag point at `eec898c`, which is consistent.
+shared file was committed once). History was NOT rewritten. The `v0.5.0` tag points at `185f8d7` (docs +
+the release-workflow change on top of `eec898c`; identical app code): the tag could not
+be pushed from the cloud session, so `release.yml` gained a `workflow_dispatch` `tag`
+input and the release was cut by dispatching the workflow on `main`, which created the
+tag itself via action-gh-release. Run: actions/runs/36292009543.
 
 ## Protocol facts established (Win60 HE)
 
