@@ -120,6 +120,19 @@ run `AetherHE.exe`. No shortcuts, no uninstaller; just the app folder.
 **Settings persistence** — lighting / actuation / SOCD / gamepad mappings
 auto-save to `%LocalAppData%\AetherHE\settings.json` and reload on launch.
 
+**Tray & mini mode (v0.5.0, Windows):** closing the window no longer quits —
+Aether hides to the system tray and keeps streaming your lighting effect to the
+board. Left-click the tray icon for **mini mode**, a small panel with the
+effect grid, a speed slider and Open / Exit; right-click for **Open · Hide
+window · Mini mode · Exit**. Mini mode drives the same per-board lighting path
+as the Lighting tab, and every change is saved to `settings.json` as usual.
+Exit from the tray to actually quit (the board keeps its last frame).
+
+**Start minimized:** *Settings → Launch → Start minimized* makes every launch
+begin hidden in the tray (also `AetherHE.exe --minimized`). Pair it with
+*Start on launch* for lighting that comes up with Windows. A second launch
+while Aether is already running just brings the existing window up.
+
 **Virtual gamepad (optional):** The Gamepad tab needs the ViGEmBus kernel
 driver. It's bundled with the build — when you first toggle gamepad capture
 and the driver isn't present, the UI shows an **"Install ViGEmBus"** button

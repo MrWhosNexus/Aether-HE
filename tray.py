@@ -28,7 +28,12 @@ import threading
 
 log = logging.getLogger("aether.tray")
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+# Same resolution as app_web.HERE: in a PyInstaller build the data files
+# (ui/) live in sys._MEIPASS (the _internal folder), not next to this module.
+if getattr(sys, "frozen", False):
+    HERE = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+else:
+    HERE = os.path.dirname(os.path.abspath(__file__))
 PANEL_HTML = os.path.join(HERE, "ui", "tray_panel.html")
 ICON_PNG = os.path.join(HERE, "ui", "assets", "logo.png")
 

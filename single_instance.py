@@ -22,12 +22,38 @@ MUTEX_NAME = "Local\\AetherHE.Instance"
 EVENT_NAME = "Local\\AetherHE.Show"
 ERROR_ALREADY_EXISTS = 183
 WAIT_OBJECT_0 = 0
+WAIT_FAILED = 0xFFFFFFFF
 INFINITE = 0xFFFFFFFF
+
+
+def _declare(k):
+    """Pin the Win32 signatures we use. ctypes defaults every argument and
+    return value to a 32-bit C int; a HANDLE is pointer-sized, so on 64-bit
+    Windows an undeclared CreateMutexW/CreateEventW result is truncated and
+    the value handed back to CloseHandle/WaitForSingleObject/SetEvent is a
+    sign-extended int, not the handle — WaitForSingleObject then returns
+    WAIT_FAILED immediately and the listener loop spins. Declaring
+    restype/argtypes makes the round trip exact."""
+    from ctypes import wintypes
+    k.CreateMutexW.restype = wintypes.HANDLE
+    k.CreateMutexW.argtypes = (wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR)
+    k.CreateEventW.restype = wintypes.HANDLE
+    k.CreateEventW.argtypes = (wintypes.LPVOID, wintypes.BOOL, wintypes.BOOL,
+                               wintypes.LPCWSTR)
+    k.OpenEventW.restype = wintypes.HANDLE
+    k.OpenEventW.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.LPCWSTR)
+    k.SetEvent.restype = wintypes.BOOL
+    k.SetEvent.argtypes = (wintypes.HANDLE,)
+    k.WaitForSingleObject.restype = wintypes.DWORD
+    k.WaitForSingleObject.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+    k.CloseHandle.restype = wintypes.BOOL
+    k.CloseHandle.argtypes = (wintypes.HANDLE,)
+    return k
 
 
 def _k32():
     import ctypes
-    return ctypes.WinDLL("kernel32", use_last_error=True)
+    return _declare(ctypes.WinDLL("kernel32", use_last_error=True))
 
 
 class SingleInstance:
@@ -93,13 +119,20 @@ class SingleInstance:
             k = _k32()
             while not self._stop.is_set():
                 # 500 ms slices so stop() is honoured without a poke.
-                if k.WaitForSingleObject(self._event, 500) == WAIT_OBJECT_0:
+                rc = k.WaitForSingleObject(self._event, 500)
+                if rc == WAIT_OBJECT_0:
                     if self._stop.is_set():
                         break
                     try:
                         on_show()
                     except Exception as e:
                         log.warning("on_show failed: %s", e)
+                elif rc == WAIT_FAILED:
+                    # Bad/closed handle: WaitForSingleObject returns at once,
+                    # so looping would burn a core. Give up on pokes.
+                    log.warning("show-event wait failed; second launches will "
+                                "not raise the window")
+                    break
 
         self._thread = threading.Thread(target=loop, name="aether-instance-listen", daemon=True)
         self._thread.start()

@@ -6,6 +6,7 @@ keyboard over HID. WebKit has no WebHID, so a small injected JS bridge calls int
 this Python `Api` (exposed as window.pywebview.api), and mirrors the rendered
 per-key colors to the board's global lighting command.
 """
+import contextlib
 import json
 import logging
 import os
@@ -641,6 +642,40 @@ class Api:
         except Exception as e:
             log.warning("could not restore live reader after capture: %s", e)
 
+    @contextlib.contextmanager
+    def _reader_paused(self):
+        """Park the shared live reader while the driver READS from the handle
+        (a read-modify-write of a board table, the actuation read-back).
+
+        Two consumers draining one HID handle steal each other's reports:
+        the LiveReader drains up to 256 reports per pass and drops every
+        frame that is not a travel-test sample, so with the Actuation tab's
+        Travel Test on, a press-reactive effect running or gamepad capture
+        active, a keymap / switch / dead-band read-back loses pages and the
+        RMW aborts (remap fails), or the mode-0 trigger read-back misses and
+        falls back to the factory RT pair. The single-active-reader rule in
+        docs/context/lifecycle-locking-design.md (fix B.2) is enforced here:
+        the reader stops for the span, its owners stay registered, and it is
+        re-created afterwards (_restore_shared_reader). Holds the outer lock
+        for the span so no other bridge call can start a reader in between;
+        the LiveReader only ever takes the inner lock, so the join is safe.
+        No reader running -> no-op."""
+        with self._lock:
+            paused = None
+            r = getattr(self, "reader", None)
+            if r is not None:
+                self.reader = None
+                try:
+                    r.stop()
+                except Exception:
+                    pass
+                paused = r
+            try:
+                yield
+            finally:
+                if paused is not None:
+                    self._restore_shared_reader()
+
     def _stop_readers(self):
         """Stop and clear BOTH readers and all ownership. Every disconnect /
         board-switch path runs this so no reader thread is left spinning on a
@@ -728,7 +763,9 @@ class Api:
             km = getattr(self, "km", None)
             idxs = list(km.indices()) if km else list(range(int(key_count)))
             if mode == 0:
-                self.driver.set_actuation(idxs, 0, float(travel_mm), None, None)
+                # Mode 0 reads each key's stored RT pair back first.
+                with self._reader_paused():
+                    self.driver.set_actuation(idxs, 0, float(travel_mm), None, None)
             else:
                 self.driver.set_actuation(idxs, mode,
                                           float(travel_mm), float(rt_press_mm),
@@ -858,7 +895,13 @@ class Api:
         for i in idxs:
             self._trigger_state[i] = cfg
         try:
-            self._flush_triggers(edited_idxs=idxs)
+            if mode == 0:
+                # The driver reads each key's stored RT pair back before the
+                # mode-0 write; the live reader must not eat those replies.
+                with self._reader_paused():
+                    self._flush_triggers(edited_idxs=idxs)
+            else:
+                self._flush_triggers(edited_idxs=idxs)
             return {"ok": True, "keys": len(idxs), "idxs": sorted(idxs)}
         except Exception as e:
             return self._fail(e)
@@ -874,8 +917,10 @@ class Api:
         if not self.km or not self.dev.is_open():
             return {"ok": False, "error": "not connected"}
         try:
-            # Driver takes the outer lock itself for the whole read sweep.
-            vals_by_name = self.driver.read_actuation(self.km)
+            # Driver takes the outer lock itself for the whole read sweep;
+            # the live reader is parked so it can't consume the replies.
+            with self._reader_paused():
+                vals_by_name = self.driver.read_actuation(self.km)
             # Build {design_code: mm} for every key we have a mapping for.
             all_by_code = {}
             for design_code, idx in self.km.index_of_code.items():
@@ -939,9 +984,10 @@ class Api:
         for i in idxs:
             self._deadband_state[i] = (top, bottom)
         try:
-            self.driver.set_deadband(dict(self._deadband_state),
-                                     top_mm=float(top_mm),
-                                     bottom_mm=float(bottom_mm))
+            with self._reader_paused():           # RMW: reads the table first
+                self.driver.set_deadband(dict(self._deadband_state),
+                                         top_mm=float(top_mm),
+                                         bottom_mm=float(bottom_mm))
             # A global write always covers the whole board, so report the
             # board's key count when nothing was explicitly selected — the UI
             # toast ("whole board · every key") must not claim 0 keys.
@@ -1008,7 +1054,8 @@ class Api:
             return {"ok": False, "error": err}
         table = {idx: code for idx in idxs}
         try:
-            self.driver.set_switch(table)
+            with self._reader_paused():           # RMW: reads the table first
+                self.driver.set_switch(table)
             return {"ok": True, "keys": len(idxs), "code": code}
         except Exception as e:
             return self._fail(e)
@@ -1021,9 +1068,13 @@ class Api:
         # keys) survive. Then the Fn layer is replayed (the driver aborts
         # before writing anything if no Fn table can be had).
         defaults = {i: self.km.by_index[i]["hid"] for i in self.km.by_index}
-        self.driver.write_keymap(defaults, dict(self._remaps),
-                                 self.km.layer_indices, self._fn_layer_raw,
-                                 restore_indices=list(restore_indices))
+        # The RMW reads both keymap layers back; park the live reader so a
+        # running press-reactive effect / Travel Test can't eat the pages
+        # (a lost page = "keymap read failed" and the remap is refused).
+        with self._reader_paused():
+            self.driver.write_keymap(defaults, dict(self._remaps),
+                                     self.km.layer_indices, self._fn_layer_raw,
+                                     restore_indices=list(restore_indices))
 
     def set_remap(self, codes, target_hid):
         """Remap the selected keys to emit `target_hid` (USB HID usage code)."""
@@ -1546,21 +1597,22 @@ class Api:
             return {"ok": False, "error": "not connected"}
         try:
             names = self._macro_names()
-            stored = drv.list_macros()
-            macros = [self._macro_json(s, m, names) for s, m in sorted(stored.items())]
-            out = {"ok": True, "macros": macros,
-                   "slots": drv.MACRO_SLOTS,
-                   "max_events": drv.MACRO_MAX_EVENTS,
-                   "max_delay_ms": drv.MACRO_MAX_DELAY_MS,
-                   "max_repeat": drv.MACRO_MAX_REPEAT,
-                   "play_modes": list(drv.MACRO_PLAY_MODES)}
-            try:
-                out["bindings"] = self._macro_bindings_by_code()
-            except UnsupportedFeature:
-                out["bindings"] = None
-            except Exception as e:
-                out["bindings"] = None
-                out["bindings_error"] = str(e)
+            with self._reader_paused():           # 10 slot reads + keymap read
+                stored = drv.list_macros()
+                macros = [self._macro_json(s, m, names) for s, m in sorted(stored.items())]
+                out = {"ok": True, "macros": macros,
+                       "slots": drv.MACRO_SLOTS,
+                       "max_events": drv.MACRO_MAX_EVENTS,
+                       "max_delay_ms": drv.MACRO_MAX_DELAY_MS,
+                       "max_repeat": drv.MACRO_MAX_REPEAT,
+                       "play_modes": list(drv.MACRO_PLAY_MODES)}
+                try:
+                    out["bindings"] = self._macro_bindings_by_code()
+                except UnsupportedFeature:
+                    out["bindings"] = None
+                except Exception as e:
+                    out["bindings"] = None
+                    out["bindings_error"] = str(e)
             return out
         except Exception as e:
             return self._fail(e)
@@ -1571,7 +1623,8 @@ class Api:
             return {"ok": False, "error": "not connected"}
         try:
             slot = self._macro_slot(slot, drv)
-            m = drv.read_macro(slot)
+            with self._reader_paused():
+                m = drv.read_macro(slot)
             return {"ok": True,
                     "macro": None if m is None else self._macro_json(slot, m, self._macro_names())}
         except Exception as e:
@@ -1608,7 +1661,7 @@ class Api:
         try:
             slot = self._macro_slot(slot, drv)
             released = []
-            with self._lock:
+            with self._lock, self._reader_paused():
                 try:
                     binds = drv.read_macro_bindings()
                 except UnsupportedFeature:
@@ -1635,7 +1688,8 @@ class Api:
             idx = self._key_indices([code])[0]
             slot = self._macro_slot(slot, drv)
             play_mode, repeat_count = self._macro_playback(play_mode, repeat_count, drv)
-            drv.bind_macro(idx, slot, play_mode, repeat_count, **self._keymap_context())
+            with self._reader_paused():           # keymap RMW (+ slot read)
+                drv.bind_macro(idx, slot, play_mode, repeat_count, **self._keymap_context())
             return {"ok": True, "code": code, "index": idx, "slot": slot}
         except Exception as e:
             return self._fail(e)
@@ -1647,7 +1701,8 @@ class Api:
             return {"ok": False, "error": "not connected"}
         try:
             idx = self._key_indices([code])[0]
-            drv.unbind_key(idx, **self._keymap_context())
+            with self._reader_paused():           # keymap RMW
+                drv.unbind_key(idx, **self._keymap_context())
             return {"ok": True, "code": code, "index": idx}
         except Exception as e:
             return self._fail(e)
@@ -2082,9 +2137,12 @@ def main():
         if not tray_ctl.start() and minimized:
             log.warning("no tray backend; start-minimized ignored, showing the window")
             tray_ctl.show_main()
-        # A later launch pokes us: bring the window up (and drop the panel).
-        inst.listen(lambda: (tray_ctl.hide_panel(), tray_ctl.show_main()))
         _on_start(w)
+
+    # A later launch pokes us: bring the window up (and drop the panel).
+    # Armed BEFORE webview.start so a double-click during the 1–2 s boot
+    # isn't lost; a poke that lands before the window exists just logs.
+    inst.listen(lambda: (tray_ctl.hide_panel(), tray_ctl.show_main()))
 
     # Aether's OWN WebView2 profile. pywebview's default is the shared
     # %LOCALAPPDATA%\pywebview folder — every pywebview app and every older
@@ -2097,6 +2155,14 @@ def main():
         webview.start(_boot, window, debug=debug, private_mode=False,
                       storage_path=storage)
     finally:
+        # pystray's detached message loop is a NON-daemon thread: if the GUI
+        # loop ends by any path other than tray → Exit (hide-on-close failed
+        # and the window really closed, an exception inside webview.start),
+        # the process would linger with a live tray icon. exit() is idempotent.
+        try:
+            tray_ctl.exit()
+        except Exception:
+            pass
         inst.release()
 
 

@@ -98,3 +98,44 @@ def test_main_uses_single_instance_and_own_storage_path():
     src = open(os.path.join(ROOT, "app_web.py"), encoding="utf-8").read()
     assert "single_instance.SingleInstance()" in src
     assert "storage_path=storage" in src and '"webview")' in src
+
+
+def test_kernel32_signatures_are_pointer_sized():
+    """HANDLEs are pointer-sized on Win64; ctypes' default int restype
+    truncates them. _declare must pin restype/argtypes on every call used."""
+    from ctypes import wintypes
+
+    class Fn:
+        restype = None
+        argtypes = None
+
+    class FakeDLL:
+        def __init__(self):
+            for n in ("CreateMutexW", "CreateEventW", "OpenEventW", "SetEvent",
+                      "WaitForSingleObject", "CloseHandle"):
+                setattr(self, n, Fn())
+
+    k = si._declare(FakeDLL())
+    for n in ("CreateMutexW", "CreateEventW", "OpenEventW"):
+        assert getattr(k, n).restype is wintypes.HANDLE
+    assert k.WaitForSingleObject.argtypes == (wintypes.HANDLE, wintypes.DWORD)
+    assert k.WaitForSingleObject.restype is wintypes.DWORD
+    assert k.CloseHandle.argtypes == (wintypes.HANDLE,)
+    assert k.SetEvent.argtypes == (wintypes.HANDLE,)
+
+
+def test_listener_exits_on_wait_failed_instead_of_spinning(monkeypatch):
+    k = _fake_windows(monkeypatch)
+    calls = []
+
+    def bad_wait(h, ms):
+        calls.append(ms)
+        return si.WAIT_FAILED
+
+    k.WaitForSingleObject = bad_wait
+    owner = si.SingleInstance(); assert owner.acquire()
+    owner.listen(lambda: None)
+    owner._thread.join(1.0)
+    assert not owner._thread.is_alive()
+    assert len(calls) == 1                  # one failed wait, then out
+    owner.release()

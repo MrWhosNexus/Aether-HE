@@ -434,3 +434,81 @@ def test_mini60_send_raw_goes_through_its_dangerous_cmds_guard():
     with pytest.raises(RuntimeError):
         d.send_raw(bad)
     assert dev.writes == []
+
+
+# ------------------------------------------------ reader pause around RMW --
+class _PauseReader:
+    def __init__(self):
+        self.stopped = False
+        self.started = False
+
+    def start(self):
+        self.started = True
+
+    def stop(self):
+        self.stopped = True
+
+
+def _api_with_reader(driver):
+    """Api with the shared live reader RUNNING (analog tab / reactive effect
+    owner) so the RMW paths must park it (lifecycle-locking-design fix B.2:
+    two consumers draining one handle steal each other's reports)."""
+    a = _api(driver)
+    a._trigger_state = {}
+    a._deadband_state = {}
+    a.reader = _PauseReader()
+    a._reader_users = {"reactive"}
+    made = []
+    a.driver.make_live_reader = lambda km, indices=None: made.append(_PauseReader()) or made[-1]
+    return a, a.reader, made
+
+
+def test_rmw_bridge_calls_park_the_live_reader_and_restore_it():
+    seen = []
+
+    class _D:
+        def write_keymap(self, defaults, overrides, layer, fn, restore_indices=()):
+            seen.append(("keymap", api.reader))
+        def set_switch(self, table):
+            seen.append(("switch", api.reader))
+        def set_deadband(self, raw, top_mm=None, bottom_mm=None):
+            seen.append(("db", api.reader))
+        def set_actuation(self, idxs, mode, travel, p, r):
+            seen.append(("act", mode, api.reader))
+        def read_actuation(self, km):
+            seen.append(("verify", api.reader)); return {}
+
+    api, old, made = _api_with_reader(_D())
+    assert api.set_remap(["Z"], 0x05)["ok"]
+    assert api.set_switch_codes(["Z"], 1)["ok"]
+    assert api.set_deadband_codes(["Z"], 0.04, 0.05)["ok"]
+    assert api.set_trigger_codes(["Z"], 1.5, 0, 0, mode=0)["ok"]
+    assert api.verify_actuation([])["ok"]
+    # every driver read ran with NO live reader competing for the handle...
+    assert [s[-1] for s in seen] == [None] * 5
+    assert old.stopped
+    # ...and the reader came back for its owner afterwards, a fresh instance
+    assert api.reader is made[-1] and api.reader.started and api.reader is not old
+    assert api._reader_users == {"reactive"}
+    # RT modes send blind (no read-back) and must NOT churn the stream
+    n = len(made)
+    assert api.set_trigger_codes(["Z"], 1.5, 0.3, 0.3, mode=13)["ok"]
+    assert seen[-1] == ("act", 13, api.reader) and len(made) == n
+    # a driver failure still restores the reader (never leaves it parked)
+    class _Boom(_D):
+        def write_keymap(self, *a, **k):
+            raise RuntimeError("keymap read failed")
+    api.driver = _Boom()
+    api.driver.make_live_reader = lambda km, indices=None: _PauseReader()
+    r = api.set_remap(["X"], 0x29)
+    assert r["ok"] is False and api.reader is not None and api.reader.started
+
+
+def test_reader_pause_is_a_no_op_without_a_running_reader():
+    class _D:
+        def write_keymap(self, *a, **k): pass
+    api = _api(_D())
+    api.reader = None
+    api._reader_users = set()
+    api.driver.make_live_reader = lambda *a, **k: pytest.fail("must not create a reader")
+    assert api.set_remap(["Z"], 0x05)["ok"] and api.reader is None
