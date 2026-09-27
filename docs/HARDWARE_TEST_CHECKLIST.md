@@ -7,6 +7,12 @@ add the board, OS, app version and date next to the tick. Referenced by
 
 Legend: `[ ]` untested · `[x] Win60 HE / Windows / v0.5.0 / 2026-09-27` when done.
 
+## v0.5.1 (launch fix)
+- [ ] Install 0.5.1 over 0.5.0 via Setup; tick "Launch" on Finish → app opens NOT elevated (Task Manager → Details → Elevated column = No).
+- [ ] With Aether running (window or tray), double-click the desktop shortcut → existing window comes up; no second process.
+- [ ] Start Aether as administrator on purpose, then from the shortcut → a message box says it is running but unreachable (instead of nothing happening).
+- [ ] `%LOCALAPPDATA%\AetherHE\aether.log` exists and starts with "Aether 0.5.1 starting".
+
 ## v0.5.0 (commits `09dc94a..eec898c`)
 
 ### Actuation

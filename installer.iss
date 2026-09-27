@@ -5,7 +5,7 @@
 ; first run, and a proper uninstaller).
 
 #define MyAppName        "AETHER HE"
-#define MyAppVersion     "0.5.0"
+#define MyAppVersion     "0.5.1"
 #define MyAppPublisher   "MrWhosNexus"
 #define MyAppURL         "https://github.com/MrWhosNexus/Aether-HE"
 #define MyAppExeName     "AetherHE.exe"
@@ -62,8 +62,11 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 [Run]
 ; ViGEmBus kernel driver (silent /quiet install). Skipped if user unchecked.
 Filename: "{app}\_internal\vendor\ViGEmBus_Setup.exe"; Parameters: "/quiet /norestart"; StatusMsg: "Installing ViGEmBus driver..."; Flags: waituntilterminated; Tasks: installvigem
-; Offer to launch on Finish.
-Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+; Offer to launch on Finish. runasoriginaluser: Setup runs elevated
+; (PrivilegesRequired=admin) and without this flag the launched app was
+; elevated too — every later normal launch (shortcut, autostart) then found an
+; instance it could not reach across the elevation boundary and exited.
+Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent runasoriginaluser
 
 [UninstallRun]
 ; Best-effort cleanup of the autostart key (the [Registry] uninsdeletevalue

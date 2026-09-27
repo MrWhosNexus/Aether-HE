@@ -88,16 +88,44 @@ class SingleInstance:
         if not sys.platform.startswith("win"):
             return False
         try:
+            import ctypes
             k = _k32()
             EVENT_MODIFY_STATE = 0x0002
             h = k.OpenEventW(EVENT_MODIFY_STATE, False, EVENT_NAME)
             if not h:
+                # ERROR_ACCESS_DENIED (5): the other instance runs at a
+                # different integrity level (typically elevated — e.g. launched
+                # by the installer). ERROR_FILE_NOT_FOUND (2): it exists but
+                # has not armed its listener yet (still booting).
+                log.warning("poke: OpenEventW failed, error %s", ctypes.get_last_error())
                 return False
             ok = bool(k.SetEvent(h))
             k.CloseHandle(h)
             return ok
         except Exception as e:
             log.warning("poke failed: %s", e)
+            return False
+
+    @staticmethod
+    def notify_unreachable(app_name="Aether HE"):
+        """Second launch found a running instance it cannot reach: say so
+        instead of exiting silently (the symptom was 'the app does not
+        start'). Windows-only message box; returns True if shown."""
+        if not sys.platform.startswith("win"):
+            return False
+        try:
+            import ctypes
+            MB_ICONWARNING, MB_OK = 0x30, 0x0
+            ctypes.WinDLL("user32", use_last_error=True).MessageBoxW(
+                None,
+                f"{app_name} is already running but could not be reached.\n\n"
+                "It is probably running as administrator (for example, launched "
+                "by the installer). Exit it from the tray icon, or end "
+                "AetherHE.exe in Task Manager, then start it again.",
+                app_name, MB_ICONWARNING | MB_OK)
+            return True
+        except Exception as e:
+            log.warning("notify failed: %s", e)
             return False
 
     def listen(self, on_show):

@@ -139,3 +139,26 @@ def test_listener_exits_on_wait_failed_instead_of_spinning(monkeypatch):
     assert not owner._thread.is_alive()
     assert len(calls) == 1                  # one failed wait, then out
     owner.release()
+
+
+def test_poke_logs_access_denied_and_reports_false(monkeypatch, caplog):
+    """Elevated instance (installer-launched) → OpenEventW fails with
+    ERROR_ACCESS_DENIED; the launcher must get False, not an exception."""
+    k = _fake_windows(monkeypatch)
+    k.event = None
+    import ctypes
+    monkeypatch.setattr(ctypes, "get_last_error", lambda: 5, raising=False)
+    with caplog.at_level("WARNING"):
+        assert si.SingleInstance().poke_existing() is False
+    assert "error 5" in caplog.text
+
+
+def test_notify_unreachable_is_a_no_op_off_windows(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "linux")
+    assert si.SingleInstance.notify_unreachable() is False
+
+
+def test_main_notifies_when_running_instance_is_unreachable():
+    src = open(os.path.join(ROOT, "app_web.py"), encoding="utf-8").read()
+    assert "inst.notify_unreachable(" in src
+    assert "_install_file_logging()" in src
