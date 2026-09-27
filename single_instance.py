@@ -8,7 +8,7 @@ exactly that and died with a blank window. Now the second launch pokes the
 running instance, which shows its window, and exits.
 
 Mechanics: a named mutex says "someone is running"; a named auto-reset event
-is the poke. Both are `Local\` (per-session) kernel objects, so nothing
+is the poke. Both live in the per-session ``Local`` namespace, so nothing
 leaks across users. Non-Windows: everything is a no-op and `acquire()`
 always says we are the first instance.
 """
