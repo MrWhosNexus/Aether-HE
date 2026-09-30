@@ -24,13 +24,29 @@ def test_non_windows_is_a_no_op(monkeypatch):
 
 
 class FakeK32:
-    """Just enough kernel32: one process-wide mutex/event table."""
+    """Just enough kernel32: one process-wide mutex and named-event table."""
+    SHOW, ACK = 22, 33
+
     def __init__(self):
         self.mutex_exists = False
-        self.event = None
+        self.events = {}                # handle -> threading.Event
         self.signals = 0
         self.closed = []
         self.last_error = 0
+
+    @property
+    def event(self):                    # the show event (older tests)
+        return self.events.get(self.SHOW)
+
+    @event.setter
+    def event(self, v):
+        if v is None:
+            self.events.pop(self.SHOW, None)
+        else:
+            self.events[self.SHOW] = v
+
+    def _handle(self, name):
+        return self.ACK if name == si.ACK_NAME else self.SHOW
 
     def CreateMutexW(self, sa, initial, name):
         self.last_error = si.ERROR_ALREADY_EXISTS if self.mutex_exists else 0
@@ -38,17 +54,21 @@ class FakeK32:
         return 11
 
     def CreateEventW(self, sa, manual, initial, name):
-        self.event = threading.Event(); return 22
+        h = self._handle(name)
+        self.events[h] = threading.Event(); return h
 
     def OpenEventW(self, access, inherit, name):
-        return 22 if self.event is not None else 0
+        h = self._handle(name)
+        return h if h in self.events else 0
 
     def SetEvent(self, h):
-        self.signals += 1; self.event.set(); return 1
+        if h == self.SHOW:
+            self.signals += 1
+        self.events[h].set(); return 1
 
     def WaitForSingleObject(self, h, ms):
-        if self.event.wait(ms / 1000.0):
-            self.event.clear()          # auto-reset semantics
+        if self.events[h].wait(ms / 1000.0):
+            self.events[h].clear()      # auto-reset semantics
             return si.WAIT_OBJECT_0
         return 0x102                    # WAIT_TIMEOUT
 
@@ -79,10 +99,7 @@ def test_poke_wakes_listener_and_release_stops_it(monkeypatch):
     shown = []
     owner.listen(lambda: shown.append(time.monotonic()))
     other = si.SingleInstance(); assert other.acquire() is False
-    assert other.poke_existing() is True
-    t0 = time.monotonic()
-    while not shown and time.monotonic() - t0 < 2:
-        time.sleep(0.01)
+    assert other.poke_existing() == si.SHOWN   # waits for the ack
     assert len(shown) == 1 and k.signals == 1
     owner.release()
     owner._thread.join(1.0)
@@ -91,7 +108,25 @@ def test_poke_wakes_listener_and_release_stops_it(monkeypatch):
 
 def test_poke_without_running_instance_is_false(monkeypatch):
     _fake_windows(monkeypatch)
-    assert si.SingleInstance().poke_existing() is False
+    assert si.SingleInstance().poke_existing() == si.UNREACHABLE
+
+
+def test_poke_reports_hung_instance_as_unresponsive(monkeypatch):
+    """The failure behind 'it isn't booting at all': a stuck background
+    instance holds the mutex, SetEvent still succeeds, but its window never
+    comes up. The new launch must learn that instead of exiting quietly."""
+    _fake_windows(monkeypatch)
+    owner = si.SingleInstance(); assert owner.acquire()
+    owner.listen(lambda: False)         # show failed / GUI thread stuck
+    other = si.SingleInstance(); assert other.acquire() is False
+    assert other.poke_existing(ack_timeout_ms=200) == si.UNRESPONSIVE
+    owner.release()
+
+
+def test_poke_trusts_older_instance_without_ack_event(monkeypatch):
+    k = _fake_windows(monkeypatch)
+    k.event = threading.Event()         # show event only, no ack (old build)
+    assert si.SingleInstance().poke_existing(ack_timeout_ms=50) == si.SHOWN
 
 
 def test_main_uses_single_instance_and_own_storage_path():
@@ -149,7 +184,7 @@ def test_poke_logs_access_denied_and_reports_false(monkeypatch, caplog):
     import ctypes
     monkeypatch.setattr(ctypes, "get_last_error", lambda: 5, raising=False)
     with caplog.at_level("WARNING"):
-        assert si.SingleInstance().poke_existing() is False
+        assert si.SingleInstance().poke_existing() == si.UNREACHABLE
     assert "error 5" in caplog.text
 
 
@@ -161,4 +196,11 @@ def test_notify_unreachable_is_a_no_op_off_windows(monkeypatch):
 def test_main_notifies_when_running_instance_is_unreachable():
     src = open(os.path.join(ROOT, "app_web.py"), encoding="utf-8").read()
     assert "inst.notify_unreachable(" in src
-    assert "_install_file_logging()" in src
+    assert "inst.notify_unresponsive(" in src
+    # logging is armed before the third-party imports that can fail
+    assert src.index("boot.install_file_logging()") < src.index("import webview")
+
+
+def test_notify_unresponsive_is_a_no_op_off_windows(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "linux")
+    assert si.SingleInstance.notify_unresponsive() is False

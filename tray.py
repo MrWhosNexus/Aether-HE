@@ -320,20 +320,22 @@ class TrayController:
 
     # ---- windows ---------------------------------------------------------
     def show_main(self):
+        """Bring the main window up; True if it was shown."""
         w = self.main_window
         if w is None:
-            return
+            return False
         try:
             w.show()
         except Exception as e:
             log.warning("show main failed: %s", e)
-            return
+            return False
         self.main_visible = True
         if self.icon is not None:
             try:
                 self.icon.update_menu()
             except Exception:
                 pass
+        return True
 
     def show_panel(self):
         wv = self.webview

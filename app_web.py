@@ -15,6 +15,14 @@ import sys
 import threading
 import time
 
+# Stdlib-only: installed before the third-party imports below, so a missing
+# DLL / broken bundle in the windowed exe leaves a log and an error box
+# instead of a process that just vanishes.
+import boot
+from boot import user_data_dir
+if __name__ == "__main__":
+    boot.install_file_logging()
+
 import hid
 import webview
 
@@ -33,46 +41,6 @@ from tools import board_submission
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("aether.web")
 
-
-def user_data_dir():
-    """%LOCALAPPDATA%\\AetherHE (Windows) / ~/Library/Application Support/AetherHE
-    (macOS) / $XDG_CONFIG_HOME/AetherHE (Linux) — settings.json, the WebView2
-    profile and the log file all live here."""
-    if sys.platform.startswith("win"):
-        root = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
-    elif sys.platform == "darwin":
-        root = os.path.expanduser("~/Library/Application Support")
-    else:
-        root = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
-    d = os.path.join(root, "AetherHE")
-    os.makedirs(d, exist_ok=True)
-    return d
-
-
-def _install_file_logging():
-    """The installed app is a windowed exe (no console): a startup crash was
-    invisible. Mirror the log to aether.log (small, rotating) and route
-    uncaught exceptions + hard crashes (faulthandler) there too. Best-effort:
-    a read-only profile must never stop the app from launching."""
-    try:
-        import faulthandler
-        from logging.handlers import RotatingFileHandler
-        path = os.path.join(user_data_dir(), "aether.log")
-        fh = RotatingFileHandler(path, maxBytes=512 * 1024, backupCount=2, encoding="utf-8")
-        fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
-        logging.getLogger().addHandler(fh)
-        # faulthandler needs a real fd; keep the file open for the process life.
-        crash = open(os.path.join(user_data_dir(), "aether-crash.log"), "a", encoding="utf-8")
-        faulthandler.enable(file=crash, all_threads=True)
-
-        def _hook(exc_type, exc, tb):
-            log.critical("uncaught exception", exc_info=(exc_type, exc, tb))
-        sys.excepthook = _hook
-        log.info("Aether %s starting (frozen=%s, argv=%s, log=%s)",
-                 getattr(__import__("version"), "__version__", "?"),
-                 bool(getattr(sys, "frozen", False)), sys.argv[1:], path)
-    except Exception as e:  # pragma: no cover - defensive
-        log.warning("file logging unavailable: %s", e)
 
 # When frozen by PyInstaller, ui/ ships next to the exe (or inside _MEIPASS for
 # --onefile). sys._MEIPASS is the extraction dir at runtime in onefile mode.
@@ -2101,15 +2069,19 @@ def _on_start(window):
 
 def main():
     if not os.path.exists(INDEX):
+        boot.show_error(f"Aether HE could not start: UI not found\n\n{INDEX}")
         raise SystemExit(f"UI not found: {INDEX}")
     # One instance: a second launch while Aether sits in the tray used to die
     # in WebView2 (0x8007139F: profile folder held by the other process).
     # Now it asks the running instance to show its window, then exits.
-    _install_file_logging()
     inst = single_instance.SingleInstance()
     if not inst.acquire():
-        if inst.poke_existing():
+        res = inst.poke_existing()
+        if res == single_instance.SHOWN:
             log.info("Aether is already running — brought its window up")
+        elif res == single_instance.UNRESPONSIVE:
+            log.warning("Aether is already running but not responding")
+            inst.notify_unresponsive(tray.APP_NAME)
         else:
             log.warning("Aether is already running but could not be reached")
             inst.notify_unreachable(tray.APP_NAME)
@@ -2177,7 +2149,10 @@ def main():
     # A later launch pokes us: bring the window up (and drop the panel).
     # Armed BEFORE webview.start so a double-click during the 1–2 s boot
     # isn't lost; a poke that lands before the window exists just logs.
-    inst.listen(lambda: (tray_ctl.hide_panel(), tray_ctl.show_main()))
+    def _on_poke():
+        tray_ctl.hide_panel()
+        return tray_ctl.show_main()
+    inst.listen(_on_poke)
 
     # Aether's OWN WebView2 profile. pywebview's default is the shared
     # %LOCALAPPDATA%\pywebview folder — every pywebview app and every older
