@@ -211,11 +211,43 @@ def test_autostart_command_does_not_hardcode_minimized(monkeypatch):
     api = app_web.Api.__new__(app_web.Api)
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "executable", r"C:\Apps\AetherHE\AetherHE.exe")
-    assert api._autostart_target() == r'"C:\Apps\AetherHE\AetherHE.exe"'
+    assert api._autostart_target() == r'"C:\Apps\AetherHE\AetherHE.exe" --autostart'
     monkeypatch.setattr(sys, "frozen", False, raising=False)
     monkeypatch.setattr(sys, "executable", r"C:\py\python.exe")
     cmd = api._autostart_target()
-    assert cmd.startswith(r'"C:\py\pythonw.exe" "') and cmd.endswith('app_web.py"')
+    assert cmd.startswith(r'"C:\py\pythonw.exe" "') and cmd.endswith('app_web.py" --autostart')
+    assert "--minimized" not in cmd
+
+
+def test_start_minimized_pref_only_hides_the_sign_in_launch(tmp_path):
+    """The reported 'window never opens': startMinimized=true hid EVERY
+    launch, including a double-click on the shortcut. Now only the sign-in
+    autostart launch (--autostart) honours it; --minimized always hides."""
+    p = str(tmp_path / "settings.json")
+    tray.set_start_minimized_pref(p, True)
+    assert tray.start_hidden([], p) is False                 # shortcut launch
+    assert tray.start_hidden(["--autostart"], p) is True     # sign-in launch
+    assert tray.start_hidden(["--minimized"], p) is True     # explicit CLI
+    tray.set_start_minimized_pref(p, False)
+    assert tray.start_hidden(["--autostart"], p) is False
+
+
+def test_installer_autostart_entry_marks_sign_in_launch():
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "installer.iss"), encoding="utf-8").read()
+    run = [l for l in src.splitlines() if "CurrentVersion\\Run" in l and "ValueData" in l]
+    assert run and "--autostart" in run[0]
+
+
+def test_api_exposes_no_tray_or_window_objects_to_pywebview():
+    """pywebview walks every PUBLIC attribute of js_api recursively; a
+    controller/window there drags in the WinForms object graph and floods
+    the log with 'maximum recursion depth exceeded' on each start."""
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "app_web.py"), encoding="utf-8").read()
+    import re
+    assigned = re.findall(r"^\s*api\.([A-Za-z]\w*)\s*=", src, re.M)
+    assert assigned == [], f"public Api attributes set in main(): {assigned}"
 
 
 # ---- start-minimized preference -------------------------------------------

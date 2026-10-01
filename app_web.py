@@ -1281,13 +1281,15 @@ class Api:
         Frozen exe → run the exe directly; source checkout → fall back to
         pythonw.exe + app_web.py so dev installs still work.
         """
-        # Whether the login launch shows a window is the Settings-tab "Start
-        # minimized" toggle (settings.json), read by main() — not baked into
-        # this command, so flipping the toggle needs no registry rewrite.
+        # --autostart marks the sign-in launch; whether it shows a window is
+        # the Settings-tab "Start minimized" toggle (settings.json), read by
+        # main() — not baked into this command, so flipping the toggle needs
+        # no registry rewrite.
+        flag = tray.AUTOSTART_FLAG
         if getattr(sys, "frozen", False):
-            return f'"{sys.executable}"'
+            return f'"{sys.executable}" {flag}'
         py = sys.executable.replace("python.exe", "pythonw.exe")
-        return f'"{py}" "{os.path.join(HERE, "app_web.py")}"'
+        return f'"{py}" "{os.path.join(HERE, "app_web.py")}" {flag}'
 
     def get_autostart(self):
         if not sys.platform.startswith("win"):
@@ -2103,9 +2105,9 @@ def main():
     # but Chromium throttles hidden-page timers to 1 Hz, which would turn the
     # 70 ms lighting debounce into a one-second lag on the tray's speed
     # slider. This documented WebView2 switch keeps timers at full rate.
-    # Hidden start = the Settings toggle OR the --minimized CLI override.
-    minimized = (tray.wants_minimized(sys.argv[1:])
-                 or tray.start_minimized_pref(api._settings_path()))
+    # Hidden start = --minimized, or the Settings toggle on a sign-in
+    # (--autostart) launch. A launch from a shortcut always shows the window.
+    minimized = tray.start_hidden(sys.argv[1:], api._settings_path())
     if sys.platform.startswith("win"):
         extra = "--disable-background-timer-throttling"
         cur = os.environ.get("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "")
@@ -2120,7 +2122,12 @@ def main():
     tray_ctl.main_window = window
     tray_ctl.main_visible = not minimized
     window.events.closing += tray_ctl.on_main_closing
-    api.tray = tray_ctl
+    # Never hang the controller (or any window) on a PUBLIC Api attribute:
+    # pywebview publishes every public attribute of js_api to the page by
+    # walking it recursively on each load. `api.tray` led it through
+    # main_window.native into the whole WinForms/.NET object graph —
+    # thousands of failing lookups ending in "maximum recursion depth
+    # exceeded" on every start (seen in a 0.5.2 user log).
     # Never pop a DevTools window at launch. pywebview ships
     # OPEN_DEVTOOLS_IN_DEBUG=True, and its Edge/Chromium backend does
     # `if _state['debug'] and OPEN_DEVTOOLS_IN_DEBUG: OpenDevToolsWindow()`,

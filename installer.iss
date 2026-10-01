@@ -5,7 +5,7 @@
 ; first run, and a proper uninstaller).
 
 #define MyAppName        "AETHER HE"
-#define MyAppVersion     "0.5.2"
+#define MyAppVersion     "0.5.3"
 #define MyAppPublisher   "MrWhosNexus"
 #define MyAppURL         "https://github.com/MrWhosNexus/Aether-HE"
 #define MyAppExeName     "AetherHE.exe"
@@ -57,7 +57,7 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilen
 
 [Registry]
 ; Auto-start at login if the user asked for it.
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "AetherHE"; ValueData: """{app}\{#MyAppExeName}"""; Flags: uninsdeletevalue; Tasks: autostart
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "AetherHE"; ValueData: """{app}\{#MyAppExeName}"" --autostart"; Flags: uninsdeletevalue; Tasks: autostart
 
 [Run]
 ; ViGEmBus kernel driver (silent /quiet install). Skipped if user unchecked.

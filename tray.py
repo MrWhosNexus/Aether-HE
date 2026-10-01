@@ -40,6 +40,11 @@ ICON_PNG = os.path.join(HERE, "ui", "assets", "logo.png")
 APP_NAME = "Aether HE"
 PANEL_W, PANEL_H = 340, 500
 MINIMIZED_FLAG = "--minimized"
+# Passed by the sign-in autostart entries (installer + Settings toggle). Only
+# those launches honour the "Start minimized" preference: a user who opens
+# Aether from a shortcut wants the window, and a hidden start there looked
+# exactly like "the app does not open".
+AUTOSTART_FLAG = "--autostart"
 
 
 PREF_KEY = "startMinimized"
@@ -49,6 +54,18 @@ def wants_minimized(argv):
     """True when the command line asks to start straight into the tray
     (`--minimized`): a CLI override on top of the persisted preference."""
     return MINIMIZED_FLAG in (argv or [])
+
+
+def launched_at_login(argv):
+    """True for the Windows sign-in autostart launch (`--autostart`)."""
+    return AUTOSTART_FLAG in (argv or [])
+
+
+def start_hidden(argv, settings_path):
+    """Should this launch begin hidden in the tray? `--minimized` always;
+    the Settings toggle only for the sign-in autostart launch."""
+    return wants_minimized(argv) or (
+        launched_at_login(argv) and start_minimized_pref(settings_path))
 
 
 def start_minimized_pref(settings_path):

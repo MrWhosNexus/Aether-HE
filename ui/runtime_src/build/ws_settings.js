@@ -187,8 +187,9 @@
      Two independent toggles, both read/written through the bridge:
        Start on launch  → HKCU\...\Run entry (get_autostart / set_autostart)
        Start minimized  → settings.json `startMinimized` (get_tray_prefs /
-                          set_start_minimized): every launch begins hidden in
-                          the tray with the lighting running.
+                          set_start_minimized): the sign-in (autostart) launch
+                          begins hidden in the tray with the lighting running;
+                          opening Aether yourself always shows the window.
      The widget hides itself on platforms where neither is supported. */
   const Toggle = ({
     on,
@@ -309,7 +310,7 @@
       on: tray.startMinimized,
       onClick: toggleMinimized,
       label: "Start minimized",
-      desc: "Launch hidden in the system tray with your lighting running. Open the window from the tray icon."
+      desc: "When Aether starts at sign-in, keep it in the system tray with your lighting running. Opening Aether yourself always shows the window."
     })), err && /*#__PURE__*/React.createElement("div", {
       className: "mt-2 font-mono text-[10px] text-rose-300/90"
     }, err), /*#__PURE__*/React.createElement("div", {
