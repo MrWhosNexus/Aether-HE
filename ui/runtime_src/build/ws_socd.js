@@ -1,5 +1,5 @@
 (() => {
-  /* SOCD Workspace: 3-widget layout for key pair editor, hotkey control, and active pairs list */
+  /* SOCD Workspace: 3-widget layout for key pair editor, apply, and active pairs list */
   const {
     useState,
     useEffect
@@ -196,56 +196,50 @@
     }), " Delete")));
   };
 
-  /* ===== Hotkey Widget ===== */
-  const HotkeyWidget = ctx => {
+  /* ===== Apply Widget =====
+     (Was "Hotkey": its switch-hotkey toggle and status were saved but never
+     sent to the keyboard, so they are gone. The widget id stays "hotkey" so
+     saved window geometry still applies.) */
+  const ApplyWidget = ctx => {
     const {
-      hotkey,
-      hotkeyEnabled,
-      setHotkeyEnabled,
       handleSocdApply,
-      socdProfiles
+      socdProfiles,
+      connected
     } = ctx;
+    const [busy, setBusy] = useState(false);
+    const [done, setDone] = useState(null);
+    const complete = (socdProfiles || []).filter(p => p.k1 && p.k2).length;
+    const apply = async () => {
+      if (!handleSocdApply || busy) return;
+      setBusy(true);
+      try {
+        const r = await handleSocdApply(socdProfiles);
+        // Confirm only what the keyboard took; failures surface as a notice.
+        if (r && r.ok) {
+          setDone(complete ? `Wrote ${complete} pair${complete === 1 ? "" : "s"}` : "Cleared SOCD on the keyboard");
+          setTimeout(() => setDone(null), 2400);
+        }
+      } finally {
+        setBusy(false);
+      }
+    };
     return /*#__PURE__*/React.createElement("div", {
-      className: "flex flex-col gap-4 h-full"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-      className: "font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)] mb-2"
-    }, "Switch hotkey"), /*#__PURE__*/React.createElement("button", {
-      onClick: () => setHotkeyEnabled(!hotkeyEnabled),
-      className: `relative w-10 h-5 rounded-full border transition-colors w-full flex items-center justify-between px-3
-                      ${hotkeyEnabled ? "bg-[var(--accent)]/30 border-[var(--accent)]/60" : "bg-[rgba(5,11,14,0.5)] border-[var(--line)]"}`
-    }, /*#__PURE__*/React.createElement("span", {
-      className: `absolute top-0.5 w-3.5 h-3.5 rounded-full transition-all
-                            ${hotkeyEnabled ? "left-[20px] bg-[var(--accent)] shadow-[0_0_10px_var(--accent-glow)]" : "left-0.5 bg-[var(--text-faint)]"}`
-    }))), /*#__PURE__*/React.createElement("div", {
-      className: "rounded-md border border-[var(--line)] bg-[rgba(5,11,14,0.5)] p-3"
+      className: "flex flex-col gap-3 h-full"
     }, /*#__PURE__*/React.createElement("div", {
-      className: "font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-faint)] mb-1"
-    }, "Active hotkey"), /*#__PURE__*/React.createElement("div", {
-      className: "font-mono text-[13px] text-[var(--accent)]"
-    }, hotkey || "—")), /*#__PURE__*/React.createElement("div", {
-      className: "rounded-md border border-[var(--line)] bg-[rgba(5,11,14,0.5)] p-3 flex-1 flex flex-col"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-faint)] mb-2"
-    }, "Status"), /*#__PURE__*/React.createElement("div", {
-      className: "flex-1 flex flex-col justify-center"
-    }, hotkeyEnabled ? /*#__PURE__*/React.createElement("div", {
-      className: "text-[11.5px] text-[var(--text)]"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "font-display uppercase tracking-[0.16em] text-[var(--accent)] mb-1"
-    }, "Enabled"), /*#__PURE__*/React.createElement("div", {
-      className: "text-[10.5px] text-[var(--text-dim)]"
-    }, "Press ", /*#__PURE__*/React.createElement("span", {
-      className: "font-mono text-[var(--accent)]"
-    }, hotkey), " to cycle SOCD profiles")) : /*#__PURE__*/React.createElement("div", {
-      className: "text-[11.5px] text-[var(--text-dim)]"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "font-display uppercase tracking-[0.16em] mb-1"
-    }, "Disabled"), /*#__PURE__*/React.createElement("div", {
-      className: "text-[10.5px]"
-    }, "Toggle to enable hotkey switching")))), /*#__PURE__*/React.createElement("button", {
-      onClick: () => handleSocdApply && handleSocdApply(socdProfiles, hotkeyEnabled),
-      className: "px-4 h-9 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-fg)] font-display text-[12px] uppercase tracking-[0.16em] shadow-[0_0_18px_var(--accent-glow)] hover:brightness-110"
-    }, "Apply"));
+      className: "text-[11.5px] text-[var(--text-dim)] leading-relaxed"
+    }, "Apply writes every complete pair to the keyboard, replacing what it holds.", complete === 0 && /*#__PURE__*/React.createElement(React.Fragment, null, " With no complete pair, Apply ", /*#__PURE__*/React.createElement("span", {
+      className: "text-[var(--accent)]"
+    }, "clears"), " SOCD on the keyboard.")), /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-3 mt-auto"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: apply,
+      disabled: busy || !connected,
+      className: `px-4 h-9 rounded-md border font-display text-[12px] uppercase tracking-[0.16em] ${busy || !connected ? "border-[var(--line)] bg-white/[0.02] text-[var(--text-faint)] cursor-not-allowed" : "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_18px_var(--accent-glow)] hover:brightness-110"}`
+    }, busy ? "Writing…" : complete ? `Apply ${complete} pair${complete === 1 ? "" : "s"}` : "Clear SOCD"), done && /*#__PURE__*/React.createElement("span", {
+      className: "font-mono text-[11px] uppercase tracking-[0.16em] text-[var(--accent)]"
+    }, "\u2713 ", done), !connected && /*#__PURE__*/React.createElement("span", {
+      className: "font-mono text-[10.5px] uppercase tracking-[0.18em] text-[var(--text-faint)]"
+    }, "connect to apply")));
   };
 
   /* ===== Active Pairs Widget ===== */
@@ -342,7 +336,7 @@
     render: boardAware(PairEditorWidget, "AdvancedKeyEditor")
   }, {
     id: "hotkey",
-    title: "Hotkey",
+    title: "Apply",
     default: {
       x: 480,
       y: 20,
@@ -353,7 +347,7 @@
       w: 280,
       h: 120
     },
-    render: boardAware(HotkeyWidget, "AdvancedKeyStatus")
+    render: boardAware(ApplyWidget, "AdvancedKeyStatus")
   }, {
     id: "active-pairs",
     title: "Active Pairs",

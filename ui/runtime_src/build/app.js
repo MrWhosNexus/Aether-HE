@@ -1000,10 +1000,12 @@
     const [connected, setConnected] = useState(false);
     const [connecting, setConnecting] = useState(false);
     const [autoConnect, setAutoConnect] = useState(() => {
+      // ON unless the user turned it off ("0"). Without it, a board that
+      // re-enumerates (replug, Poll Rate) is never reconnected.
       try {
-        return localStorage.getItem("aether-autoconnect") === "1";
+        return localStorage.getItem("aether-autoconnect") !== "0";
       } catch {
-        return false;
+        return true;
       }
     });
     const [section, setSection] = useState("actuation");
@@ -1101,9 +1103,10 @@
     const [striOrient, setStriOrient] = useState("v"); // striation: v|h|both
     const [bgBright, setBgBright] = useState(100); // background brightness %
 
-    const [socdMode, setSocdMode] = useState("last");
-    const [hotkey] = useState("Fn + R-Shift");
-    const [hotkeyEnabled, setHotkeyEnabled] = useState(true);
+    // (The SOCD "switch hotkey" toggle and global SOCD mode were saved but
+    // never sent anywhere, so they are gone. Old settings.json profiles that
+    // still carry hotkeyEnabled / socdMode load fine: applyState ignores
+    // unknown keys. Each pair's own "Model" is what the keyboard uses.)
     // SOCD profiles live here (not inside SOCDSection) so they persist + save.
     const [socdProfiles, setSocdProfiles] = useState([{
       id: "SOCD1",
@@ -1147,8 +1150,6 @@
       switchId,
       socdProfiles,
       socdActive,
-      hotkeyEnabled,
-      socdMode,
       layer,
       gamepadMap
     });
@@ -1180,8 +1181,6 @@
       set(s.switchId, setSwitchId);
       set(s.socdProfiles, setSocdProfiles);
       set(s.socdActive, setSocdActive);
-      set(s.hotkeyEnabled, setHotkeyEnabled);
-      set(s.socdMode, setSocdMode);
       set(s.layer, setLayer);
       set(s.gamepadMap, setGamepadMap);
       setTimeout(() => {
@@ -1266,7 +1265,7 @@
         }, 120);
         return next;
       });
-    }, [hydrated, activeId, pattern, colors, bgColor, brightness, speed, power, fullColor, direction, striOrient, bgBright, perKeyColors, zones, actuation, rtPress, rtRelease, rtEnabled, polling, deadTop, deadBottom, switchId, socdProfiles, socdActive, hotkeyEnabled, socdMode, layer, gamepadMap, autoConnect, section]);
+    }, [hydrated, activeId, pattern, colors, bgColor, brightness, speed, power, fullColor, direction, striOrient, bgBright, perKeyColors, zones, actuation, rtPress, rtRelease, rtEnabled, polling, deadTop, deadBottom, switchId, socdProfiles, socdActive, layer, gamepadMap, autoConnect, section]);
 
     // Force a synchronous flush before the window closes / page unloads, so the
     // 120ms debounce never costs us the last edit.
@@ -1706,10 +1705,8 @@
         key1: LABEL_TO_CODE[p.k1] || p.k1,
         key2: LABEL_TO_CODE[p.k2] || p.k2
       }));
-      if (!pairs.length) return Promise.resolve({
-        ok: true,
-        skipped: true
-      });
+      // No complete pair = clear: the keyboard keeps its pairs in flash, so
+      // skipping the call (as before) left the old pairs active on the board.
       return apiCall("set_socd", pairs).then(r => {
         if (!(r && r.ok) && !(r && r.unsupported)) pushNotice(`SOCD not written: ${r && r.error || "no reply"}`);
         return r;
@@ -2201,8 +2198,8 @@
     })) : section === "socd" ? /*#__PURE__*/React.createElement("div", {
       className: "flex items-center gap-2"
     }, /*#__PURE__*/React.createElement(Stat, {
-      label: "Hotkey",
-      value: hotkey
+      label: "Pairs",
+      value: `${socdProfiles.filter(p => p.k1 && p.k2).length}`
     })) : section === "keymap" ? /*#__PURE__*/React.createElement("div", {
       className: "flex items-center gap-2 p-1 rounded-xl border border-[var(--line)] bg-white/[0.02]"
     }, ["default", "fn"].map(l => /*#__PURE__*/React.createElement("button", {
@@ -2360,11 +2357,6 @@
       ledMap,
       ledMapLive,
       // socd
-      socdMode,
-      setSocdMode,
-      hotkey,
-      hotkeyEnabled,
-      setHotkeyEnabled,
       handleSocdApply,
       socdProfiles,
       setSocdProfiles,
