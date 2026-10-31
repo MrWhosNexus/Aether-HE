@@ -7,7 +7,7 @@
    Control JSX + telemetry (SwitchRender depth math, live depth) reused verbatim
    from the old ActuationSection via window.AetherSections shared primitives.
    ============================================================ */
-const { useState } = React;
+const { useState, useMemo } = React;
 const S = window.AetherSections || {};
 const Slider = S.Slider, Chip = S.Chip, SwitchRender = S.SwitchRender;
 const I = window.AetherIcons || {};
@@ -422,16 +422,150 @@ function CalibrationWidget(ctx) {
   );
 }
 
+/* ===== Keyboard widget — the board itself, in actuation mode =====
+   Same KeyboardPanel the Keymap tab's Key Grid uses (selection is the one
+   shared ctx.selectedKeys, so a selection made here is the selection every
+   other tab sees), drawn with what the FIRMWARE stores per key: actuation
+   point, rapid-trigger press/release (RT keys only), and the live travel
+   depth while Travel Test streams. Values come from verify_actuation's
+   read-back (on connect and after every Apply), never from the sliders. */
+function ActuationKeyboardWidget(ctx) {
+  const {
+    selectedKeys, setSelectedKeys, perKeyActuation, perKeyTrigger, liveDepths,
+    actuation, calibrating, calibratedKeys, connected, refreshPerKeyActuation, travelTest,
+  } = ctx;
+  const KB = window.AetherKeyboard || {};
+  const KeyboardPanel = KB.KeyboardPanel;
+  const perKeyOverride = useMemo(() => {
+    const out = {};
+    const act = perKeyActuation || {}, trig = perKeyTrigger || {};
+    const codes = new Set([...Object.keys(act), ...Object.keys(trig)]);
+    codes.forEach(c => {
+      const t = trig[c];
+      const rt = !!(t && t.mode && t.mode !== 0);
+      out[c] = {
+        actuation: act[c] != null ? act[c] : (t ? t.travel_mm : undefined),
+        // A fixed-mode key keeps a stored RT pair it does not use: show none.
+        rtPress: rt ? t.rt_press_mm : 0,
+        rtRelease: rt ? t.rt_release_mm : 0,
+      };
+    });
+    return out;
+  }, [perKeyActuation, perKeyTrigger]);
+  const known = Object.keys(perKeyOverride).length;
+  const [reading, setReading] = useState(false);
+  const reread = async () => {
+    if (!refreshPerKeyActuation || reading) return;
+    setReading(true);
+    try { await refreshPerKeyActuation(); } finally { setReading(false); }
+  };
+  if (typeof KeyboardPanel !== "function") {
+    return <div className="font-mono text-[11px] text-[var(--text-faint)] p-2">keyboard layout unavailable</div>;
+  }
+  const n = selectedKeys ? selectedKeys.size : 0;
+  return (
+    <div className="flex flex-col gap-2" data-testid="actuation-keyboard">
+      <div className="flex items-center justify-between gap-3 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-faint)]">
+        <span>
+          {n ? <span className="text-[var(--accent)]">{n} selected</span> : "click or drag keys to select"}
+          {" · "}actuation mm{" · "}<span className="text-rose-300/90">RT press</span>/<span className="text-emerald-300/90">release</span>
+          {" · "}<span className="text-[var(--accent)]/90">live travel</span>{travelTest ? "" : " (Travel Test off)"}
+        </span>
+        <span className="flex items-center gap-2">
+          {!connected ? "offline: values are not from the board"
+            : known ? `${known} keys read from the board` : "not read yet"}
+          <button onClick={reread} disabled={!connected || reading}
+            className="px-2 h-6 rounded border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:text-[var(--text)] disabled:opacity-40">
+            {reading ? "Reading…" : "Re-read"}
+          </button>
+        </span>
+      </div>
+      {React.createElement(KeyboardPanel, {
+        mode: "actuation",
+        layer: "default",
+        selectedKeys, setSelectedKeys,
+        // Fallbacks for keys the board has not reported yet: the slider's
+        // point, and no RT (never a made-up pair).
+        actuationPoint: actuation, rtPress: 0, rtRelease: 0,
+        perKeyOverride,
+        liveDepths,
+        showPill: false,
+        compact: true,
+        calibrating: !!calibrating,
+        calibratedCodes: calibratedKeys,
+      })}
+    </div>
+  );
+}
+
+/* ---- default placement ----
+   Geometry persists per widget in localStorage and is written the first time
+   a widget mounts, so every user who has opened this tab has entries for the
+   five older widgets. Two cases:
+     * none saved, or every saved entry is still exactly its old default
+       (never moved/resized/minimized): use the new arrangement, keyboard on
+       top and the controls below it. The pristine old entries are dropped so
+       the shifted defaults apply (nothing the user chose is lost).
+     * anything customised: keep every saved entry as it is and put the
+       keyboard under the lowest widget, so it overlaps nothing. */
+const OLD_DEFAULTS = {
+  travel: { x: 40,  y: 32,  w: 680, h: 430 },
+  dead:   { x: 736, y: 32,  w: 460, h: 300 },
+  switch: { x: 736, y: 352, w: 460, h: 430 },
+  poll:   { x: 40,  y: 488, w: 380, h: 300 },
+  calib:  { x: 440, y: 488, w: 456, h: 360 },
+};
+const KB_H = 440, KB_GAP = 20;
+const KB_TOP = { x: 40, y: 32, w: 1156, h: KB_H };
+const shifted = (d) => ({ ...d, y: d.y + KB_H + KB_GAP });
+const planLayout = (storage) => {
+  const geoKey = (id) => `aether-wgt:actuation:${id}`;
+  const saved = {};
+  let customised = false;
+  try {
+    if (!storage || storage.getItem(geoKey("keyboard"))) {
+      return { defaults: OLD_DEFAULTS, keyboard: KB_TOP, migrated: false };   // keyboard already placed
+    }
+    Object.entries(OLD_DEFAULTS).forEach(([id, d]) => {
+      const raw = storage.getItem(geoKey(id));
+      if (!raw) return;
+      const g = JSON.parse(raw);
+      saved[id] = g;
+      const p = (g && g.pos) || {}, s = (g && g.size) || {};
+      if (g && (g.minimized || p.x !== d.x || p.y !== d.y || s.w !== d.w || s.h !== d.h)) customised = true;
+    });
+  } catch { return { defaults: OLD_DEFAULTS, keyboard: KB_TOP, migrated: false }; }
+  if (!customised) {
+    try { Object.keys(saved).forEach(id => storage.removeItem(geoKey(id))); } catch {}
+    const defaults = {};
+    Object.entries(OLD_DEFAULTS).forEach(([id, d]) => { defaults[id] = shifted(d); });
+    return { defaults, keyboard: KB_TOP, migrated: Object.keys(saved).length > 0 };
+  }
+  let bottom = 0;
+  Object.entries(OLD_DEFAULTS).forEach(([id, d]) => {
+    const g = saved[id];
+    if (g && g.minimized) return;
+    const y = g && g.pos ? g.pos.y : d.y, h = g && g.size ? g.size.h : d.h;
+    bottom = Math.max(bottom, (y || 0) + (h || 0));
+  });
+  return { defaults: OLD_DEFAULTS, keyboard: { ...KB_TOP, y: bottom + KB_GAP }, migrated: false };
+};
+let LAYOUT;
+try { LAYOUT = planLayout(window.localStorage); }
+catch { LAYOUT = planLayout(null); }
+const D = LAYOUT.defaults;
+
 const ACTUATION_WIDGETS = [
-  { id: "travel",  title: "Travel",       default: { x: 40,  y: 32,  w: 680, h: 430 }, min: { w: 420, h: 320 }, render: TravelWidget },
-  { id: "dead",    title: "Dead Band",    default: { x: 736, y: 32,  w: 460, h: 300 }, min: { w: 320, h: 240 }, render: DeadBandWidget },
-  { id: "switch",  title: "Switch",       default: { x: 736, y: 352, w: 460, h: 430 }, min: { w: 340, h: 300 }, render: SwitchWidget },
-  { id: "poll",    title: "Polling Rate", default: { x: 40,  y: 488, w: 380, h: 300 }, min: { w: 300, h: 240 }, render: PollingWidget },
-  { id: "calib",   title: "Calibration",  default: { x: 440, y: 488, w: 456, h: 360 }, min: { w: 340, h: 280 }, render: CalibrationWidget },
+  { id: "keyboard", title: "Keyboard",    default: LAYOUT.keyboard, min: { w: 640, h: 300 }, render: ActuationKeyboardWidget },
+  { id: "travel",  title: "Travel",       default: D.travel, min: { w: 420, h: 320 }, render: TravelWidget },
+  { id: "dead",    title: "Dead Band",    default: D.dead,   min: { w: 320, h: 240 }, render: DeadBandWidget },
+  { id: "switch",  title: "Switch",       default: D.switch, min: { w: 340, h: 300 }, render: SwitchWidget },
+  { id: "poll",    title: "Polling Rate", default: D.poll,   min: { w: 300, h: 240 }, render: PollingWidget },
+  { id: "calib",   title: "Calibration",  default: D.calib,  min: { w: 340, h: 280 }, render: CalibrationWidget },
 ];
 
 window.AetherWorkspaces = window.AetherWorkspaces || {};
 window.AetherWorkspaces.ACTUATION_WIDGETS = ACTUATION_WIDGETS;
 // Pure board-awareness helpers exported for verification (no UI reads these).
-window.AetherWorkspaces.ACTUATION_BOARD = { SWITCHES, rangeOr, boardCtxOf };
+window.AetherWorkspaces.ACTUATION_BOARD = { SWITCHES, rangeOr, boardCtxOf, planLayout, OLD_DEFAULTS };
 })();
