@@ -155,6 +155,21 @@ class BoardDriver:
     def is_open(self):
         return self.dev.is_open()
 
+    # ---- liveness (Api.status) ----
+    def probe_link(self, timeout_s=0.5):
+        """Ask the board something cheap and wait for the answer. True = it
+        answered, False = no answer (the handle is stale), None = this board
+        has no verified probe (the Api then trusts the open handle, exactly
+        as before). Must not raise. DELIBERATE default: None, not a refusal
+        — a board whose protocol is unknown is never sent a guess."""
+        return None
+
+    def ping_link(self):
+        """Write the probe request WITHOUT reading the reply (a running live
+        reader drains it and records the rx). True if sent, False if the
+        write failed, None if this board has no probe."""
+        return None
+
     # ---- operations (default: refuse loudly, never no-op) ----
     def device_info(self):
         self._unsupported("device_info")

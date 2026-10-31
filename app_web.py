@@ -427,6 +427,7 @@ class Api:
         # Per-key dead-band state — preserved across selection changes so applying
         # to one group doesn't reset the others to defaults.
         self._deadband_state = {}  # idx -> (top_raw, bottom_raw)
+        self._init_link_state()
 
     # ---- connection ----
     @staticmethod
@@ -459,6 +460,9 @@ class Api:
             except Exception as ex:
                 log.warning("Fn-layer snapshot failed (will skip Fn write): %s", ex)
                 self._fn_layer_raw = None
+            # Any handle death before this connect is now handled: the
+            # fresh handle starts a clean slate for status().
+            self._dead_seen = getattr(self.dev, "dead_events", 0)
             return {"ok": True, "iface": info["interface_number"]}
         except Exception as e:
             return self._fail(e)
@@ -580,6 +584,7 @@ class Api:
             self._deadband_state = {}
             self._fn_layer_raw = None
             self._idx2code = None
+            self._init_link_state()
             log.info("Board selected: %s (%s)", p.name, p.vid_pid)
             return {"ok": True, "active": {
                 "slug": p.slug, "name": p.name, "vidPid": p.vid_pid,
@@ -596,8 +601,174 @@ class Api:
         """Real per-key travel depth (mm), keyed by key name. {} until keys move."""
         return self.reader.snapshot() if self.reader else {}
 
+    # ---- link liveness -------------------------------------------------------
+    # After a USB re-enumeration (a poll-rate change restarts the board, a
+    # replug, a hub reset) Windows leaves the old HID handle "open": writes are
+    # accepted and go nowhere, reads come back empty. status() used to answer
+    # dev.is_open(), so the UI's 2.5 s status -> connect() watchdog never fired
+    # and the app stayed dead until a manual reconnect (verified on hardware,
+    # 0.5.2). status() now PROVES the link: a recent reply is proof; otherwise
+    # one cheap heartbeat probe, only when the link is idle.
+
+    #: A reply this recent proves the link (no probe).
+    _LINK_QUIET_S = 4.0
+    #: Never probe more often than this, whatever the UI's poll rate.
+    _PROBE_MIN_INTERVAL_S = 4.0
+    #: Per-attempt reply wait for the heartbeat probe.
+    _PROBE_TIMEOUT_S = 0.5
+    #: How long status() waits for the outer lock before giving up on a
+    #: probe. A frame of the effect stream holds it for ~1 ms; a calibration,
+    #: macro write or table RMW holds it far longer, and is never interrupted.
+    _PROBE_LOCK_WAIT_S = 0.25
+
+    def _init_link_state(self):
+        dev = getattr(self, "dev", None)
+        self._dead_seen = getattr(dev, "dead_events", 0)
+        self._last_probe = 0.0
+        self._probe_gate = threading.Lock()
+
     def status(self):
-        return {"connected": self.dev.is_open()}
+        dev = getattr(self, "dev", None)
+        if dev is None:
+            return {"connected": False}
+        # A handle that died underneath us (a failed write/read dropped it),
+        # even if a later driver write reopened it: report the loss once so
+        # the UI reconnects and the session state is rebuilt.
+        events = getattr(dev, "dead_events", 0)
+        if events != getattr(self, "_dead_seen", 0):
+            self._on_link_lost("HID I/O failed")
+            return {"connected": False}
+        if not dev.is_open():
+            return {"connected": False}
+        if self._probe_link() is False:
+            self._on_link_lost("no reply to the heartbeat probe")
+            return {"connected": False}
+        return {"connected": True}
+
+    def _probe_link(self):
+        """True = the board answered recently or now; False = an idle probe
+        got no answer (stale handle); None = no verdict (busy, rate-limited,
+        or this board has no probe) - the caller then trusts the handle."""
+        dev = self.dev
+        # Never interleave with calibration (its reader owns the stream and
+        # the board is armed) or a board-submission capture borrowing the
+        # handle.
+        if getattr(self, "_calibrating", False) or getattr(self, "calib_reader", None):
+            return None
+        cap = getattr(self, "_cap_thread", None)
+        if cap is not None and cap.is_alive():
+            return None
+        rx_age = getattr(dev, "rx_age", None)
+        if rx_age is None:
+            return None                       # no liveness bookkeeping
+        if rx_age() < self._LINK_QUIET_S:
+            return True
+        now = time.monotonic()
+        if now - getattr(self, "_last_probe", 0.0) < self._PROBE_MIN_INTERVAL_S:
+            return None
+        gate = getattr(self, "_probe_gate", None)
+        if gate is None:
+            gate = self._probe_gate = threading.Lock()
+        if not gate.acquire(blocking=False):
+            return None                       # another status() is probing
+        try:
+            # Only when idle: a multi-packet transaction (calibration arm,
+            # macro write, table RMW) holds the outer lock - skip, don't wait.
+            if not self._lock.acquire(timeout=self._PROBE_LOCK_WAIT_S):
+                return None
+            try:
+                self._last_probe = time.monotonic()
+                if not dev.is_open():
+                    return None
+                ok = self._run_probe()
+            finally:
+                self._lock.release()
+        finally:
+            gate.release()
+        if ok:
+            dev.note_rx()
+        return ok
+
+    def _run_probe(self):
+        """One probe; the caller holds the outer lock. With the shared live
+        reader running, the reader drains every report (the heartbeat reply
+        included) and records the rx itself, so only the request is written
+        and the reader is NOT parked: a restart would forget held keys (the
+        firmware never re-reports a key held still). Otherwise the driver
+        sends the heartbeat and reads the reply itself."""
+        dev, drv = self.dev, self.driver
+        r = getattr(self, "reader", None)
+        alive = getattr(r, "alive", None)
+        if r is not None and alive is not None and alive():
+            t0 = dev.last_rx()
+            attempts = getattr(drv, "PROBE_ATTEMPTS", 1)
+            for _ in range(attempts):
+                sent = drv.ping_link()
+                if sent is None:
+                    return None
+                if not sent:
+                    return False
+                deadline = time.monotonic() + self._PROBE_TIMEOUT_S
+                while time.monotonic() < deadline:
+                    if dev.last_rx() != t0:
+                        return True
+                    time.sleep(0.01)
+            return False
+        # No live reader: a wedged/exited one is parked and re-created by
+        # _reader_paused, so it cannot eat the reply either.
+        with self._reader_paused():
+            return drv.probe_link(self._PROBE_TIMEOUT_S)
+
+    def _park_readers(self):
+        """Stop both readers but keep their owners registered (unlike
+        _stop_readers) so a reconnect can bring the stream back."""
+        stopping = []
+        with self._lock:
+            for attr in ("reader", "calib_reader"):
+                r = getattr(self, attr, None)
+                if r is not None:
+                    setattr(self, attr, None)
+                    stopping.append(r)
+        for r in stopping:            # joins outside the lock (see _release_reader)
+            try:
+                r.stop()
+            except Exception:
+                pass
+
+    def _on_link_lost(self, why):
+        """The board stopped answering: tear the session down so nothing keeps
+        streaming into a dead handle, and close it so status() says
+        disconnected and the UI's watchdog reconnects. Runs OUTSIDE the outer
+        lock (status() released it): the teardown paths take it themselves,
+        and the readers' joins must not happen under it."""
+        log.warning("Keyboard link lost (%s); closing the handle", why)
+        try:
+            self.stop_capture()
+        except Exception:
+            pass
+        try:
+            self.stop_multicolor()
+        except Exception:
+            pass
+        try:
+            if getattr(self, "pad", None) is not None or getattr(self, "_pad_thread", None):
+                self.set_gamepad_capture(False)
+        except Exception:
+            pass
+        if getattr(self, "_calibrating", False):
+            # Nothing to disarm on a gone board; try anyway in case the
+            # handle is merely stale.
+            try:
+                self.driver.set_calibration(False)
+            except Exception:
+                pass
+            self._calibrating = False
+        self._park_readers()
+        try:
+            self.dev.close()
+        except Exception:
+            pass
+        self._dead_seen = getattr(self.dev, "dead_events", 0)
 
     # ---- shared-reader lifecycle -------------------------------------------
     def _acquire_reader(self, who, make):

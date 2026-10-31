@@ -171,6 +171,7 @@ class LiveReader:
             # time lags reality — on a quick release the loop is still chewing
             # through stale "pressed" reports and shows a high value instead of 0.
             got = False
+            heard = False   # ANY report this pass (a heartbeat reply too)
             try:
                 with self.dev._lock:
                     if self.dev._dev is None:
@@ -183,6 +184,8 @@ class LiveReader:
                         time.sleep(0.02); continue
                     for _ in range(256):          # bounded drain
                         r = self.dev._dev.read(64)
+                        if r:
+                            heard = True
                         if not r or len(r) < 11:
                             break
                         # hidapi read includes Report ID at [0]; travel sub-report:
@@ -203,15 +206,34 @@ class LiveReader:
                 dead = 0   # a clean drain -> the handle is alive
             except Exception:
                 # Persistent read failure (e.g. mid-stream unplug) -> stop
-                # instead of spinning ~20 Hz forever on a dead handle.
+                # instead of spinning ~20 Hz forever on a dead handle, and
+                # tell the device so Api.status() reports the link down.
                 dead += 1
                 if dead > 50:
+                    mark = getattr(self.dev, "mark_dead", None)
+                    if mark is not None:
+                        try:
+                            mark("live reader: reads keep failing")
+                        except Exception:
+                            pass
                     break
                 time.sleep(0.05); continue
+            # This reader drains EVERY report off the shared handle (a probe's
+            # heartbeat reply included), so it is the one that must record
+            # that the board answered (Api.status liveness).
+            if heard:
+                note = getattr(self.dev, "note_rx", None)
+                if note is not None:
+                    note()
             # Nothing pending → sleep briefly so we don't busy-spin the lock;
             # when reports are flowing, loop straight back to stay real-time.
             if not got:
                 time.sleep(0.002)
+
+    def alive(self):
+        """True while the drain thread runs (it self-exits on a dead handle)."""
+        th = self._thread
+        return th is not None and th.is_alive() and not self._stop.is_set()
 
     def snapshot(self):
         # Last-reported depth per key. No time-based decay — the firmware

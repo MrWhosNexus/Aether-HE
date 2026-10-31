@@ -1,5 +1,6 @@
 import logging
 import threading
+import time
 import hid
 
 AULA_VID = 0x2E3C
@@ -128,6 +129,16 @@ class AulaDevice:
         self._info = None
         self._lock = threading.Lock()
         self._profile = profile
+        # Liveness bookkeeping (Api.status() proves the link with these).
+        # A write to a stale Windows handle (the board re-enumerated: poll-rate
+        # change, replug) can "succeed" and go nowhere, so only a REPLY proves
+        # the board is there: _last_rx is the monotonic time of the last
+        # non-empty read on this handle. dead_events counts handles this
+        # object dropped because an I/O call failed underneath it, so the Api
+        # can tell "closed by disconnect()" from "died" (and run recovery)
+        # even if something reopened the handle in between.
+        self._last_rx = 0.0
+        self.dead_events = 0
 
     def open(self):
         if self._profile is not None:
@@ -159,6 +170,9 @@ class AulaDevice:
             old = self._dev
             self._dev = dev
             self._info = info
+            # A new handle has proven nothing yet: the first status() after
+            # an open probes it instead of trusting the old handle's replies.
+            self._last_rx = 0.0
         if old is not None:
             try:
                 old.close()
@@ -184,16 +198,62 @@ class AulaDevice:
         with self._lock:
             return self._dev is not None
 
+    # ---- liveness ----
+    def note_rx(self):
+        """Record that the board just answered. Called by every read path,
+        including the readers that drain `_dev` directly under `_lock`."""
+        self._last_rx = time.monotonic()
+
+    def rx_age(self):
+        """Seconds since the board last answered on this object (inf if never)."""
+        t = self._last_rx
+        return (time.monotonic() - t) if t else float("inf")
+
+    def last_rx(self):
+        return self._last_rx
+
+    def _drop_dead_locked(self, why):
+        """Close a handle whose I/O just failed (caller holds _lock)."""
+        if self._dev is None:
+            return
+        log.warning("HID handle dead (%s); closing it", why)
+        try:
+            self._dev.close()
+        except Exception:
+            pass
+        self._dev = None
+        self._info = None
+        self.dead_events += 1
+
+    def mark_dead(self, why="I/O failure"):
+        """Drop the handle because the link is gone (a probe got no answer,
+        a reader's reads keep failing). Next status() reports disconnected."""
+        with self._lock:
+            self._drop_dead_locked(why)
+
     def info(self):
         with self._lock:
             return dict(self._info) if self._info else None
 
     def write(self, payload):
-        """Output report. payload[0] MUST be the Report ID (use 0x00 if unset)."""
+        """Output report. payload[0] MUST be the Report ID (use 0x00 if unset).
+
+        hidapi returns -1 (it does not raise) when the OS refuses the write —
+        a handle to a board that re-enumerated. That used to be ignored, so
+        every caller reported success to the UI. Now a failed write drops the
+        handle (mark-dead) and raises IOError."""
         with self._lock:
             if self._dev is None:
                 raise IOError("device not open")
-            return self._dev.write(payload)
+            try:
+                n = self._dev.write(payload)
+            except (IOError, OSError, ValueError) as e:
+                self._drop_dead_locked(f"write raised: {e}")
+                raise IOError(f"HID write failed: {e}") from e
+            if n is not None and n < 0:
+                self._drop_dead_locked("write returned -1")
+                raise IOError("HID write failed (device gone?)")
+            return n
 
     def send_feature(self, payload):
         """Feature report. payload[0] MUST be the Report ID."""
@@ -212,7 +272,14 @@ class AulaDevice:
         with self._lock:
             if self._dev is None:
                 raise IOError("device not open")
-            return self._dev.read(length, timeout_ms=timeout_ms)
+            try:
+                r = self._dev.read(length, timeout_ms=timeout_ms)
+            except (IOError, OSError, ValueError) as e:
+                self._drop_dead_locked(f"read raised: {e}")
+                raise IOError(f"HID read failed: {e}") from e
+        if r:
+            self.note_rx()
+        return r
 
     def set_nonblocking(self, flag):
         """Set the handle's blocking mode under the handle lock. Callers must

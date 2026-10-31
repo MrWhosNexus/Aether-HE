@@ -638,6 +638,30 @@ class Win60Driver(BoardDriver):
                                % (self.name, reason))
         self._write(report)
 
+    # ---- liveness (Api.status) ----
+    #: Heartbeat attempts per probe: one lost reply must not drop the link.
+    PROBE_ATTEMPTS = 2
+
+    def probe_link(self, timeout_s=0.5):
+        """The cmd-1 heartbeat (read_init_info): the board answers it within
+        a few ms on hardware. A stale handle (the board re-enumerated) takes
+        the write and never answers."""
+        for _ in range(self.PROBE_ATTEMPTS):
+            try:
+                self.read_init_info(timeout_s)
+                return True
+            except Exception:
+                if not self.dev.is_open():
+                    return False            # the write itself failed: dead
+        return False
+
+    def ping_link(self):
+        try:
+            self._write(protocol.build_heartbeat())
+            return True
+        except Exception:
+            return False
+
     # ---- capture-verified readers (all CONFIRMED-BY-CAPTURE framing) ----
     def _drain_input(self):
         """Discard pending input reports so a reader only sees its reply
@@ -649,8 +673,16 @@ class Win60Driver(BoardDriver):
                     r = self.dev._dev.read(64)
                     if not r:
                         break
+                    self._note_rx()
             except Exception:
                 pass
+
+    def _note_rx(self):
+        """The board answered (Api.status liveness). Stub devices in tests
+        have no bookkeeping, hence the getattr."""
+        note = getattr(self.dev, "note_rx", None)
+        if note is not None:
+            note()
 
     def _read_frames(self, request_pkt, sink, timeout_s):
         """Send `request_pkt`, then feed every candidate reply BODY to
@@ -676,6 +708,7 @@ class Win60Driver(BoardDriver):
             if not r:
                 time.sleep(0.005)
                 continue
+            self._note_rx()
             for off in (1, 0):
                 if len(r) > off and sink(list(r[off:])):
                     return True
