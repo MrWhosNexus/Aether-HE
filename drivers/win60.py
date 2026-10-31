@@ -332,6 +332,23 @@ class Win60Driver(BoardDriver):
                 out[k["name"]] = round(c["travel"] * protocol.TRIGGER_UNIT_MM, 2)
         return out
 
+    def read_trigger_detail(self, keymap):
+        """{key name: {"mode", "travel_mm", "rt_press_mm", "rt_release_mm"}}
+        — the same single sweep as read_actuation, with the trigger mode and
+        the stored RT pair kept (the UI draws per-key RT from this)."""
+        idxs = [int(k["index"]) for k in keymap.keys]
+        cfg = self.read_trigger_config(idxs)
+        u = protocol.TRIGGER_UNIT_MM
+        out = {}
+        for k in keymap.keys:
+            c = cfg.get(int(k["index"]))
+            if c is not None:
+                out[k["name"]] = {"mode": c["mode"],
+                                  "travel_mm": round(c["travel"] * u, 2),
+                                  "rt_press_mm": round(c["interval1"] * u, 2),
+                                  "rt_release_mm": round(c["interval2"] * u, 2)}
+        return out
+
     # ---- dead band / switch / poll ----
     def set_deadband(self, raw_by_index, top_mm=None, bottom_mm=None):
         """Per-key dead band (cmd 38) — READ-MODIFY-WRITE.

@@ -86,11 +86,20 @@
     const [rtMin, rtMax] = rangeOr(bact && bact.rtRange, [0.05, 2.0]);
     const rtState = bctx.capState ? bctx.capState("rapidTrigger") : "unknown";
     const rtAvailable = rtState === "yes" || rtState === "unknown";
-    const handleApplyTravel = () => {
-      if (!canApply || !applyActuation) return;
-      applyActuation();
+    const [busy, setBusy] = useState(false);
+    const handleApplyTravel = async () => {
+      if (!canApply || !applyActuation || busy) return;
       const rt = rtEnabled && rtAvailable ? ` · RT press ${rtPress.toFixed(2)}mm / release ${rtRelease.toFixed(2)}mm` : "";
-      flash(`Wrote ${actuation.toFixed(2)}mm to ${selectedCount} key${selectedCount === 1 ? "" : "s"}${rt}`);
+      const n = selectedCount,
+        mm = actuation;
+      setBusy(true);
+      try {
+        const r = await applyActuation();
+        // Confirm only a write the board took (failures surface as a notice).
+        if (r && r.ok) flash(`Wrote ${mm.toFixed(2)}mm to ${n} key${n === 1 ? "" : "s"}${rt}`);
+      } finally {
+        setBusy(false);
+      }
     };
     return /*#__PURE__*/React.createElement("div", {
       className: "grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-5"
@@ -196,9 +205,9 @@
       className: "mt-6 flex items-center gap-3"
     }, /*#__PURE__*/React.createElement("button", {
       onClick: handleApplyTravel,
-      disabled: !canApply,
-      className: applyBtnCls(canApply)
-    }, "Apply to ", selectedCount || 0, " key", selectedCount === 1 ? "" : "s"), confirm ? /*#__PURE__*/React.createElement(ConfirmToast, {
+      disabled: !canApply || busy,
+      className: applyBtnCls(canApply && !busy)
+    }, busy ? "Writing…" : /*#__PURE__*/React.createElement(React.Fragment, null, "Apply to ", selectedCount || 0, " key", selectedCount === 1 ? "" : "s")), confirm ? /*#__PURE__*/React.createElement(ConfirmToast, {
       confirm: confirm
     }) : /*#__PURE__*/React.createElement("span", {
       className: "font-mono text-[10.5px] uppercase tracking-[0.18em] text-[var(--text-faint)]"
@@ -230,10 +239,11 @@
     const [dzMin, dzMax] = rangeOr(bact && bact.deadzoneRange, [0.0, 0.5]);
     const dzState = bctx.capState ? bctx.capState("deadzone") : "unknown";
     const canApply = globalScope ? true : selectedCount > 0;
-    const handleApplyDead = () => {
+    const handleApplyDead = async () => {
       if (!canApply || !applyDeadband) return;
-      applyDeadband();
-      flash(`Wrote dead band ${(deadTop ?? 0.04).toFixed(2)}/${(deadBottom ?? 0.05).toFixed(2)}mm to ${globalScope ? "the whole board" : `${selectedCount} key${selectedCount === 1 ? "" : "s"}`}`);
+      const msg = `Wrote dead band ${(deadTop ?? 0.04).toFixed(2)}/${(deadBottom ?? 0.05).toFixed(2)}mm to ${globalScope ? "the whole board" : `${selectedCount} key${selectedCount === 1 ? "" : "s"}`}`;
+      const r = await applyDeadband();
+      if (r && r.ok) flash(msg); // failures surface as a notice instead
     };
 
     /* Capability gate: "wip" = decoded from vendor source only, never proven on

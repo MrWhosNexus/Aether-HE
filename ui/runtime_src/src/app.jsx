@@ -641,6 +641,10 @@ function App() {
   // the device on connect and after every Apply so the board renders each key
   // with its own value instead of mirroring the global slider everywhere.
   const [perKeyActuation, setPerKeyActuation] = useState({});
+  // Per-key trigger mode + stored RT pair from the same read-back
+  // ({code: {mode, travel_mm, rt_press_mm, rt_release_mm}}; boards whose
+  // driver cannot report it leave this empty).
+  const [perKeyTrigger, setPerKeyTrigger] = useState({});
 
   // Gamepad: virtual-pad capture + key→control mappings.
   const DEFAULT_PAD_MAP = [
@@ -928,7 +932,7 @@ function App() {
       setConnected(false);
       setLiveDepths(null); setLightFrame(null);
       setTravelTest(false); setCalibrating(false); setCalibratedKeys(new Set());
-      setPerKeyActuation({}); setGamepadOn(false);
+      setPerKeyActuation({}); setPerKeyTrigger({}); setGamepadOn(false);
       if (r.active) setBoard(r.active);
       const c = await apiCall("connect");
       setConnected(!!(c && c.ok));
@@ -1022,18 +1026,20 @@ function App() {
   // Gamepad: push the current map then toggle capture on/off.
   const [gamepadError, setGamepadError] = useState(null);   // {msg, needsDriver}
   const handleGamepadToggle = (on) => {
-    setGamepadOn(on);
     if (on) setGamepadError(null);
     // pywebview runs every bridge call on its own thread, so two back-to-back
     // calls are NOT ordered. Push the map first and only then enable capture,
     // or the pad could open with the previous map and immediately reopen.
-    const prep = on ? apiCall("set_gamepad_map", gamepadMap) : Promise.resolve();
-    prep.then(() => apiCall("set_gamepad_capture", on)).then(r => {
+    // The toggle only shows the new state once the backend confirmed it.
+    const prep = on ? apiCall("set_gamepad_map", gamepadMap) : Promise.resolve({ ok: true });
+    prep.then(m => (m && m.ok === false) ? m : apiCall("set_gamepad_capture", on)).then(r => {
       if (!(r && r.ok)) {
-        setGamepadOn(false);
+        if (on) setGamepadOn(false);
         setGamepadError({ msg: (r && r.error) || "failed", needsDriver: !!(r && r.needs_vigembus) });
       } else {
+        setGamepadOn(on);
         setGamepadError(null);
+        if (on) padMapOk.current = gamepadMap;   // the map capture runs with
       }
     });
   };
@@ -1043,13 +1049,36 @@ function App() {
     if (r && r.ok) setGamepadError({ msg: "ViGEmBus installed — try capture again.", needsDriver: false });
     else setGamepadError({ msg: (r && r.error) || "install failed", needsDriver: true });
   };
-  const handleGamepadMapApply = (map) => {
+  // Capture off: the map is only local state (pushed when capture turns on).
+  // Capture on: it goes live. The editor follows the input immediately (its
+  // threshold slider fires per drag step, and every live apply reopens the
+  // virtual pad, so waiting for each round trip would make it unusable), but
+  // a map the backend REFUSES never sticks: the editor snaps back to the last
+  // map the backend accepted and the error is shown. Only the newest request
+  // decides (a drag sends many).
+  const padMapOk = useRef(null);       // last map the backend accepted
+  const padMapSeq = useRef(0);
+  const handleGamepadMapApply = async (map) => {
+    if (padMapOk.current === null) padMapOk.current = gamepadMap;
     setGamepadMap(map);
-    if (gamepadOn) apiCall("set_gamepad_map", map);
+    if (!gamepadOn) { padMapOk.current = map; return { ok: true }; }
+    const seq = ++padMapSeq.current;
+    const r = await apiCall("set_gamepad_map", map);
+    if (seq !== padMapSeq.current) return r;
+    if (r && r.ok) {
+      padMapOk.current = map;
+      setGamepadError(null);
+    } else {
+      setGamepadMap(padMapOk.current);
+      setGamepadError({ msg: (r && r.error) || "gamepad map not applied", needsDriver: !!(r && r.needs_vigembus) });
+      // set_gamepad_map reopens the pad; a failed reopen leaves capture off.
+      const s = await apiCall("gamepad_status");
+      if (s && s.ok && !s.capturing) setGamepadOn(false);
+    }
+    return r;
   };
 
   const handlePickSwitch = (id) => {
-    setSwitchId(id);
     // Pass the registry switch id itself: Api.set_switch_codes resolves it
     // against THE ACTIVE BOARD's `actuation.switches` table and fails closed on
     // an unknown id. (A hardcoded id→code table here would silently send the
@@ -1060,7 +1089,13 @@ function App() {
     const table = board && board.actuation && board.actuation.switches;
     const legacy = { hm1: 1, hh1: 2, cy1: 3, tc1: 5 };
     const arg = (Array.isArray(table) && table.length) ? String(id) : (legacy[id] || 1);
-    if (connected) apiCall("set_switch_codes", Array.from(selectedKeys), arg);
+    if (!connected) { setSwitchId(id); return Promise.resolve({ ok: true, offline: true }); }
+    // Only show the new switch once the board took it.
+    return apiCall("set_switch_codes", Array.from(selectedKeys), arg).then(r => {
+      if (r && r.ok) setSwitchId(id);
+      else if (!(r && r.unsupported)) pushNotice(`Switch profile not written: ${(r && r.error) || "no reply"}`);
+      return r;
+    });
   };
 
   // Effect zones (Custom mode): a group of keys running their own effect.
@@ -1079,7 +1114,12 @@ function App() {
     const pairs = (profiles || [])
       .filter(p => p.k1 && p.k2)
       .map(p => ({ model: p.mode || 1, key1: LABEL_TO_CODE[p.k1] || p.k1, key2: LABEL_TO_CODE[p.k2] || p.k2 }));
-    if (pairs.length) apiCall("set_socd", pairs);
+    if (!pairs.length) return Promise.resolve({ ok: true, skipped: true });
+    return apiCall("set_socd", pairs).then(r => {
+      if (!(r && r.ok) && !(r && r.unsupported))
+        pushNotice(`SOCD not written: ${(r && r.error) || "no reply"}`);
+      return r;
+    });
   };
 
   /* ===== HID bridge: effects (push state to the board) ===== */
@@ -1303,32 +1343,52 @@ function App() {
     const r = await apiCall("verify_actuation", []);
     if (!r || r.ok === false || !r.actuation_mm) return;
     setPerKeyActuation(r.actuation_mm);
+    if (r.trigger) setPerKeyTrigger(r.trigger);
   };
   // On connect, snapshot per-key actuation once so the board reflects reality
   // before the user touches anything.
   useEffect(() => { if (connected) refreshPerKeyActuation(); }, [connected]);
 
+  // Returns the backend result so the widget only confirms a real write.
+  // The board view is then drawn from the FIRMWARE's read-back of the keys
+  // (the whole-board sweep is ~0.12 s on the WIN 60 HE), never from the
+  // values we asked for: an "ok" from a write that went nowhere used to
+  // paint numbers the keyboard never stored.
   const applyActuation = async () => {
-    if (!connected) return;
+    if (!connected) return { ok: false, error: "not connected" };
     const codes = Array.from(selectedKeys);
-    if (codes.length === 0) return;
+    if (codes.length === 0) return { ok: false, error: "no keys selected" };
     const mode = rtEnabled ? 13 : 0;
-    await apiCall("set_trigger_codes", codes, actuation,
-                  rtEnabled ? rtPress : 0, rtEnabled ? rtRelease : 0, mode);
-    // Optimistic update so the board reflects the change instantly. Skip the
-    // 132-key read-back here — it takes ~5 s and we already know what was
-    // written; the next connect/manual refresh re-syncs from the firmware.
-    setPerKeyActuation(prev => {
-      const next = { ...prev };
-      for (const c of codes) next[c] = actuation;
-      return next;
-    });
+    const r = await apiCall("set_trigger_codes", codes, actuation,
+                            rtEnabled ? rtPress : 0, rtEnabled ? rtRelease : 0, mode);
+    if (!(r && r.ok)) {
+      if (!(r && r.unsupported)) pushNotice(`Actuation not written: ${(r && r.error) || "no reply"}`);
+      return r || { ok: false, error: "no reply" };
+    }
+    const v = await apiCall("verify_actuation", codes);
+    if (v && v.ok && v.actuation_mm) {
+      setPerKeyActuation(prev => ({ ...prev, ...v.actuation_mm }));
+      if (v.trigger) setPerKeyTrigger(prev => ({ ...prev, ...v.trigger }));
+      const missing = codes.filter(c => v.actuation_mm[c] == null);
+      const off = codes.filter(c => v.actuation_mm[c] != null && Math.abs(v.actuation_mm[c] - actuation) > 0.006);
+      if (missing.length || off.length)
+        pushNotice(`Read-back differs from what was written on ${missing.length + off.length} key(s)` +
+                   (off.length ? ` (e.g. ${off[0]}: ${v.actuation_mm[off[0]].toFixed(2)} mm)` : ""),
+                   { label: "Check" });
+      return { ...r, readback: v.actuation_mm };
+    }
+    pushNotice("Actuation written, but the read-back failed: the board view may be stale", { label: "Check" });
+    return { ...r, readback: null };
   };
-  const applyDeadband = () => {
-    if (!connected) return;
+  const applyDeadband = async () => {
+    if (!connected) return { ok: false, error: "not connected" };
     const codes = Array.from(selectedKeys);
-    if (codes.length === 0) return;
-    apiCall("set_deadband_codes", codes, deadTop, deadBottom);
+    const globalScope = !!(board && board.actuation && board.actuation.deadzoneScope === "global");
+    if (codes.length === 0 && !globalScope) return { ok: false, error: "no keys selected" };
+    const r = await apiCall("set_deadband_codes", codes, deadTop, deadBottom);
+    if (!(r && r.ok) && !(r && r.unsupported))
+      pushNotice(`Dead band not written: ${(r && r.error) || "no reply"}`);
+    return r || { ok: false, error: "no reply" };
   };
 
   // Travel Test: stream live analog depth for ALL keys (so any keypress shows,
@@ -1527,7 +1587,7 @@ function App() {
     // actuation / rapid trigger
     actuation, setActuation, rtPress, setRtPress, rtRelease, setRtRelease,
     rtEnabled, setRtEnabled, resetTrigger,
-    applyActuation, applyDeadband, refreshPerKeyActuation, perKeyActuation,
+    applyActuation, applyDeadband, refreshPerKeyActuation, perKeyActuation, perKeyTrigger,
     deadTop, setDeadTop, deadBottom, setDeadBottom,
     switchId, handlePickSwitch,
     polling, handleSetPolling, pollRestarting,

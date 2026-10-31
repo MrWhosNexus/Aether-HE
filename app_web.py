@@ -1206,20 +1206,36 @@ class Api:
         try:
             # Driver takes the outer lock itself for the whole read sweep;
             # the live reader is parked so it can't consume the replies.
+            # Drivers that can (Win60) also return each key's trigger mode
+            # and stored RT pair from the SAME sweep, so the UI can draw the
+            # board from what the firmware holds, not from what it asked for.
+            detail_fn = getattr(self.driver, "read_trigger_detail", None)
+            detail = None
             with self._reader_paused():
-                vals_by_name = self.driver.read_actuation(self.km)
+                if detail_fn is not None:
+                    try:
+                        detail = detail_fn(self.km)
+                    except UnsupportedFeature:
+                        detail = None
+                if detail is not None:
+                    vals_by_name = {n: d["travel_mm"] for n, d in detail.items()}
+                else:
+                    vals_by_name = self.driver.read_actuation(self.km)
             # Build {design_code: mm} for every key we have a mapping for.
-            all_by_code = {}
+            all_by_code, trig_by_code = {}, {}
             for design_code, idx in self.km.index_of_code.items():
                 name = self.km.by_index[idx]["name"]
                 mm = vals_by_name.get(name)
                 if mm is not None:
                     all_by_code[design_code] = mm
-            if codes:
-                out = {c: all_by_code.get(c) for c in codes if c in all_by_code}
-            else:
-                out = all_by_code
-            return {"ok": True, "actuation_mm": out}
+                if detail is not None and name in detail:
+                    trig_by_code[design_code] = dict(detail[name])
+            wanted = (lambda c: c in codes) if codes else (lambda c: True)
+            out = {c: v for c, v in all_by_code.items() if wanted(c)}
+            res = {"ok": True, "actuation_mm": out}
+            if detail is not None:
+                res["trigger"] = {c: v for c, v in trig_by_code.items() if wanted(c)}
+            return res
         except Exception as e:
             return self._fail(e)
 
