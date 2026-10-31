@@ -1,8 +1,24 @@
 # AETHER HE — Aula WIN60 HE Controller
 
-> ## ⚠️ Please reinstall — v0.4.3 fixes the board selector
-> The board selector listed a board that was never offered (KP-TE153) and hid both **Aula
-> MINI 60 HE PRO** entries (wired and 2.4 GHz). Fixed in **v0.4.3**.
+> ## ✨ v0.5.4 — Aether keeps working when your keyboard restarts
+> **If lighting, actuation or SOCD ever stopped responding until you relaunched the app,
+> this release fixes it.** Aether now notices a lost connection and reconnects by itself.
+>
+> - **Self-healing connection.** The status light now proves the keyboard is answering.
+>   After a USB reset or a polling-rate change, Aether reconnects in a few
+>   seconds and restores your lighting effect, travel test and gamepad capture.
+> - **Polling Rate is safe.** Changing it restarts the keyboard; Aether now follows it
+>   through the restart and shows *Restarting keyboard…* instead of going silent.
+> - **A keyboard on the Actuation tab.** Click or drag keys to select them, and see each
+>   key's actuation point, Rapid Trigger values and live travel depth on the board itself.
+> - **No more false "applied" messages.** Actuation, dead band, switch, SOCD and gamepad
+>   changes only show as applied once the keyboard accepts them. Actuation values are read
+>   back from the keyboard.
+> - **SOCD clears for real.** Deleting the last pair and pressing Apply now removes it from
+>   the keyboard. The unused hotkey and mode controls are gone.
+> - **Auto-connect is on by default.**
+>
+> Reconnect and Polling Rate were verified on hardware with an Aula Win60 HE on Windows.
 >
 > ### → [**Download the latest release**](https://github.com/MrWhosNexus/Aether-HE/releases/latest)
 >
@@ -12,8 +28,7 @@
 > **On v0.3.1 or earlier you must reinstall by hand** — *Settings → Check for Updates* in
 > those builds always reported *"You're up to date"* and cannot fix itself
 > ([#14](https://github.com/MrWhosNexus/Aether-HE/issues/14)). **On v0.4.0+** just reopen
-> Aether; it updates itself on launch, and since v0.4.2 it verifies the download's SHA-256
-> before running it.
+> Aether; it updates itself on launch and verifies the download's SHA-256 before running it.
 
 > ## 📣 We're looking for keyboards to support — submit yours!
 > Aether fully drives the **Aula Win60 HE** and the **Aula MINI 60 HE PRO** (wired and
@@ -30,10 +45,32 @@ Cross-platform desktop controller for the Aula Win60 HE Hall-effect keyboard
 (Edge WebView2 on Windows, GTK/WebKit on Linux); HID is bridged to Python.
 
 Features: per-key & multi-color animated lighting (host streaming, 60 fps),
-analog actuation + Rapid Trigger, SOCD, key remap, calibration, and an
-analog→virtual-gamepad pipeline (Hall-effect travel → Xbox 360 sticks/triggers).
+analog actuation + Rapid Trigger with a per-key view of the whole board, SOCD, key
+remap, macros, calibration, automatic reconnect, and an analog→virtual-gamepad
+pipeline (Hall-effect travel → Xbox 360 sticks/triggers).
 
-![Aether HE — keyboard hub UI: profiles, per-key diagram, actuation and travel test](docs/media/aether-he-ui.png)
+## Screenshots
+
+### Actuation — see every key's settings on the board
+Select keys on the board, set the actuation point, Rapid Trigger and dead band, then
+Apply. Each key shows the value the keyboard itself reports, and the live travel depth
+while Travel Test is on.
+
+![Aether HE — Actuation tab: travel, switch profile, dead band, polling rate, calibration and the per-key keyboard](docs/media/aether-he-actuation.png)
+
+![Aether HE — the Actuation keyboard: every key's actuation point read back from the board](docs/media/aether-he-actuation-keyboard.png)
+
+### Lighting — firmware modes and host-streamed multi-color effects
+Pick a mode, colors, brightness, speed and direction. Effects run per key at 60 fps
+and are re-applied after a keyboard restart.
+
+![Aether HE — Lighting tab: live keyboard, mode picker, effect preview and color palette](docs/media/aether-he-lighting.png)
+
+### Gamepad — Hall-effect travel as an Xbox 360 controller
+Map keys to sticks, triggers and buttons. Analog depth drives sticks and triggers
+proportionally; buttons fire past the threshold you set.
+
+![Aether HE — Gamepad tab: enable, axis mapping and driver install](docs/media/aether-he-gamepad.png)
 
 > _Aether HE controlling the Aula Win60 HE. Your board could be next →
 > [submit it](https://github.com/MrWhosNexus/Aether-HE/issues/new?template=add-a-board.yml)._
