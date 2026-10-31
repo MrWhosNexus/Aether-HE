@@ -31,7 +31,7 @@
       }
     }, /*#__PURE__*/React.createElement("span", {
       className: "font-mono text-[9px] uppercase tracking-[0.2em] text-[var(--warn)] shrink-0"
-    }, "Not supported"), /*#__PURE__*/React.createElement("span", {
+    }, n.label || "Not supported"), /*#__PURE__*/React.createElement("span", {
       className: "font-display text-[12px] text-[var(--text)] max-w-[420px]"
     }, n.msg), /*#__PURE__*/React.createElement("button", {
       onClick: () => onDismiss && onDismiss(n.id),

@@ -333,7 +333,7 @@ function SwitchWidget(ctx) {
 
 /* ===== Polling Rate widget ===== */
 function PollingWidget(ctx) {
-  const { polling, handleSetPolling } = ctx;
+  const { polling, handleSetPolling, pollRestarting } = ctx;
   return (
     <div>
       <p className="text-[12px] text-[var(--text-dim)] mb-5">
@@ -341,8 +341,9 @@ function PollingWidget(ctx) {
       </p>
       <div className="flex flex-wrap gap-2">
         {[1, 2, 4, 8].map(p => (
-          <button key={p} onClick={() => handleSetPolling(p)}
+          <button key={p} onClick={() => handleSetPolling(p)} disabled={!!pollRestarting}
             className={`px-4 h-9 rounded-md border font-display text-[12px] uppercase tracking-[0.16em] transition-all
+                        ${pollRestarting ? "opacity-50 cursor-wait " : ""}
                         ${polling === p
                           ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_18px_var(--accent-glow)]"
                           : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`}>
@@ -350,6 +351,13 @@ function PollingWidget(ctx) {
           </button>
         ))}
       </div>
+      {pollRestarting && (
+        <div data-testid="poll-restarting"
+             className="mt-4 inline-flex items-center gap-2 px-3 h-7 rounded-md border border-[var(--accent)]/30 bg-[var(--accent)]/[0.06]">
+          <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] animate-pulse"/>
+          <span className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-[var(--accent)]">Restarting keyboard…</span>
+        </div>
+      )}
       <div className="mt-6 p-4 rounded-lg border border-[var(--line)] bg-[rgba(5,11,14,0.5)] font-mono text-[11px] text-[var(--text-dim)] leading-relaxed">
         <div><span className="text-[var(--text-faint)]">current</span> · <span className="text-[var(--accent)]">{polling}000 Hz</span> · {(1/polling).toFixed(2)}ms tick</div>
         <div><span className="text-[var(--text-faint)]">latency</span> · ~{(0.5 + 1/polling).toFixed(2)}ms end-to-end</div>

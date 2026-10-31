@@ -140,13 +140,23 @@ class AulaDevice:
         self._last_rx = 0.0
         self.dead_events = 0
 
-    def open(self):
+    def _target(self):
         if self._profile is not None:
-            vid, pid = self._profile.vid, self._profile.pid
-            usage_page = self._profile.usage_page or VENDOR_USAGE_PAGE
-            name = self._profile.name
-        else:
-            vid, pid, usage_page, name = AULA_VID, AULA_PID, VENDOR_USAGE_PAGE, "Aula Win60 HE"
+            return (self._profile.vid, self._profile.pid,
+                    self._profile.usage_page or VENDOR_USAGE_PAGE, self._profile.name)
+        return AULA_VID, AULA_PID, VENDOR_USAGE_PAGE, "Aula Win60 HE"
+
+    def present(self):
+        """True if the board is enumerated right now (no handle is opened).
+        Used to follow a restart: the board drops off USB and comes back."""
+        vid, pid, usage_page, _ = self._target()
+        try:
+            return find_vendor_interface(vid, pid, usage_page) is not None
+        except Exception:
+            return False
+
+    def open(self):
+        vid, pid, usage_page, name = self._target()
         info = find_vendor_interface(vid, pid, usage_page)
         if info is None:
             raise IOError(f"{name} not found (VID:PID {vid:04X}:{pid:04X})")

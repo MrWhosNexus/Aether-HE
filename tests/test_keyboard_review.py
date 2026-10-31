@@ -291,7 +291,9 @@ def _api():
 
 def test_api_set_poll_refuses_undefined_codes():
     a = _api()
-    assert a.set_poll(8) == {"ok": True}
+    # The write restarts the board; set_poll follows it (no handle on this
+    # stub, so nothing to reopen — see tests/test_link_recovery.py).
+    assert a.set_poll(8)["ok"] is True
     assert a.driver.calls == [("poll", 8)]
     for bad in (3, 0, 16, 8000):
         r = a.set_poll(bad)

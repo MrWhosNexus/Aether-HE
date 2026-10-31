@@ -412,3 +412,97 @@ def test_gamepad_not_resumed_when_it_was_off(hidworld, monkeypatch):
     assert a.status()["connected"] is False
     a.connect()
     assert a.pad is None and _Pad.opened == 0
+
+
+# ------------------------------------------ poll-rate restart (step 3) ----
+def _restarting_board(hidworld, drop_after=0.05, back_after=0.15, comes_back=True):
+    """Make the poll-rate write behave like the WIN 60 HE (measured): the
+    board drops off USB ~1 s after the write and re-enumerates ~0.35 s later;
+    the old handle then returns -1 on write and raises on read."""
+    orig = FakeHid.write
+
+    def write(self, payload):
+        n = orig(self, payload)
+        p = list(payload)
+        if p[1] == 33 and p[6] == 9:                    # cmd 33 sub 9: poll rate
+            def drop():
+                self.mode = "broken"
+                hidworld.present = False
+            def back():
+                hidworld.present = True
+            threading.Timer(drop_after, drop).start()
+            if comes_back:
+                threading.Timer(back_after, back).start()
+        return n
+    return write
+
+
+def _fast_restart(a):
+    a._POLL_STEP_S = 0.01
+    a._POLL_DROP_WAIT_S = 1.0
+    a._POLL_RESTART_TIMEOUT_S = 2.0
+
+
+def test_set_poll_waits_for_the_restart_and_reconnects(hidworld, monkeypatch):
+    monkeypatch.setattr(FakeHid, "write", _restarting_board(hidworld))
+    a = _api_with_session(monkeypatch)
+    _fast_restart(a)
+    assert a.connect()["ok"]
+    a.set_gamepad_capture(True)
+    a._acquire_reader("analog", lambda: a.driver.make_live_reader(a.km))
+    old_handle = hidworld.handles[-1]
+    r = a.set_poll(8)
+    assert r["ok"] is True and r["restarted"] is True and r["reconnected"] is True
+    assert a.dev.is_open() and hidworld.handles[-1] is not old_handle
+    assert old_handle.closed
+    # session state came back without a manual connect()
+    assert a.reader is not None and a.reader.started and "analog" in a._reader_users
+    assert a.pad is not None and _Pad.opened == 2
+    assert a.status()["connected"] is True
+    # and the new handle carries traffic
+    assert a.driver.probe_link(0.05) is True
+    a.set_gamepad_capture(False)
+
+
+def test_set_poll_reports_when_the_board_does_not_come_back(hidworld, monkeypatch):
+    monkeypatch.setattr(FakeHid, "write", _restarting_board(hidworld, comes_back=False))
+    a = _api()
+    _fast_restart(a)
+    a._POLL_RESTART_TIMEOUT_S = 0.4
+    a.connect()
+    r = a.set_poll(8)
+    assert r["ok"] is True and r["restarted"] is True and r["reconnected"] is False
+    assert a.status()["connected"] is False
+    hidworld.present = True                              # replugged later
+    assert a.connect()["ok"] and a.status()["connected"] is True
+
+
+def test_status_and_connect_stand_aside_while_the_board_restarts(hidworld, monkeypatch):
+    monkeypatch.setattr(FakeHid, "write",
+                        _restarting_board(hidworld, drop_after=0.1, back_after=0.4))
+    a = _api()
+    _fast_restart(a)
+    a.connect()
+    seen = {}
+
+    def ui_watchdog():
+        time.sleep(0.2)                                  # mid-restart
+        seen["status"] = a.status()
+        seen["connect"] = a.connect()
+
+    t = threading.Thread(target=ui_watchdog)
+    t.start()
+    r = a.set_poll(8)
+    t.join(2)
+    assert seen["status"] == {"connected": False, "restarting": True}
+    assert seen["connect"]["ok"] is False and seen["connect"].get("restarting") is True
+    assert r["reconnected"] is True
+
+
+def test_set_poll_write_failure_is_reported(hidworld):
+    a = _api()
+    a.connect()
+    hidworld.handles[-1].mode = "broken"
+    hidworld.present = False
+    r = a.set_poll(8)
+    assert r["ok"] is False

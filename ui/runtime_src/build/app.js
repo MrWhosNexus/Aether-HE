@@ -1493,6 +1493,24 @@
       return () => unsupportedListeners.delete(onUnsupported);
     }, []);
     const dismissBoardNotice = id => setBoardNotices(ns => ns.filter(n => n.id !== id));
+    // Same toast pipe for failures that are not capability gates (a write the
+    // board refused, a link that dropped mid-apply). `label` replaces the
+    // "Not supported" tag.
+    const pushNotice = (msg, {
+      label = "Failed",
+      feature = null,
+      ms = 6000
+    } = {}) => {
+      if (!msg) return;
+      const id = Date.now() + Math.random();
+      setBoardNotices(ns => ns.some(n => n.msg === msg) ? ns : [...ns.slice(-3), {
+        id,
+        feature,
+        label,
+        msg
+      }]);
+      setTimeout(() => setBoardNotices(ns => ns.filter(n => n.id !== id)), ms);
+    };
 
     // Keep the active-board snapshot fresh across connect/disconnect (the 5s
     // roster poll would catch it anyway; this just makes it immediate).
@@ -1512,9 +1530,41 @@
     }) : null;
 
     // Polling change restarts the board, so only ever send it on an explicit click.
-    const handleSetPolling = p => {
-      setPolling(p);
-      if (connected) apiCall("set_poll", p);
+    // The backend follows the board through the restart (drop off USB, come
+    // back, reopen, restore readers/gamepad) and only then returns, so the UI
+    // shows "restarting keyboard" and goes Offline for the span: the watchdog
+    // stands aside (restartingRef), and the false -> true flip of `connected`
+    // re-sends the lighting effect and re-opens Travel Test like any reconnect.
+    const [pollRestarting, setPollRestarting] = useState(false);
+    const restartingRef = useRef(false);
+    const handleSetPolling = async p => {
+      if (restartingRef.current) return;
+      if (!connected) {
+        setPolling(p);
+        return;
+      }
+      restartingRef.current = true;
+      setPollRestarting(true);
+      // Offline for the restart: every effect that talks to the board is gated
+      // on `connected`, so nothing is sent into the handle that is going away.
+      setConnected(false);
+      setLiveDepths(null);
+      try {
+        const r = await apiCall("set_poll", p);
+        if (r && r.ok) {
+          setPolling(p);
+          if (!r.restarted || r.reconnected) setConnected(true);else pushNotice("The keyboard restarted but has not come back yet. Aether reconnects when it does.", {
+            label: "Restarting"
+          });
+        } else {
+          if (r && !r.unsupported) pushNotice(`Polling rate not changed: ${r && r.error || "no reply"}`);
+          const s = await apiCall("status");
+          setConnected(!!(s && s.connected));
+        }
+      } finally {
+        restartingRef.current = false;
+        setPollRestarting(false);
+      }
     };
     const handleCalibrate = start => {
       setCalibrating(start);
@@ -1682,12 +1732,16 @@
       let alive = true,
         busy = false;
       const tick = async () => {
-        if (!alive || busy || connectingRef.current) return;
+        if (!alive || busy || connectingRef.current || restartingRef.current) return;
         if (!autoConnect && !connectedRef.current) return; // nothing to watch
         busy = true;
         try {
           const s = await apiCall("status");
           const isOpen = !!(s && s.connected);
+          if (s && s.restarting) {
+            busy = false;
+            return;
+          } // set_poll owns the link
           if (isOpen) {
             if (!connectedRef.current) setConnected(true);
           } else {
@@ -2153,6 +2207,7 @@
       handlePickSwitch,
       polling,
       handleSetPolling,
+      pollRestarting,
       // travel test + calibration telemetry
       travelTest,
       setTravelTest,

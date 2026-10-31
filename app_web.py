@@ -442,10 +442,27 @@ class Api:
         return out
 
     def connect(self):
+        if getattr(self, "_restarting", False):
+            # set_poll is following the board through its restart and will
+            # reopen it itself; a second open from the UI watchdog would race it.
+            return {"ok": False, "restarting": True,
+                    "error": "the keyboard is restarting"}
+        return self._connect()
+
+    def _connect(self, resume=True, verify=False):
+        """connect() body. `verify`: prove the fresh handle answers (probe)
+        before anything else, and give up on it if not (set_poll uses this
+        while the board comes back). `resume`: run _resume_session."""
         try:
             # Driver-specific open + handshake (Win60: heartbeat; MINI60:
             # 0x10 device info + LED-table seed; inert boards: open only).
             info = self.driver.connect()
+            if verify and self.driver.probe_link(self._PROBE_TIMEOUT_S) is False:
+                try:
+                    self.dev.close()
+                except Exception:
+                    pass
+                return {"ok": False, "error": "the keyboard is not answering yet"}
             # Snapshot the device's Fn-layer table so we can replay it after any
             # base-layer write (see _flush_remaps). Failures here are non-fatal;
             # we just won't be able to preserve the user's Fn customization.
@@ -463,7 +480,8 @@ class Api:
             # Any handle death before this connect is now handled: the
             # fresh handle starts a clean slate for status().
             self._dead_seen = getattr(self.dev, "dead_events", 0)
-            self._resume_session()
+            if resume:
+                self._resume_session()
             return {"ok": True, "iface": info["interface_number"]}
         except Exception as e:
             return self._fail(e)
@@ -659,6 +677,9 @@ class Api:
         dev = getattr(self, "dev", None)
         if dev is None:
             return {"connected": False}
+        if getattr(self, "_restarting", False):
+            # set_poll owns the link until the board is back (or gives up).
+            return {"connected": False, "restarting": True}
         # A handle that died underneath us (a failed write/read dropped it),
         # even if a later driver write reopened it: report the loss once so
         # the UI reconnects and the session state is rebuilt.
@@ -1037,17 +1058,71 @@ class Api:
     #: undefined code is refused here rather than sent.
     _POLL_CODES = (1, 2, 4, 8)
 
+    #: The poll-rate write RESTARTS the keyboard. Measured on a WIN 60 HE:
+    #: it drops off USB ~1.05 s after the write and re-enumerates ~0.35 s
+    #: later; the old handle then returns -1 on write and raises on read.
+    #: set_poll follows it through: wait (bounded) for the drop, then for
+    #: the board to come back and answer, and reopen it.
+    _POLL_RESTART_TIMEOUT_S = 8.0
+    _POLL_DROP_WAIT_S = 3.0
+    _POLL_STEP_S = 0.1
+
     def set_poll(self, rate):
         try:
             code = int(rate)
-            if code not in self._POLL_CODES:
-                return {"ok": False,
-                        "error": f"invalid poll-rate code {rate} "
-                                 f"(expected one of {list(self._POLL_CODES)})"}
-            self.driver.set_poll_rate(code)
-            return {"ok": True}
-        except Exception as e:
-            return self._fail(e)
+        except (TypeError, ValueError):
+            code = None
+        if code not in self._POLL_CODES:
+            return {"ok": False,
+                    "error": f"invalid poll-rate code {rate} "
+                             f"(expected one of {list(self._POLL_CODES)})"}
+        if getattr(self, "_restarting", False):
+            return {"ok": False, "restarting": True,
+                    "error": "the keyboard is already restarting"}
+        self._restarting = True
+        try:
+            try:
+                self.driver.set_poll_rate(code)
+            except Exception as e:
+                return self._fail(e)
+            back = self._follow_restart()
+            # `restarted` tells the UI the link was cycled: it treats
+            # `reconnected` like a fresh connect (re-sends lighting), and a
+            # False like a lost link (its watchdog reconnects later).
+            return {"ok": True, "restarted": True, "reconnected": back}
+        finally:
+            self._restarting = False
+
+    def _follow_restart(self):
+        """After a write that restarts the keyboard: tear the session down
+        now (the handle is about to go stale), wait for the board to drop off
+        USB and come back, reopen + verify it, then resume the session. True
+        if it is back within _POLL_RESTART_TIMEOUT_S."""
+        dev = getattr(self, "dev", None)
+        if dev is None:
+            return False
+        self._on_link_lost("the poll-rate change restarts the keyboard")
+        present = getattr(dev, "present", None)
+        t0 = time.monotonic()
+        deadline = t0 + self._POLL_RESTART_TIMEOUT_S
+        if present is not None:
+            # Reopening before the drop would grab the old instance, which
+            # dies a moment later.
+            drop_by = t0 + self._POLL_DROP_WAIT_S
+            while time.monotonic() < drop_by and present():
+                time.sleep(self._POLL_STEP_S)
+        while time.monotonic() < deadline:
+            if present is None or present():
+                r = self._connect(resume=False, verify=True)
+                if r.get("ok"):
+                    self._resume_session()
+                    log.info("keyboard back after the poll-rate restart (%.1f s)",
+                             time.monotonic() - t0)
+                    return True
+            time.sleep(self._POLL_STEP_S)
+        log.warning("keyboard not back %.0f s after the poll-rate restart",
+                    self._POLL_RESTART_TIMEOUT_S)
+        return False
 
     # ---- per-key actuation (codes from the design's selection) ----
     def _flush_triggers(self, edited_idxs=None):

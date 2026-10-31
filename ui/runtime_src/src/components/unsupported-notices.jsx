@@ -27,7 +27,7 @@ function UnsupportedNotices({ notices, onDismiss }) {
                      animate-[fadeIn_140ms_ease-out]"
           style={{ borderColor: "color-mix(in srgb, var(--warn) 45%, transparent)" }}>
           <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-[var(--warn)] shrink-0">
-            Not supported
+            {n.label || "Not supported"}
           </span>
           <span className="font-display text-[12px] text-[var(--text)] max-w-[420px]">
             {n.msg}
