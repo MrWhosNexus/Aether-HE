@@ -463,6 +463,7 @@ class Api:
             # Any handle death before this connect is now handled: the
             # fresh handle starts a clean slate for status().
             self._dead_seen = getattr(self.dev, "dead_events", 0)
+            self._resume_session()
             return {"ok": True, "iface": info["interface_number"]}
         except Exception as e:
             return self._fail(e)
@@ -626,6 +627,33 @@ class Api:
         self._dead_seen = getattr(dev, "dead_events", 0)
         self._last_probe = 0.0
         self._probe_gate = threading.Lock()
+        # Set by _on_link_lost when gamepad capture was running, so the
+        # reconnect turns it back on (the UI keeps showing it as on).
+        self._resume_gamepad = False
+
+    def _resume_session(self):
+        """After a (re)connect, bring back what a lost link tore down. The
+        shared live reader comes back for whoever still claims it (analog
+        tab / reactive effect / gamepad: _on_link_lost parks it but keeps the
+        owners); gamepad capture is re-enabled if it was on. Lighting is the
+        UI's job: its effects re-send the current effect when `connected`
+        flips back to true. Actuation / RT / SOCD / dead band live in the
+        keyboard's flash and need nothing. A manual disconnect() clears the
+        owners and the flag, so a normal connect restores nothing. Never
+        raises (connect() must still report the open handle)."""
+        try:
+            self._restore_shared_reader()
+        except Exception as e:
+            log.warning("live reader not restored after reconnect: %s", e)
+        if getattr(self, "_resume_gamepad", False):
+            self._resume_gamepad = False
+            try:
+                r = self.set_gamepad_capture(True)
+                if not (r and r.get("ok")):
+                    log.warning("gamepad capture not resumed: %s",
+                                (r or {}).get("error"))
+            except Exception as e:
+                log.warning("gamepad capture not resumed: %s", e)
 
     def status(self):
         dev = getattr(self, "dev", None)
@@ -751,7 +779,10 @@ class Api:
         except Exception:
             pass
         try:
-            if getattr(self, "pad", None) is not None or getattr(self, "_pad_thread", None):
+            th = getattr(self, "_pad_thread", None)
+            if getattr(self, "pad", None) is not None or th is not None:
+                if th is not None and th.is_alive():
+                    self._resume_gamepad = True
                 self.set_gamepad_capture(False)
         except Exception:
             pass
@@ -877,6 +908,7 @@ class Api:
     def disconnect(self):
         self.stop_multicolor()
         self.set_gamepad_capture(False)
+        self._resume_gamepad = False      # the user's choice: restore nothing
         # Disarm calibration BEFORE closing the handle — otherwise the board is
         # left in calibration mode (its stored calibration already wiped) with
         # no way to recover on reconnect.

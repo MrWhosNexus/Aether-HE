@@ -1087,13 +1087,23 @@ function App() {
   // Auto-reconnect watchdog: while Auto is on, poll the real device state and
   // (re)connect whenever the board appears — covers unplug/replug, not just
   // launch. Uses refs so the long-lived interval never reads stale state.
+  //
+  // status() PROVES the link (Api._probe_link: a recent reply or a heartbeat
+  // probe), so a board that re-enumerated under a stale handle (Poll Rate
+  // change, replug) now reads as disconnected and is reconnected here. The
+  // false -> true flip of `connected` is what re-sends the current lighting
+  // effect (both lighting effects below depend on `connected`) and re-opens
+  // Travel Test; the backend restores the live reader and gamepad capture.
+  // With Auto off the watchdog still reports a lost link (Linked -> Offline)
+  // while connected, but never reconnects on its own.
   const connectedRef = useRef(connected); connectedRef.current = connected;
   const connectingRef = useRef(connecting); connectingRef.current = connecting;
   useEffect(() => {
-    if (!hydrated || !autoConnect) return;
+    if (!hydrated) return;
     let alive = true, busy = false;
     const tick = async () => {
       if (!alive || busy || connectingRef.current) return;
+      if (!autoConnect && !connectedRef.current) return;   // nothing to watch
       busy = true;
       try {
         const s = await apiCall("status");
@@ -1102,8 +1112,10 @@ function App() {
           if (!connectedRef.current) setConnected(true);
         } else {
           if (connectedRef.current) { setConnected(false); setLiveDepths(null); }
-          const r = await apiCall("connect");
-          if (alive && r && r.ok) setConnected(true);
+          if (autoConnect) {
+            const r = await apiCall("connect");
+            if (alive && r && r.ok) setConnected(true);
+          }
         }
       } catch {}
       busy = false;

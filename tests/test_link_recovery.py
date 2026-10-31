@@ -317,3 +317,98 @@ def test_probe_with_running_live_reader_does_not_restart_it(hidworld):
         assert a.status()["connected"] is False
     finally:
         lr.stop()
+
+
+# ------------------------------------------------ recovery (step 2) ----
+class _Pad:
+    opened = 0
+    closed = 0
+
+    def __init__(self, mappings=None):
+        pass
+
+    def open(self):
+        _Pad.opened += 1
+        return self
+
+    def close(self):
+        _Pad.closed += 1
+
+    def update(self, depths):
+        pass
+
+
+class _Reader:
+    """A minimal live reader the Api can start/stop."""
+    made = []
+
+    def __init__(self):
+        self.started = self.stopped = False
+        _Reader.made.append(self)
+
+    def start(self):
+        self.started = True
+
+    def stop(self):
+        self.stopped = True
+
+    def alive(self):
+        return self.started and not self.stopped
+
+    def snapshot(self):
+        return {}
+
+
+def _api_with_session(monkeypatch):
+    monkeypatch.setattr(app_web.gamepad, "VirtualGamepad", _Pad)
+    _Pad.opened = _Pad.closed = 0
+    _Reader.made = []
+    a = _api()
+    a.km = types.SimpleNamespace(indices=lambda: [0])
+    a._pad_map = None
+    a.driver.make_live_reader = lambda km, indices=None: _Reader()
+    return a
+
+
+def test_reconnect_restores_claimed_reader_and_gamepad(hidworld, monkeypatch):
+    a = _api_with_session(monkeypatch)
+    assert a.connect()["ok"]
+    assert a.set_gamepad_capture(True)["ok"]
+    a._acquire_reader("analog", lambda: a.driver.make_live_reader(a.km))
+    first = a.reader
+    assert first is not None and first.started
+    assert _Pad.opened == 1
+    # the board re-enumerates and stops answering
+    hidworld.handles[-1].mode = "stale"
+    _go_quiet(a)
+    assert a.status()["connected"] is False
+    assert first.stopped and a.reader is None
+    assert a.pad is None and _Pad.closed == 1          # gamepad torn down
+    assert "analog" in a._reader_users                  # claim survives the loss
+    # the UI watchdog reconnects
+    assert a.connect()["ok"]
+    assert a.reader is not None and a.reader is not first and a.reader.started
+    assert {"analog", "gamepad"} <= a._reader_users
+    assert a.pad is not None and _Pad.opened == 2       # gamepad back on
+    assert a._pad_thread is not None and a._pad_thread.is_alive()
+    a.set_gamepad_capture(False)
+
+
+def test_reconnect_after_manual_disconnect_restores_nothing(hidworld, monkeypatch):
+    a = _api_with_session(monkeypatch)
+    a.connect()
+    a.set_gamepad_capture(True)
+    a.disconnect()                                      # the user's choice
+    assert a.connect()["ok"]
+    assert a.reader is None and a.pad is None
+    assert _Pad.opened == 1
+
+
+def test_gamepad_not_resumed_when_it_was_off(hidworld, monkeypatch):
+    a = _api_with_session(monkeypatch)
+    a.connect()
+    hidworld.handles[-1].mode = "stale"
+    _go_quiet(a)
+    assert a.status()["connected"] is False
+    a.connect()
+    assert a.pad is None and _Pad.opened == 0
