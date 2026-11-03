@@ -301,3 +301,37 @@ def test_design_code_alignment_is_total_only_at_exactly_61_keys():
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main([__file__, "-q"]))
+
+
+# GitHub issue #20 (2026-08-13): a WIN 68 HE owner extracted the key table
+# from the vendor web driver's live page for their physical board. Pinned
+# here as (index, code, hidCode) so a future edit to the shipped layout
+# cannot silently diverge from what real hardware reported.
+ISSUE20_WIN68 = [
+    (22, "Escape", 0x29), (23, "Digit1", 0x1E), (24, "Digit2", 0x1F), (25, "Digit3", 0x20),
+    (26, "Digit4", 0x21), (27, "Digit5", 0x22), (28, "Digit6", 0x23), (29, "Digit7", 0x24),
+    (30, "Digit8", 0x25), (31, "Digit9", 0x26), (32, "Digit0", 0x27), (33, "Minus", 0x2D),
+    (34, "Equal", 0x2E), (36, "Backspace", 0x2A), (38, "Insert", 0x49), (44, "Tab", 0x2B),
+    (45, "KeyQ", 0x14), (46, "KeyW", 0x1A), (47, "KeyE", 0x08), (48, "KeyR", 0x15),
+    (49, "KeyT", 0x17), (50, "KeyY", 0x1C), (51, "KeyU", 0x18), (52, "KeyI", 0x0C),
+    (53, "KeyO", 0x12), (54, "KeyP", 0x13), (55, "BracketLeft", 0x2F), (56, "BracketRight", 0x30),
+    (58, "Backslash", 0x31), (60, "Delete", 0x4C), (66, "CapsLock", 0x39), (68, "KeyA", 0x04),
+    (69, "KeyS", 0x16), (70, "KeyD", 0x07), (71, "KeyF", 0x09), (72, "KeyG", 0x0A),
+    (73, "KeyH", 0x0B), (74, "KeyJ", 0x0D), (75, "KeyK", 0x0E), (76, "KeyL", 0x0F),
+    (77, "Semicolon", 0x33), (78, "Quote", 0x34), (80, "Enter", 0x28), (82, "PageUp", 0x4B),
+    (88, "ShiftLeft", 0xE1), (90, "KeyZ", 0x1D), (91, "KeyX", 0x1B), (92, "KeyC", 0x06),
+    (93, "KeyV", 0x19), (94, "KeyB", 0x05), (95, "KeyN", 0x11), (96, "KeyM", 0x10),
+    (97, "Comma", 0x36), (98, "Period", 0x37), (99, "Slash", 0x38), (101, "ShiftRight", 0xE5),
+    (103, "ArrowUp", 0x52), (104, "PageDown", 0x4E), (110, "ControlLeft", 0xE0),
+    (111, "MetaLeft", 0xE3), (112, "AltLeft", 0xE2), (116, "Space", 0x2C), (119, "AltRight", 0xE6),
+    (121, "KeyFn", 0xFA), (122, "ControlRight", 0xE4), (124, "ArrowLeft", 0x50),
+    (125, "ArrowDown", 0x51), (126, "ArrowRight", 0x4F),
+]
+
+
+def test_win68_layout_matches_issue20_submission():
+    data = _load_json(os.path.join(LAYOUT_DIR, "aula-win68he-si2828heargb.json"))
+    shipped = {int(k["index"]): (k["code"], int(str(k["hidCode"]), 16)) for k in data["keys"]}
+    submitted = {i: (c, h) for i, c, h in ISSUE20_WIN68}
+    assert len(submitted) == 68
+    assert shipped == submitted
