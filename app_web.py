@@ -842,8 +842,19 @@ class Api:
             # hostEngineMaxFps field (see _lighting_block).
             "lighting": _lighting_block(b),
             "actuation": getattr(b, "actuation", None),
+            "uiLayout": self._ui_layout(),
         }
         return {"active": active, "boards": roster}
+
+    # Design codes that make a keymap the 68-key (65 %) WIN 68 layout.
+    _UI68_CODES = frozenset({"Ins", "Del", "PgUp", "PgDn", "Up", "Left", "Down", "Right"})
+
+    def _ui_layout(self):
+        """Which on-screen keyboard the UI draws for the active keymap: "68"
+        for the WIN 68 HE / HE Max key set, else "60" (the Win60 drawing)."""
+        km = getattr(self, "km", None)
+        codes = set(getattr(km, "index_of_code", None) or ())
+        return "68" if self._UI68_CODES <= codes and "Menu" not in codes else "60"
 
     def list_boards(self):
         """Every registered board with its live connection state — for the

@@ -33,6 +33,44 @@ DESIGN_CODES = [
     "LCtrl", "LWin", "LAlt", "Space", "RAlt", "Menu", "RCtrl", "Fn",
 ]
 
+# Layout `code` (the web KeyboardEvent.code the vendor key tables use) ->
+# design code. Keys are mapped BY NAME: the old positional pairing of the
+# sorted keys with DESIGN_CODES only fits the 61-key Win60; on the 68-key
+# WIN 68 HE it shifted every code from Insert on (Tab read as Q, A wrote to
+# Delete's slot, Space/arrows/Fn got none).
+WEB_TO_DESIGN = {
+    "Escape": "Escape", "Backquote": "Grave",
+    **{f"Digit{d}": str(d) for d in range(10)},
+    "Minus": "Minus", "Equal": "Equal", "Backspace": "Backspace",
+    "Tab": "Tab", **{f"Key{c}": c for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"},
+    "BracketLeft": "Lbr", "BracketRight": "Rbr", "Backslash": "Bsl",
+    "CapsLock": "Caps", "Semicolon": "Semi", "Quote": "Quot", "Enter": "Enter",
+    "ShiftLeft": "LShift", "Comma": "Comma", "Period": "Dot", "Slash": "Slash",
+    "ShiftRight": "RShift", "ControlLeft": "LCtrl", "MetaLeft": "LWin",
+    "AltLeft": "LAlt", "Space": "Space", "AltRight": "RAlt", "MetaRight": "RWin",
+    "ContextMenu": "Menu", "ControlRight": "RCtrl", "KeyFn": "Fn",
+    "Insert": "Ins", "Delete": "Del", "Home": "Home", "End": "End",
+    "PageUp": "PgUp", "PageDown": "PgDn",
+    "ArrowUp": "Up", "ArrowLeft": "Left", "ArrowDown": "Down", "ArrowRight": "Right",
+    **{f"F{n}": f"F{n}" for n in range(1, 13)},
+    "IntlBackslash": "IntlBsl", "IntlRo": "IntlRo", "PrintScreen": "PrtSc",
+    "ScrollLock": "ScrLk", "Pause": "Pause",
+}
+
+
+def design_codes_for(keys):
+    """{device index: design code} by each key's layout `code`, or None when
+    any key has an unknown or duplicate code (the caller then falls back to
+    the positional mapping)."""
+    out, seen = {}, set()
+    for k in keys:
+        d = WEB_TO_DESIGN.get(k.get("code"))
+        if d is None or d in seen:
+            return None
+        seen.add(d)
+        out[int(k["index"])] = d
+    return out
+
 
 class KeyMap:
     def __init__(self, path=KEYMAP_PATH):
@@ -57,14 +95,22 @@ class KeyMap:
                 self.layer_indices.add(idx)
 
         # Align device keys to design codes by physical position (row, then col).
-        ordered = sorted(self.keys, key=lambda k: (round(float(k["y"]) / 10),
-                                                    float(k["x"])))
         self.code_of_index = {}
         self.index_of_code = {}
-        for k, code in zip(ordered, DESIGN_CODES):
-            idx = int(k["index"])
-            self.code_of_index[idx] = code
-            self.index_of_code[code] = idx
+        by_code = design_codes_for(self.keys)
+        if by_code is not None:
+            for idx, code in by_code.items():
+                self.code_of_index[idx] = code
+                self.index_of_code[code] = idx
+        else:
+            # Legacy: a layout with a key code we do not know. Positional
+            # pairing (only right for the 61-key Win60 order).
+            ordered = sorted(self.keys, key=lambda k: (round(float(k["y"]) / 10),
+                                                        float(k["x"])))
+            for k, code in zip(ordered, DESIGN_CODES):
+                idx = int(k["index"])
+                self.code_of_index[idx] = code
+                self.index_of_code[code] = idx
 
     def indices(self):
         return [int(k["index"]) for k in self.keys]

@@ -24,7 +24,7 @@ const KeyboardPanel = KB.KeyboardPanel;
 const KB_ROWS = KB.KB_ROWS || [];
 
 const LABEL_OF_CODE = {};
-KB_ROWS.flat().forEach(([label, _u, code]) => { LABEL_OF_CODE[code] = label; });
+(KB.ALL_ROWS || KB_ROWS).flat().forEach(([label, _u, code]) => { if (!(code in LABEL_OF_CODE)) LABEL_OF_CODE[code] = label; });
 
 const RANGES = [
   { days: 1, label: "Today" },

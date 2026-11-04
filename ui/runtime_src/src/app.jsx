@@ -156,8 +156,10 @@ const MODE_BYTE = Object.fromEntries(Object.entries(FW_MODES).map(([k, v]) => [k
 // SOCD key labels (BASIC/EXTENDED) → design data-code, from the keyboard layout.
 const LABEL_TO_CODE = (() => {
   const map = {};
-  ((window.AetherKeyboard && window.AetherKeyboard.KB_ROWS) || []).flat()
-    .forEach(([label, _u, code]) => { if (label && code) map[label] = code; });
+  // ALL_ROWS: every board layout's keys, so 68-key labels (Del, ↑ ...) resolve too.
+  const KBm = window.AetherKeyboard || {};
+  (KBm.ALL_ROWS || KBm.KB_ROWS || []).flat()
+    .forEach(([label, _u, code]) => { if (label && code && !(label in map)) map[label] = code; });
   return map;
 })();
 
@@ -936,6 +938,11 @@ function App() {
   // every poll, and swapping identity for identical data would re-render the
   // whole App (ctx is rebuilt from `board`) every 5 s for nothing.
   const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  // The on-screen keyboard follows the active board's physical layout.
+  useEffect(() => {
+    const KBm = window.AetherKeyboard;
+    if (KBm && KBm.setLayout) KBm.setLayout((board && board.uiLayout) || "60");
+  }, [board && board.uiLayout]);
   const refreshBoards = async () => {
     try {
       const g = await apiCall("get_board");
