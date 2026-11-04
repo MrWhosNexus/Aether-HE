@@ -22,6 +22,16 @@ Press segmentation (integer hundredths of a millimetre, ``raw = round(mm*100)``)
     Any run (press or shallow) peaking at BOTTOM_RAW or more also counts
     ``bottom``.
   Invariant: sum(hist) == presses + shallow.
+
+Actuation buckets (Phase 4): a run is filed under the actuation its key had
+when the run ended, so one key's counters for one day are split per
+actuation value. Day-file keys are ``"<idx>"`` for runs with the actuation
+unknown (the "unrated" ones) and ``"<idx>@<act>"`` (act in 0.01 mm) for the
+rest; in memory a bucket is ``idx`` or ``(idx, act)``. ``load_day`` and
+``aggregate`` merge a key's buckets (the Phase 1 view); ``load_day_buckets``
+and ``recent_buckets`` keep them apart so auto-tune can use only the presses
+recorded at a key's CURRENT actuation. Files written before the split hold
+only ``"<idx>"`` keys and load as the unknown-actuation bucket.
 """
 import datetime
 import json
@@ -81,9 +91,19 @@ def peak_percentile(hist, q):
     return None
 
 
-_KEY_RE = re.compile(r"^\d{1,3}$")
+_KEY_RE = re.compile(r"^(\d{1,3})(?:@(\d{1,3}))?$")
 _DAY_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\.json$")
 _CLEAR_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\.json(\.tmp)?$")
+
+
+def bucket_idx(bucket):
+    """Device index of an aggregate bucket (``idx`` or ``(idx, act)``)."""
+    return bucket[0] if isinstance(bucket, tuple) else bucket
+
+
+def _bucket_str(bucket):
+    return (f"{bucket[0]}@{bucket[1]}" if isinstance(bucket, tuple)
+            else str(bucket))
 
 
 def _default_today():
@@ -103,7 +123,7 @@ class Telemetry:
         self._io_lock = threading.Lock()
         self._open = {}      # idx -> [t_start, peak_raw, t_peak, trough_raw]
         self._act = {}       # idx -> actuation in hundredths of a mm
-        self._pending = {}   # (date, board) -> {idx: agg}
+        self._pending = {}   # (date, board) -> {bucket: agg}
         self._flusher = None
         self._stop = threading.Event()
 
@@ -138,6 +158,11 @@ class Telemetry:
                     self._act[int(idx)] = int(round(v * 100))
                 except (TypeError, ValueError):
                     continue
+
+    def actuation(self):
+        """Copy of the read-back actuation map ({device index: 0.01 mm})."""
+        with self._lock:
+            return dict(self._act)
 
     def forget_actuation(self, idxs):
         with self._lock:
@@ -177,12 +202,13 @@ class Telemetry:
         t_start, peak, t_peak, _ = run
         if peak <= ATTEMPT_MIN_RAW:
             return
+        act = self._act.get(idx)
+        bucket = idx if act is None else (idx, act)
         agg = self._pending.setdefault((self._today(), self._board), {}) \
-            .setdefault(idx, empty_agg())
+            .setdefault(bucket, empty_agg())
         agg["hist"][min(HIST_BINS - 1, peak // 10)] += 1
         if peak >= BOTTOM_RAW:
             agg["bottom"] += 1
-        act = self._act.get(idx)
         if act is not None and peak < act:
             agg["shallow"] += 1
         else:
@@ -232,7 +258,7 @@ class Telemetry:
         return agg
 
     def _read_day(self, date):
-        """board -> {idx: agg} from the day file; {} when missing/corrupt."""
+        """board -> {bucket: agg} from the day file; {} when missing/corrupt."""
         try:
             with open(self._path(date), "r", encoding="utf-8") as fh:
                 doc = json.load(fh)
@@ -249,18 +275,31 @@ class Telemetry:
                 continue
             part = out.setdefault(slug, {})
             for k, rec in keys.items():
-                if isinstance(k, str) and _KEY_RE.match(k):
-                    part[int(k)] = self._sanitise(rec)
+                m = _KEY_RE.match(k) if isinstance(k, str) else None
+                if not m:
+                    continue
+                idx = int(m.group(1))
+                bucket = idx if m.group(2) is None else (idx, int(m.group(2)))
+                part[bucket] = self._sanitise(rec)
         return out
 
-    def load_day(self, date):
-        """idx -> aggregate for one day (file + pending) on the current board."""
+    def load_day_buckets(self, date):
+        """bucket -> aggregate for one day (file + pending) on the current
+        board. A bucket is ``idx`` (actuation unknown) or ``(idx, act)``."""
         with self._io_lock:
             out = dict(self._read_day(date).get(self._board, {}))
             with self._lock:
-                for idx, a in self._pending.get((date, self._board), {}).items():
-                    merge_agg(out.setdefault(idx, empty_agg()), a)
+                for b, a in self._pending.get((date, self._board), {}).items():
+                    merge_agg(out.setdefault(b, empty_agg()), a)
             return out
+
+    def load_day(self, date):
+        """idx -> aggregate for one day (file + pending) on the current
+        board, with every actuation bucket of a key merged."""
+        out = {}
+        for b, a in self.load_day_buckets(date).items():
+            merge_agg(out.setdefault(bucket_idx(b), empty_agg()), a)
+        return out
 
     def flush(self):
         """Write the pending deltas into their day files. True = nothing is
@@ -287,10 +326,11 @@ class Telemetry:
                     cur = self._read_day(date)
                     for slug, keys in boards.items():
                         part = cur.setdefault(slug, {})
-                        for idx, a in keys.items():
-                            merge_agg(part.setdefault(idx, empty_agg()), a)
+                        for b, a in keys.items():
+                            merge_agg(part.setdefault(b, empty_agg()), a)
                     doc = {"version": FILE_VERSION, "date": date,
-                           "boards": {slug: {str(i): a for i, a in keys.items()}
+                           "boards": {slug: {_bucket_str(b): a
+                                             for b, a in keys.items()}
                                       for slug, keys in cur.items()}}
                     path = self._path(date)
                     tmp = path + ".tmp"
@@ -307,8 +347,8 @@ class Telemetry:
                     for date in failed:
                         for slug, keys in by_date[date].items():
                             dst = self._pending.setdefault((date, slug), {})
-                            for idx, a in keys.items():
-                                merge_agg(dst.setdefault(idx, empty_agg()), a)
+                            for b, a in keys.items():
+                                merge_agg(dst.setdefault(b, empty_agg()), a)
             self._prune()
             return ok
 
@@ -366,6 +406,16 @@ class Telemetry:
         self.flush()
 
     # ---- reading -------------------------------------------------------
+
+    def recent_buckets(self, days):
+        """[(date, load_day_buckets(date)), ...] for the last `days` days
+        (at least 1), newest first, today included."""
+        today = datetime.date.fromisoformat(self._today())
+        out = []
+        for k in range(max(1, int(days))):
+            d = (today - datetime.timedelta(days=k)).isoformat()
+            out.append((d, self.load_day_buckets(d)))
+        return out
 
     def aggregate(self, days=1):
         today = datetime.date.fromisoformat(self._today())

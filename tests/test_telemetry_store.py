@@ -1,6 +1,7 @@
 """Phase 1 key statistics on disk: day files, merge, prune, clear, flusher,
 and the privacy anti-goal (only per-key aggregates ever reach the file)."""
 import json
+import re
 import threading
 import time
 
@@ -164,14 +165,16 @@ def test_concurrent_feed_and_flush_lose_and_duplicate_nothing(tmp_path):
 def test_day_file_holds_only_per_key_aggregates(tmp_path):
     tel = _tel(tmp_path)
     t = _press(tel, W, [0.4, 1.2, 3.35])
+    tel.set_actuation({47: 0.80})                  # Phase 4 bucket "47@80"
     _press(tel, 47, [0.3, 0.9], t0=t)
     tel.flush()
     doc = _doc(tmp_path)
     assert set(doc) == {"version", "date", "boards"}
     assert doc["version"] == 1 and doc["date"] == TODAY
     for keys in doc["boards"].values():
+        assert set(keys) == {"46", "47@80"}
         for k, rec in keys.items():
-            assert k.isdigit()
+            assert re.fullmatch(r"\d{1,3}(@\d{1,3})?", k)
             assert set(rec) == set(FIELDS) | {"hist"}
             assert all(type(rec[f]) is int for f in FIELDS)
             assert len(rec["hist"]) == HIST_BINS
