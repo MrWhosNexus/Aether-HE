@@ -417,3 +417,139 @@ class Sampler:
             except Exception:
                 pass
             stop_ev.wait(max(0.01, self._interval - (time.monotonic() - t0)))
+
+# ---- per-profile preferences (settings.json top-level key "overlays") ---------
+PREFS_KEY = "overlays"
+MAX_PROFILE_ID = 64
+
+
+def _read_settings(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def load_prefs(path):
+    """{"profiles": {profile id: {overlay id: bool}}, "pomodoro": {...}} with
+    anything malformed dropped. The key is Aether-owned: the UI's own settings
+    saves merge around it (Api.save_settings keeps unknown top-level keys)."""
+    raw = _read_settings(path).get(PREFS_KEY)
+    out = {"profiles": {}, "pomodoro": {}}
+    if not isinstance(raw, dict):
+        return out
+    profs = raw.get("profiles")
+    if isinstance(profs, dict):
+        for pid, tog in profs.items():
+            if isinstance(pid, str) and 0 < len(pid) <= MAX_PROFILE_ID and isinstance(tog, dict):
+                out["profiles"][pid] = {k: bool(tog.get(k)) for k in IDS}
+    pomo = raw.get("pomodoro")
+    if isinstance(pomo, dict):
+        out["pomodoro"] = {k: pomo[k] for k in ("workMin", "breakMin")
+                           if isinstance(pomo.get(k), (int, float)) and not isinstance(pomo.get(k), bool)}
+    return out
+
+
+def toggles_for(prefs, pid):
+    return dict({k: False for k in IDS}, **(prefs.get("profiles", {}).get(pid) or {}))
+
+
+def pomodoro_seconds(prefs):
+    """(work_s, break_s): settings workMin / breakMin clamped to 1..180 / 1..60, default 25 / 5."""
+    p = prefs.get("pomodoro") or {}
+    work = min(180.0, max(1.0, float(p.get("workMin", 25))))
+    brk = min(60.0, max(1.0, float(p.get("breakMin", 5))))
+    return work * 60.0, brk * 60.0
+
+
+def save_toggle(path, lock, pid, oid, on):
+    """Read-modify-write ONE toggle of one profile; every other settings key is kept."""
+    with lock:
+        data = _read_settings(path)
+        block = data.get(PREFS_KEY) if isinstance(data.get(PREFS_KEY), dict) else {}
+        profs = block.get("profiles") if isinstance(block.get("profiles"), dict) else {}
+        tog = profs.get(pid) if isinstance(profs.get(pid), dict) else {}
+        tog[oid] = bool(on)
+        profs[pid] = tog
+        block["profiles"] = profs
+        data[PREFS_KEY] = block
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+
+
+# ---- manager -------------------------------------------------------------------
+class OverlayManager:
+    """Toggles (per profile, persisted), availability, the sampler lifecycle and
+    the get_overlays payload."""
+
+    def __init__(self, rows, all_indices, settings_path, lock, cpu=None, mem=None,
+                 gpu=None, gate=None, clock=time.monotonic, interval=1.0):
+        self._path, self._lock = settings_path, lock
+        work, brk = pomodoro_seconds(load_prefs(settings_path))
+        self.layer = OverlayLayer(rows, all_indices, Pomodoro(work, brk), clock)
+        self.gpu = gpu if gpu is not None else GpuProbe()
+        cpu = cpu if cpu is not None else read_cpu_counters
+        mem = mem if mem is not None else read_memory_load
+        self._sensor_ok = {"cpu": cpu() is not None, "ram": mem() is not None}
+        self.sampler = Sampler(self.layer, cpu, mem, self.gpu, gate, interval)
+        self.pid = None
+        self._pref = {k: False for k in IDS}
+
+    def availability(self, oid):
+        if len(self.layer.rows.get(oid, [])) != len(ROW_CODES[oid]):
+            return False, f"This keyboard has no complete {ROW_NAMES[oid]}"
+        if oid in self._sensor_ok and not self._sensor_ok[oid]:
+            return False, f"{LABELS[oid]} load is not available on this system"
+        if oid == "gpu" and not self.gpu.available:
+            return False, self.gpu.reason
+        return True, None
+
+    def _apply(self):
+        for oid in IDS:
+            self.layer.set_enabled(oid, self._pref[oid] and self.availability(oid)[0])
+        if any(self.layer.enabled(k) for k in SENSOR_IDS):
+            self.sampler.start()
+        else:
+            self.sampler.stop()
+
+    def follow_profile(self, pid):
+        self.pid = pid
+        self._pref = toggles_for(load_prefs(self._path), pid)
+        self._apply()
+
+    def set(self, oid, on):
+        if oid not in IDS:
+            return {"ok": False, "error": f"unknown overlay {oid!r}"}
+        on = bool(on)
+        ok, reason = self.availability(oid)
+        if on and not ok:
+            return {"ok": False, "error": reason}
+        self._pref[oid] = on
+        save_toggle(self._path, self._lock, self.pid or "p1", oid, on)
+        self._apply()
+        return {"ok": True, "id": oid, "on": self.layer.enabled(oid)}
+
+    def any_on(self):
+        return self.layer.any_enabled()
+
+    def status(self):
+        self._apply()                       # picks up a probe that gave up
+        st = self.layer.pomodoro_state()
+        rows = []
+        for oid in IDS:
+            ok, reason = self.availability(oid)
+            e = {"id": oid, "label": LABELS[oid], "row": ROW_NAMES[oid],
+                 "on": self.layer.enabled(oid), "available": ok, "reason": reason,
+                 "value": self.layer.value(oid) if oid in SENSOR_IDS
+                 else (st.progress if st else None)}
+            if oid == "pomodoro" and st:
+                e["phase"], e["remaining_s"] = st.phase, int(math.ceil(st.remaining_s))
+            rows.append(e)
+        return {"overlays": rows,
+                "pomodoro": {"phase": st.phase if st else None,
+                             "remaining_s": int(math.ceil(st.remaining_s)) if st else None}}
+
+    def close(self):
+        self.sampler.stop()
