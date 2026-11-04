@@ -1157,6 +1157,12 @@ class Api:
         the outer lock cannot deadlock."""
         with self._lock:
             self._reader_users.add(who)
+            if getattr(self, "_calibrating", False):
+                # CalibrationReader is the sole drain: a LiveReader started now
+                # (e.g. the UI re-sending a press-reactive effect as calibration
+                # starts) would discard every calibration report. The owner stays
+                # registered; calibrate(False) restores the stream.
+                return None
             if self.reader is None and self.km:
                 self.reader = make()
                 self.reader.start()
@@ -1216,6 +1222,10 @@ class Api:
         the LiveReader only ever takes the inner lock, so the join is safe.
         No reader running -> no-op."""
         with self._lock:
+            if getattr(self, "_calibrating", False):
+                # A read-back now would eat the calibration reports (and the
+                # CalibrationReader would eat its replies).
+                raise RuntimeError("Calibration in progress - finish it first")
             paused = None
             r = getattr(self, "reader", None)
             if r is not None:
@@ -1385,6 +1395,10 @@ class Api:
                     # subset would silently blind the running effect.
                     others = self._reader_users - {"analog"}
                     self._reader_users.add("analog")
+                    if self._calibrating:
+                        # Sole-drain rule (see _acquire_reader); the
+                        # calibrate-off restore brings the stream back.
+                        return {"ok": True, "keys": 0, "deferred": "calibrating"}
                     if others and len(idxs) < len(self.km.indices()):
                         idxs = self.km.indices()
                     old, self.reader = self.reader, None
@@ -1836,13 +1850,17 @@ class Api:
                 # device with the lighting engine without busy-spinning the lock.
                 # CalibrationReader must be the sole drain, so park the shared
                 # stats/analog reader (owners kept) until calibration ends.
+                # Flag first: from here no other path may start a LiveReader
+                # or do a read-back (_acquire_reader / _reader_paused check it).
+                with self._lock:
+                    self._calibrating = True   # disconnect() must disarm on abort
                 self._park_readers(("reader",))
                 try:
                     self.driver.set_calibration(True, bool(any_key))
                 except Exception:
+                    self._calibrating = False
                     self._restore_shared_reader()
                     raise
-                self._calibrating = True   # armed: disconnect() must disarm on abort
                 self.calib_reader = self.driver.make_calibration_reader(self.km)
                 self.calib_reader.start()
             else:
@@ -2977,10 +2995,12 @@ class Api:
                 self._acquire_reader("reactive", self._make_live_reader)
             except UnsupportedFeature:
                 pass
-            if self.reader is None:
+            if self.reader is None and not self._calibrating:
                 self.fx.get_depths = None
                 self.fx.get_actuation = None
                 return
+            # While calibrating the reader is deferred: get_depths resolves
+            # self.reader per call, so the effect wakes when it is restored.
             km = self.km
 
             def get_depths():
