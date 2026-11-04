@@ -45,6 +45,14 @@ venv-web/bin/python ui/runtime_src/build_runtime.py
   icon opens a mini-mode panel (`ui/tray_panel.html`: Open / effect grid / speed slider / Exit). The panel
   never drives the board: it sets `pattern`/`speed` in the React app via `window.__aetherTraySet`
   and reads state from `Api.tray_sync` (pushed by app.jsx). Without pystray, close quits as before.
+- `games.py` — game detection (Windows; ctypes Toolhelp32, no dependency): Discord's public detectable list
+  (HTTPS, 5 MB wire cap, cached `<user_data_dir>/games/detectable.json`, weekly) + user-added programs, matched by
+  trailing path segments; `GameSwitcher` debounces 5 s and reverts on exit; `GameService` owns settings.json `games`
+  and the 3 s poll thread (`main()` starts/stops it via `Api._start_games/_stop_games`; private `Api._games`). Python
+  decides, `app.jsx` polls `games_status()` and switches the profile, then `Api.apply_profile_to_board` writes
+  actuation/RT to all keys + SOCD (skipped when `_act_mm`/`_trig_mode`/`_socd_last` show the board already has it;
+  deferred to the next connect while offline). Only candidate processes are opened; nothing about other processes
+  is kept or sent. Tray tooltip names the detected game.
 - `single_instance.py` — Windows named mutex + "show" event: a second launch pokes the running
   instance (window comes up) and exits. main() also gives WebView2 its OWN profile folder
   (`%LOCALAPPDATA%\AetherHE\webview`): the pywebview default is shared by every build, and a
