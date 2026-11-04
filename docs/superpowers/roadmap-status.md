@@ -166,6 +166,15 @@ Entry format:
 - For the user (morning): install the 2 deps, veto the size, 14 hardware/audio checks at the end of the plan (queued below).
 - Stopped early? No.
 
+## 2026-11-04 Phase 7 — implementer (Sonnet)
+- Landed: 3562410 music.py bands + BandAnalyzer; 5eb027d grid_layout + availability; 91f2a07 MusicSource capture thread, NumpySpectrum/SoundcardBackend, requirements + AetherHE.spec; 91d60c1 `_g_music` + engine-owned capture lifecycle (`_halt`/`_music_power`, Flatpak cp list); f7e0362 `Api._music`/`_music_attach`/`music_status`; 0c56b7a Music in every lighting list + availability note (+ rebuilt ws_lighting.js/sections.js/index_runtime.html); 254e9db CLAUDE.md.
+- Suite: 1175 passed, 17 skipped (the plan's counts; the 3 skips are the numpy adapter tests). Green at every commit; real-thread tests re-run 3x, no flakes. `node --check` ok on ws_lighting.js and sections.js.
+- Decisions later phases must respect: `music` is in `HOST_FX_IDS` + `_gens` but NOT in `PRESS_REACTIVE`/`HOST_FX_FAST`; the ENGINE owns the capture (`start_zones` keeps/starts it only with a music zone, `stop()` and a dead stream stop it); `Api._music` is private, `music_status()` -> {ok, available, reason, state, device} never opens a device; numpy/soundcard are imported only on the `aether-music` thread.
+- Deviations: none. Code/tests extracted verbatim from the plan; CRLF-preserving script for effects.py/app_web.py/JSX/CLAUDE.md. Only ws_lighting.js, sections.js, index_runtime.html had real build diffs (the other build files showed only CRLF noise and were reverted).
+- Not run (by design): numpy/soundcard are not installed and no audio device was opened; the 3 numpy adapter tests, latency, CPU and the real loopback are covered only by the user's hardware checks.
+- For the user (morning): nothing new; the Phase 7 install, size veto, 14 audio checks and accept bullets are already queued below.
+- Stopped early? No.
+
 ## Waiting on the user
 - [DKS] Run the advanced-keys capture checklist (docs/context/aula-win60-advanced-keys-capture-checklist.md, ~20 min in hed.aulacn.com) to confirm the source-only decode.
 - [DKS] Open: does WIN60 firmware act on DKS/MT/TGL; DKS step codes 2/3; single-slot writes accepted; MT 10 ms unit; per-profile table?
