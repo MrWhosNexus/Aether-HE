@@ -31,6 +31,8 @@ venv-web/bin/python ui/runtime_src/build_runtime.py
 - `device_state.py` — `KeyMap` (key index↔design-code↔xy), `LiveReader` (travel-test stream),
   `CalibrationReader`. The LiveReader drains and DISCARDS every non-travel report, so any driver
   read-back (remap/switch/mode-0 actuation/macros) must run inside `Api._reader_paused()`.
+  Calibration parks the shared reader (CalibrationReader must be the only drain).
+- `telemetry.py` — key statistics (roadmap Phase 1): per-key, per-day aggregates from the live travel stream (`LiveReader.on_sample`), owner `"telemetry"` keeps the shared reader on while connected; files `<user_data_dir>/stats/YYYY-MM-DD.json`, 90 days; aggregates only, never sequences or timestamps.
 - `effects.py` — host-driven **per-key** lighting engine (firmware effects only hold one
   fg+bg, so multi-color animations are streamed from the host via cmd 9). `FPS = 60`: a
   120 bump was tried and reverted because it saturated the USB pipe. Per-board caps come
