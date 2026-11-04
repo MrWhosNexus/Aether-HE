@@ -98,6 +98,16 @@ Entry format:
 - Review fixes: 547d6d9 an all-keys apply now updates `_trigger_state` (later single-key edits no longer resend stale groups); 680cc27 `_board_has_actuation` checks every `km.indices()` key, missing cache entry = mismatch (suite 919 passed, 13 skipped).
 - Stopped early? No.
 
+## 2026-11-04 Phase 4 plan — planner (Opus)
+- Landed: b8b445d docs/superpowers/plans/2026-11-04-phase-4-analytics.md (7 tasks, 65 new tests; expect 984 passed, 13 skipped). All code was prototyped against the real tree (suite green, built UI smoke-tested with a fake bridge in a browser), then reverted; the worktree holds only the plan.
+- Decisions: telemetry files each press under the key's actuation (day-file key "idx@act", "idx" = unknown); load_day/aggregate still merge per key. Auto-tune uses ONLY buckets at the key's current read-back actuation over 14 days, so a change starts from zero and switching back restores the old count.
+- Decisions: new pure `analytics.py`; groups by design code wasd ("WASD / Fn arrows": the WIN60 has no arrow keys) / letters (22) / mods / space, others per key. Group judged on summed counters only when all members share actuation + trigger mode; a group suggestion covers its members, so no key gets two or opposite suggestions.
+- Decisions: shallow > 5 % -> min(p10 - 0.10, current - 0.05) rounded down to 0.05, floor 0.30; barely > 15 % on letters (not WASD) -> +0.10 (+0.20 above 25 %); both -> "mixed" note, no suggestion. Readiness = read-back actuation AND trigger mode; Apply keeps the key's mode/RT pair.
+- Decisions: Apply = app.jsx `writeActuation` (set_trigger_codes + verify_actuation, shared with the Actuation button) via `ctx.applyTuneSuggestion`; Undo writes current_mm back the same way. Analytics tab after Actuation, gated on `keyStats`.
+- For next phase (5): `window.AetherAnalytics` = useAnalytics, HeatmapBoard, heatLedMap, DailyBars, SuggestionList (`limit={3}`), topSuggestions, SuggestionCard, applySuggestion, store (days=1 = today). Bridges get_analytics(days) / get_tune_suggestions() are read-only.
+- For the user (morning): 10 hardware checks at the end of the plan; Phase 3 interaction queued below.
+- Stopped early? No.
+
 ## Waiting on the user
 - [DKS] Run the advanced-keys capture checklist (docs/context/aula-win60-advanced-keys-capture-checklist.md, ~20 min in hed.aulacn.com) to confirm the source-only decode.
 - [DKS] Open: does WIN60 firmware act on DKS/MT/TGL; DKS step codes 2/3; single-slot writes accepted; MT 10 ms unit; per-profile table?
@@ -108,3 +118,6 @@ Entry format:
 - [Phase 3] Discord list size: the cap is 5 MB on the wire (gzip requested, 32 MB after unpacking). If Settings > Games > Update reports "larger than 5 MB", decide whether to raise `games.MAX_DETECTABLE_BYTES`.
 - [Phase 3] Known limitation to accept or schedule: the revert target is not persisted, so if Aether restarts mid-game the game's exit does not revert the profile.
 - [Phase 3] Run the 12 hardware checks at the end of docs/superpowers/plans/2026-11-04-phase-3-games.md (switch/revert, debounce, offline apply, tooltip, anti-cheat/CPU).
+- [Phase 4] Run the 10 hardware checks at the end of docs/superpowers/plans/2026-11-04-phase-4-analytics.md (heatmap, shallow/barely counts, Apply + read-back, Undo, RT keys keep RT).
+- [Phase 4] Veto check: auto-tune thresholds are the spec's first guess (shallow > 5 % -> earlier, toward the 10th-percentile depth minus 0.1 mm, never below 0.30; barely-over > 15 % on letters -> 0.1-0.2 mm later; 200 presses minimum). WASD never gets "later" suggestions. Say if any feel wrong.
+- [Phase 4] Accept or schedule: a game-profile switch (Phase 3) writes one actuation to every key, replacing applied per-key auto-tune values until the revert; the revert writes the profile slider value, not the tuned values.
