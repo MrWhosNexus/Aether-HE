@@ -40,6 +40,7 @@ import tray
 import single_instance
 import analytics
 import overlays
+import music
 from tools import board_submission
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -478,6 +479,10 @@ class Api:
         self._carrier_on = False    # engine running ONLY to carry overlays
         self._light_src = None      # last firmware-lighting call, for the carrier
         self._ov_attach()
+        # Music visualizer (music.py): one capture source for the app's
+        # lifetime; the engine starts it only while a "music" zone runs.
+        self._music = music.MusicSource()
+        self._music_attach()
         self._games = self._make_games()
 
     # ---- key statistics plumbing ----
@@ -907,6 +912,7 @@ class Api:
                            max_fps=_host_engine_max_fps(p))
                        if self.km else None)
             self._ov_attach()
+            self._music_attach()
             # per-board caches must not leak across boards
             self._remaps = {}
             self._trigger_state = {}
@@ -2810,6 +2816,28 @@ class Api:
         mgr = getattr(self, "_overlays", None)
         if mgr is not None:
             mgr.close()
+
+    # ---- music visualizer (Phase 7) ----
+    def _music_attach(self):
+        """Hand the app's MusicSource to the current engine (a new engine is
+        built per board)."""
+        fx = getattr(self, "fx", None)
+        if fx is not None:
+            fx.music = getattr(self, "_music", None)
+
+    def music_status(self):
+        """{ok, available, reason, state, device} for the Lighting tab. Never
+        opens an audio device (availability is a find_spec check); state is
+        off | starting | listening | no_device | error | unavailable."""
+        try:
+            src = getattr(self, "_music", None)
+            if src is None:
+                ok, reason = music.availability()
+                return {"ok": True, "available": ok, "reason": reason,
+                        "state": "off" if ok else "unavailable", "device": None}
+            return dict(src.status(), ok=True)
+        except Exception as e:
+            return self._fail(e)
 
     def get_overlays(self):
         """Dashboard "Status on keys" tile. -> {ok, supported, overlays:[{id,
