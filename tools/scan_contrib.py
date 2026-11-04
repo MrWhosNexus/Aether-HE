@@ -6,14 +6,18 @@ They must never reach the network, start programs, load native code,
 deserialize objects, touch files, or run text as code.
 
 This is an ALLOWLIST scan of the AST (nothing is imported or run):
-  * only the modules in ALLOWED_MODULES / ALLOWED_LOCAL may be imported
-    (any alias is tracked); `os` only as `os.path`;
-  * no eval/exec/compile/__import__/open/... builtins;
-  * no getattr/setattr/hasattr/delattr on an imported module, and none with
-    a computed attribute name anywhere;
-  * no dunder escape hatches (__subclasses__, __globals__, __builtins__, ...).
-The local modules allowed here (boards, device_state, aula_device, protocol*,
-drivers.*) are owner-reviewed core files (.github/CODEOWNERS).
+  * imports: only the exact module names in ALLOWED_ATTRS / ALLOWED_LOCAL
+    (plus protocol_<x>, drivers.<x>); `os` only for `os.path`;
+  * standard-library modules: only the attributes listed per module in
+    ALLOWED_ATTRS (None = any public name of a pure module), and the same
+    for `from <module> import <name>`;
+  * an imported module may only be used as `module.attribute`: assigning it,
+    passing it, returning it or storing it anywhere is refused, so no alias
+    can hide it from these rules;
+  * local (owner-reviewed, .github/CODEOWNERS) modules: public attributes
+    only, and no segment leading back out to os/sys/... ;
+  * no eval/exec/compile/__import__/open/... builtins; no getattr & co. with
+    a computed name or on a module; no dunder escape hatches.
 
     python tools/scan_contrib.py            # scan the repo's protocol/driver files
     python tools/scan_contrib.py a.py b.py  # scan given files
@@ -26,22 +30,43 @@ import os
 import re
 import sys
 
-ALLOWED_MODULES = {
-    "struct", "json", "logging", "threading", "time", "math", "enum", "typing",
-    "dataclasses", "collections", "itertools", "functools", "re", "binascii",
-    "hid",            # the HID library itself (device access is the job)
+ANY_PUBLIC = None
+# module -> attributes board code may use (exact module names).
+ALLOWED_ATTRS = {
+    "struct": {"pack", "unpack", "unpack_from", "pack_into", "calcsize", "iter_unpack",
+               "Struct", "error"},
+    "json": {"load", "loads", "dumps", "JSONDecodeError"},
+    "logging": {"getLogger", "Logger", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"},
+    "threading": {"Lock", "RLock", "Event", "Thread", "Condition", "Semaphore",
+                  "BoundedSemaphore", "Timer", "current_thread", "get_ident"},
+    "time": {"sleep", "time", "monotonic", "perf_counter", "time_ns", "monotonic_ns",
+             "perf_counter_ns"},
+    "math": ANY_PUBLIC,
+    "enum": {"Enum", "IntEnum", "Flag", "IntFlag", "auto", "unique"},
+    "typing": ANY_PUBLIC,
+    "dataclasses": {"dataclass", "field", "fields", "asdict", "astuple", "replace"},
+    "collections": {"namedtuple", "deque", "OrderedDict", "defaultdict", "Counter"},
+    "itertools": ANY_PUBLIC,
+    "functools": {"partial", "lru_cache", "cache", "reduce", "wraps", "cached_property",
+                  "total_ordering"},
+    "re": {"compile", "match", "search", "fullmatch", "sub", "subn", "split", "findall",
+           "finditer", "escape", "error", "Pattern", "Match", "I", "IGNORECASE", "M",
+           "MULTILINE", "S", "DOTALL", "X", "VERBOSE", "A", "ASCII"},
+    "binascii": {"hexlify", "unhexlify", "crc32", "b2a_hex", "a2b_hex"},
+    "hid": {"device", "Device", "enumerate"},       # the HID library: device access is the job
+    "os": {"path"},
+    "os.path": {"join", "dirname", "basename", "abspath", "normpath", "split",
+                "splitext", "exists", "isfile", "isdir", "sep"},
 }
 ALLOWED_LOCAL = {"boards", "device_state", "aula_device", "protocol", "drivers"}
-# Module names are matched EXACTLY (`logging` yes, `logging.config` no), plus
-# protocol_<name> modules and drivers.<name>.
 _LOCAL_RE = re.compile(r"^(protocol_[a-z0-9_]+|drivers\.[a-z0-9_]+)$")
-# Attribute segments that lead out of a module to something dangerous
-# (os.path.os.system, logging.config.listen, threading._os, ...). Any segment
-# starting with "_" is refused as well.
+# Local modules are owner-reviewed, but no chain through them may lead back
+# out to these (boards.os.system, device_state.threading._os, ...).
 FORBIDDEN_SEGMENTS = {"os", "sys", "subprocess", "socket", "builtins", "importlib",
                       "config", "handlers", "ctypes", "shutil", "pickle", "marshal",
                       "codecs", "io", "pathlib", "urllib", "http", "signal", "pty",
-                      "system", "popen", "spawn", "exec", "loader", "modules"}
+                      "system", "popen", "spawn", "exec", "loader", "modules", "json",
+                      "threading", "logging", "time", "struct", "hid", "re"}
 FORBIDDEN_CALLS = {"eval", "exec", "compile", "__import__", "open", "input",
                    "breakpoint", "globals", "vars", "locals"}
 ATTR_CALLS = {"getattr", "setattr", "hasattr", "delattr"}
@@ -58,13 +83,22 @@ REVIEWED = {
 }
 
 
-def _root(name):
-    return (name or "").split(".")[0]
+def _is_local(name):
+    return name in ALLOWED_LOCAL or bool(_LOCAL_RE.match(name or ""))
 
 
 def _module_allowed(name):
-    return (name in ALLOWED_MODULES or name in ALLOWED_LOCAL
-            or bool(_LOCAL_RE.match(name or "")))
+    return name in ALLOWED_ATTRS or _is_local(name)
+
+
+def _attr_ok(module, attr):
+    """May `module.attr` be used? (module: exact dotted module name)"""
+    if attr.startswith("_"):
+        return False
+    if _is_local(module):
+        return attr not in FORBIDDEN_SEGMENTS
+    allowed = ALLOWED_ATTRS.get(module, set())
+    return allowed is ANY_PUBLIC or attr in allowed
 
 
 def _chain(node):
@@ -85,47 +119,36 @@ def scan_source(src, path="<src>"):
     except SyntaxError as e:
         return [f"{path}:{e.lineno}: does not parse ({e.msg})"]
     out = []
-    module_names = set()      # every local name bound to an imported module
-    os_names = set()          # names bound to the os module itself
+    mods = {}                 # local name -> exact module it is bound to
     for node in ast.walk(tree):
         line = getattr(node, "lineno", 0)
         if isinstance(node, ast.Import):
             for a in node.names:
-                bound = a.asname or _root(a.name)
-                if a.name in ("os", "os.path"):
-                    if a.name == "os" or a.asname is None:
-                        os_names.add(bound)
-                    module_names.add(bound)
-                    continue
                 if not _module_allowed(a.name):
                     out.append(f"{path}:{line}: import {a.name} (not allowed)")
-                module_names.add(bound)
+                    continue
+                if a.asname:
+                    mods[a.asname] = a.name
+                else:                      # `import os.path` binds `os`
+                    mods[a.name.split(".")[0]] = a.name.split(".")[0]
         elif isinstance(node, ast.ImportFrom):
+            if node.level:                 # relative import inside drivers/
+                continue
             mod = node.module or ""
-            if node.level:            # relative import inside drivers/
+            if not _module_allowed(mod):
+                out.append(f"{path}:{line}: from {mod} import ... (not allowed)")
                 continue
             for a in node.names:
                 if a.name == "*":
                     out.append(f"{path}:{line}: from {mod} import *")
-            if mod == "os":
-                for a in node.names:
-                    if a.name != "path":
-                        out.append(f"{path}:{line}: from os import {a.name} (only os.path)")
-                    module_names.add(a.asname or a.name)
-            elif mod == "os.path":
-                for a in node.names:
-                    if a.name.startswith("_") or a.name in FORBIDDEN_SEGMENTS:
-                        out.append(f"{path}:{line}: from os.path import {a.name}")
-            elif not _module_allowed(mod):
-                out.append(f"{path}:{line}: from {mod} import ... (not allowed)")
-            else:
-                for a in node.names:
-                    if a.name.startswith("_") or a.name in FORBIDDEN_SEGMENTS:
-                        out.append(f"{path}:{line}: from {mod} import {a.name}")
-                    module_names.add(a.asname or a.name)
-    for parent in ast.walk(tree):
-        for child in ast.iter_child_nodes(parent):
-            child._parent_attr = parent
+                elif not _attr_ok(mod, a.name):
+                    out.append(f"{path}:{line}: from {mod} import {a.name} (not allowed)")
+                elif f"{mod}.{a.name}" in ALLOWED_ATTRS:     # from os import path
+                    mods[a.asname or a.name] = f"{mod}.{a.name}"
+    parent = {}
+    for p in ast.walk(tree):
+        for c in ast.iter_child_nodes(p):
+            parent[c] = p
     for node in ast.walk(tree):
         line = getattr(node, "lineno", 0)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
@@ -133,29 +156,48 @@ def scan_source(src, path="<src>"):
             if fn in FORBIDDEN_CALLS:
                 out.append(f"{path}:{line}: call {fn}()")
             if fn in ATTR_CALLS:
-                tgt = node.args[0] if node.args else None
                 name = node.args[1] if len(node.args) >= 2 else None
-                if isinstance(tgt, ast.Name) and tgt.id in module_names:
-                    out.append(f"{path}:{line}: {fn}() on module {tgt.id}")
-                elif not (isinstance(name, ast.Constant) and isinstance(name.value, str)):
+                if not (isinstance(name, ast.Constant) and isinstance(name.value, str)):
                     out.append(f"{path}:{line}: {fn}() with a computed attribute name")
                 elif name.value.startswith("__"):
                     out.append(f"{path}:{line}: {fn}() of {name.value}")
+        elif isinstance(node, ast.Name) and node.id in mods:
+            up = parent.get(node)
+            if not (isinstance(up, ast.Attribute) and up.value is node):
+                # bare module value: an alias, an argument, a stored reference
+                out.append(f"{path}:{line}: module {node.id} used as a value "
+                           f"(only {node.id}.<attribute> is allowed)")
         elif isinstance(node, ast.Attribute):
-            if isinstance(node.value, ast.Name) and node.value.id in os_names \
-                    and node.attr != "path":
-                out.append(f"{path}:{line}: os.{node.attr} (only os.path)")
             if node.attr in DUNDER_ESCAPES:
                 out.append(f"{path}:{line}: .{node.attr}")
-            if not isinstance(getattr(node, "_parent_attr", None), ast.Attribute):
-                root, attrs = _chain(node)
-                if root in module_names:
-                    rest = attrs[1:] if (root in os_names and attrs[:1] == ["path"]) else attrs
-                    for seg in rest:
-                        if seg.startswith("_") or seg in FORBIDDEN_SEGMENTS:
-                            out.append(f"{path}:{line}: {root}.{'.'.join(attrs)} "
-                                       f"(reaches {seg})")
-                            break
+            if isinstance(parent.get(node), ast.Attribute) and parent[node].value is node:
+                continue                   # check each chain once, from its outermost node
+            root, attrs = _chain(node)
+            if root not in mods:
+                continue
+            module = mods[root]
+            for i, seg in enumerate(attrs):
+                if not _attr_ok(module, seg):
+                    out.append(f"{path}:{line}: {root}.{'.'.join(attrs[:i + 1])} (not allowed)")
+                    break
+                nxt = f"{module}.{seg}"
+                if nxt in ALLOWED_ATTRS or _is_local(nxt):
+                    module = nxt           # os -> os.path
+                    if i == len(attrs) - 1:
+                        # the whole chain IS a module (x = os.path): same rule
+                        # as a bare module name
+                        out.append(f"{path}:{line}: module {root}.{'.'.join(attrs)} "
+                                   "used as a value")
+                elif _is_local(module):
+                    continue               # local module members: keep checking segments
+                else:
+                    # a value from an allowed stdlib module: later segments are
+                    # ordinary method/attribute access, but never private
+                    rest = attrs[i + 1:]
+                    bad = [s for s in rest if s.startswith("_") or s in FORBIDDEN_SEGMENTS]
+                    if bad:
+                        out.append(f"{path}:{line}: {root}.{'.'.join(attrs)} (reaches {bad[0]})")
+                    break
         elif isinstance(node, ast.Name) and node.id in ("__builtins__", "__loader__", "__spec__"):
             out.append(f"{path}:{line}: {node.id}")
     return sorted(set(out), key=lambda s: (int(s.split(":")[1]) if s.split(":")[1].isdigit() else 0, s))
@@ -183,7 +225,8 @@ def main(argv):
         lines = src.splitlines()
         for f in scan_source(src, rel):
             parts = f.split(": ", 1)
-            lineno = int(parts[0].rsplit(":", 1)[1]) if parts[0].rsplit(":", 1)[1].isdigit() else 0
+            tail = parts[0].rsplit(":", 1)[1]
+            lineno = int(tail) if tail.isdigit() else 0
             if (rel, parts[1], _line_hash(lines, lineno)) not in REVIEWED:
                 findings.append(f)
     for f in findings:
