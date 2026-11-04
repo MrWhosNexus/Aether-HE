@@ -1,0 +1,62 @@
+[
+  {
+    "aliases": [],
+    "executables": [
+      {"is_launcher": false, "name": "starfall/starfall.exe", "os": "win32"},
+      {"is_launcher": true, "name": "starfall launcher.exe", "os": "win32"},
+      {"is_launcher": false, "name": "starfall", "os": "linux"}
+    ],
+    "hook": true,
+    "id": "100000000000000001",
+    "name": "Starfall Arena",
+    "overlay": false
+  },
+  {
+    "aliases": ["NQ"],
+    "executables": [
+      {"is_launcher": false, "name": "win64/neonquest-win64-shipping.exe", "os": "win32"},
+      {"is_launcher": false, "name": ">neonquest.exe", "os": "win32"},
+      {"is_launcher": false, "name": "neonquest.app", "os": "darwin"}
+    ],
+    "hook": true,
+    "id": "100000000000000002",
+    "name": "Neon Quest\u0007",
+    "overlay": true
+  },
+  {
+    "executables": [
+      {"is_launcher": false, "name": "javaw.exe", "os": "win32"}
+    ],
+    "id": "100000000000000003",
+    "name": "Blocky Java Game"
+  },
+  {
+    "executables": [
+      {"is_launcher": false, "name": "neonquest.exe", "os": "win32"}
+    ],
+    "id": "100000000000000004",
+    "name": "Neon Quest Duplicate"
+  },
+  {
+    "executables": [],
+    "id": "100000000000000005",
+    "name": "No Executables"
+  },
+  {
+    "executables": [{"name": "macgame", "os": "darwin"}],
+    "id": "100000000000000006",
+    "name": "Mac Only"
+  },
+  {"id": "not-a-snowflake", "name": "Bad Id", "executables": [{"name": "bad.exe", "os": "win32"}]},
+  {"id": "100000000000000007", "executables": [{"name": "noname.exe", "os": "win32"}]},
+  {"id": "100000000000000008", "name": "Weird Executables", "executables": "valorant.exe"},
+  "junk",
+  42,
+  {
+    "executables": [
+      {"is_launcher": false, "name": "Tiny Tactics\\Bin\\TinyTactics.exe", "os": "win32"}
+    ],
+    "id": 100000000000000009,
+    "name": "Tiny Tactics"
+  }
+]
