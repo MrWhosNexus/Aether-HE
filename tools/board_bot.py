@@ -344,9 +344,17 @@ def run(issue_number, *, gh, complete, repo_root, expect_body_sha256=None):
             "--description", "AI-drafted board support, unverified on hardware"])
     except Exception:
         pass  # already exists (or no perms) — non-fatal
-    pr_url = gh(["pr", "create", "--title", f"Draft board: {slug} (experimental)",
+    try:
+        gh(["label", "create", "untrusted-ai-code", "--color", "B60205",
+            "--description", "Written by a model from public issue text - review every line"])
+    except Exception:
+        pass  # already exists (or no perms) — non-fatal
+    # Draft: a bot-authored PR from attacker-influenceable text is never one
+    # click from merge.
+    pr_url = gh(["pr", "create", "--draft", "--title", f"Draft board: {slug} (experimental)",
                  "--body", pr_body(issue_number, artifacts.get("adapter") or "", syntax_error, shares),
-                 "--label", "experimental", "--head", branch]).strip()
+                 "--label", "experimental", "--label", "untrusted-ai-code",
+                 "--head", branch]).strip()
     gh(["issue", "comment", str(issue_number), "--body", f"Automated draft opened: {pr_url}"])
     return {"ok": True, "pr_url": pr_url, "reason": "ok"}
 

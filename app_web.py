@@ -2670,6 +2670,11 @@ class Api:
         import version
         if not isinstance(url, str) or len(url) > 8192:
             return False
+        # urlsplit silently strips tabs/newlines, but webbrowser.open gets the
+        # raw string: the real form URL is fully percent-encoded, so refuse
+        # any control character or space.
+        if any(ord(c) <= 32 or ord(c) == 127 for c in url):
+            return False
         try:
             u = urllib.parse.urlsplit(url)
         except ValueError:

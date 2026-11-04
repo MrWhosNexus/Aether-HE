@@ -18,7 +18,7 @@ def test_requirements_add_numpy_and_soundcard_for_windows_only():
 
 
 def test_pillow_pin_is_untouched():
-    assert re.search(r'^Pillow>=10;    sys_platform == "win32"$', _read("requirements.txt"), re.M)
+    assert re.search(r'^Pillow>=13;    sys_platform == "win32"$', _read("requirements.txt"), re.M)
 
 
 def test_spec_bundles_soundcard_data_and_lazy_imports():

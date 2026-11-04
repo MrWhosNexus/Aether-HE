@@ -22,10 +22,17 @@ permissions:
 
 jobs:
   draft:
-    # Only run for add-a-board submissions (label or template marker in the title).
+    # Runs only when a maintainer applies the `bot-draft` label (applying labels
+    # needs triage access; the issue template applies only new-board/needs-triage)
+    # or dispatches it by hand. A stranger's issue can never start the bot, spend
+    # API credit, or push model-written code. Never interpolate issue text into
+    # a `run:` step below.
     if: >
       github.event_name == 'workflow_dispatch' ||
       github.event.label.name == 'bot-draft'
+    concurrency:
+      group: board-bot-${{ github.event.issue.number || github.event.inputs.issue }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

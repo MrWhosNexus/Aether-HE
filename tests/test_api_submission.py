@@ -181,3 +181,56 @@ def test_save_submission_rejects_invalid(monkeypatch, tmp_path):
     monkeypatch.setattr(a, "_submissions_dir", lambda: str(tmp_path))
     r = a.save_submission({"schema": "wrong"})
     assert r["ok"] is False and r["errors"]
+
+
+# ---- open_submission_url only opens this repo's new-issue page ----
+import webbrowser
+import pytest
+
+_ISSUE = "https://github.com/MrWhosNexus/Aether-HE/issues/new"
+
+
+def _spy_browser(monkeypatch):
+    opened = []
+    monkeypatch.setattr(webbrowser, "open", lambda u, *a, **k: opened.append(u) or True)
+    return opened
+
+
+def test_allows_prefilled_issue_url(monkeypatch):
+    opened = _spy_browser(monkeypatch)
+    url = _ISSUE + "?template=add-a-board.yml&title=%5BBoard%5D+Acme+60&vid-pid=0x1%3A0x2"
+    assert _api().open_submission_url(url) == {"ok": True}
+    assert opened == [url]
+
+
+def test_rejects_local_program_path(monkeypatch):
+    opened = _spy_browser(monkeypatch)
+    r = _api().open_submission_url(r"C:\Windows\System32\calc.exe")
+    assert r["ok"] is False and not opened
+
+
+@pytest.mark.parametrize("bad", [
+    "https://github.com@evil.example/MrWhosNexus/Aether-HE/issues/new",
+    "https://github.com/MrWhosNexus/Aether-HE/issues/new.evil",
+    "http://github.com/MrWhosNexus/Aether-HE/issues/new",
+    "https://github.com/someone-else/repo/issues/new",
+    "file:///C:/x.exe",
+])
+def test_rejects_lookalike_issue_urls(monkeypatch, bad):
+    opened = _spy_browser(monkeypatch)
+    r = _api().open_submission_url(bad)
+    assert r["ok"] is False and not opened
+
+
+@pytest.mark.parametrize("bad", [
+    " https://github.com/MrWhosNexus/Aether-HE/issues/new",
+    "https://github.com/MrWhosNexus/Aether-HE/issues/new\t",
+    "https://github.com/MrWhosNexus/Aether-HE/is\nsues/new",
+    "https://github.com/MrWhosNexus/Aether-HE/issues/new\x7f",
+])
+def test_rejects_urls_with_control_characters_or_spaces(monkeypatch, bad):
+    """urlsplit silently strips some of these, so a padded URL must be refused
+    before parsing (security review 2026-11-04 test gap)."""
+    opened = _spy_browser(monkeypatch)
+    r = _api().open_submission_url(bad)
+    assert r["ok"] is False and not opened

@@ -94,6 +94,11 @@ def test_run_happy_path(tmp_path, monkeypatch):
     assert entry["protocol"] is None and entry["status"] == "experimental"
     assert entry["offerInUi"] is False
     assert calls["comment"] is not None   # commented the PR link on the issue
+    pr = calls["pr"]
+    assert "--draft" in pr
+    labels = [pr[i + 1] for i, a in enumerate(pr) if a == "--label"]
+    assert "untrusted-ai-code" in labels
+    assert "UNTRUSTED" in pr[pr.index("--body") + 1]
 
 
 def test_safe_registry_entry_is_rebuilt_from_validated_identity_only():

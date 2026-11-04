@@ -17,7 +17,7 @@ vgamepad>=0.1; sys_platform == "win32"
 # System-tray residency (tray.py): close-to-tray keeps the effects running,
 # with a mini-mode panel on the icon. Optional — without it, close quits.
 pystray>=0.19; sys_platform == "win32"
-Pillow>=10;    sys_platform == "win32"
+Pillow>=13;    sys_platform == "win32"
 
 # Music visualizer (music.py): WASAPI loopback capture + FFT. Windows only;
 # without them the "music" effect reports itself unavailable.
