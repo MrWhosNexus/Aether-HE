@@ -230,6 +230,7 @@ const KeyboardPanel = ({
   mode, layer = "default", selectedKeys, setSelectedKeys, actuationPoint, rtPress, rtRelease,
   perKeyOverride, ledMap, accent, leftSlot, rightSlot, showPill = true, compact = false,
   liveDepths = null, calibrating = false, calibratedCodes = null,
+  showFooter = true,
 }) => {
   const calibSet = calibratedCodes || null;
   // Real per-key travel depth (mm), streamed from the board by the HID bridge
@@ -342,7 +343,9 @@ const KeyboardPanel = ({
         </div>
       </div>
 
-      {/* Below-keyboard refresh */}
+      {/* Below-keyboard refresh. showFooter={false} (the Dashboard hero) drops
+          it: the hero has its own caption line under the board. */}
+      {showFooter && (
       <div className="flex flex-col items-center mt-3 gap-1">
         <button className="grid place-items-center w-7 h-7 rounded-full border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:text-[var(--text)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] transition-colors"
                 title="Refresh device state">
@@ -354,6 +357,7 @@ const KeyboardPanel = ({
           </span>
         )}
       </div>
+      )}
     </div>
   );
 };

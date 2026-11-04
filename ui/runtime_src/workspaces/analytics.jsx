@@ -327,8 +327,11 @@ function DailyWidget(ctx) {
 }
 
 /* ===== Auto-tune suggestions ===== */
-const SuggestionCard = ({ s, onApply, disabled, busy }) => (
-  <div className="rounded-xl border border-[var(--line)] bg-white/[0.02] p-3 flex flex-col gap-1.5">
+/* compact (the Phase 5 dashboard): the detail note becomes one truncated
+   line with the full text as its tooltip, so three cards fit one panel. */
+const SuggestionCard = ({ s, onApply, disabled, busy, compact }) => (
+  <div className={`rounded-xl border border-[var(--line)] bg-white/[0.02] flex flex-col ${compact ? "px-3 py-2 gap-1" : "p-3 gap-1.5"}`}
+       data-tune-card={s.id}>
     <div className="flex items-center gap-2">
       <span className={`font-mono text-[9px] uppercase tracking-[0.2em] px-1.5 py-0.5 rounded border
                         ${s.direction === "shallower" ? "border-[var(--accent)]/40 text-[var(--accent)]" : "border-amber-400/40 text-amber-300"}`}>
@@ -342,10 +345,14 @@ const SuggestionCard = ({ s, onApply, disabled, busy }) => (
         </Btn>
       )}
     </div>
-    <Note>{s.detail}</Note>
-    <div className="font-mono text-[10px] text-[var(--text-faint)]">
-      {`${fmtInt(s.presses)} presses at ${s.current_mm.toFixed(2)} mm · ${s.codes.length} key${s.codes.length === 1 ? "" : "s"}`}
-    </div>
+    {compact
+      ? <div className="text-[11px] text-[var(--text-dim)] truncate" title={s.detail}>{s.detail}</div>
+      : <Note>{s.detail}</Note>}
+    {!compact && (
+      <div className="font-mono text-[10px] text-[var(--text-faint)]">
+        {`${fmtInt(s.presses)} presses at ${s.current_mm.toFixed(2)} mm · ${s.codes.length} key${s.codes.length === 1 ? "" : "s"}`}
+      </div>
+    )}
   </div>
 );
 
@@ -389,7 +396,7 @@ const undoLast = async (ctx) => {
 };
 
 /* Reusable list: `limit` = 3 gives the Phase 5 dashboard's top-3. */
-const SuggestionList = ({ ctx, limit }) => {
+const SuggestionList = ({ ctx, limit, compact }) => {
   const s = useAnalytics(ctx && ctx.apiCall);
   const t = s.tune;
   const list = topSuggestions(t, limit || 99);
@@ -407,7 +414,7 @@ const SuggestionList = ({ ctx, limit }) => {
   return (
     <div className="flex flex-col gap-2">
       {list.map(x => (
-        <SuggestionCard key={x.id} s={x} busy={s.applying === x.id}
+        <SuggestionCard key={x.id} s={x} busy={s.applying === x.id} compact={!!compact}
           disabled={!connected || !!s.applying} onApply={(sg) => applySuggestion(ctx, sg)}/>
       ))}
     </div>

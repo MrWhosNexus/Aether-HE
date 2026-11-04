@@ -173,7 +173,8 @@
     compact = false,
     liveDepths = null,
     calibrating = false,
-    calibratedCodes = null
+    calibratedCodes = null,
+    showFooter = true
   }) => {
     const calibSet = calibratedCodes || null;
     // Real per-key travel depth (mm), streamed from the board by the HID bridge
@@ -282,7 +283,7 @@
       className: "font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-faint)] whitespace-nowrap"
     }, "Live \xB7 ", /*#__PURE__*/React.createElement("span", {
       className: "text-[var(--accent)]"
-    }, (liveMax < 0.05 ? 0 : liveMax).toFixed(2), "mm")), rightSlot)), /*#__PURE__*/React.createElement("div", {
+    }, (liveMax < 0.05 ? 0 : liveMax).toFixed(2), "mm")), rightSlot)), showFooter && /*#__PURE__*/React.createElement("div", {
       className: "flex flex-col items-center mt-3 gap-1"
     }, /*#__PURE__*/React.createElement("button", {
       className: "grid place-items-center w-7 h-7 rounded-full border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:text-[var(--text)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] transition-colors",

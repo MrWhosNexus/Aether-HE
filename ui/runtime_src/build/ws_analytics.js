@@ -423,13 +423,17 @@
   }
 
   /* ===== Auto-tune suggestions ===== */
+  /* compact (the Phase 5 dashboard): the detail note becomes one truncated
+     line with the full text as its tooltip, so three cards fit one panel. */
   const SuggestionCard = ({
     s,
     onApply,
     disabled,
-    busy
+    busy,
+    compact
   }) => /*#__PURE__*/React.createElement("div", {
-    className: "rounded-xl border border-[var(--line)] bg-white/[0.02] p-3 flex flex-col gap-1.5"
+    className: `rounded-xl border border-[var(--line)] bg-white/[0.02] flex flex-col ${compact ? "px-3 py-2 gap-1" : "p-3 gap-1.5"}`,
+    "data-tune-card": s.id
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-2"
   }, /*#__PURE__*/React.createElement("span", {
@@ -443,7 +447,10 @@
     onClick: () => onApply(s),
     disabled: disabled,
     title: `Write ${s.suggested_mm.toFixed(2)} mm to ${s.codes.length} key(s), then read it back`
-  }, busy ? "Applying…" : "Apply")), /*#__PURE__*/React.createElement(Note, null, s.detail), /*#__PURE__*/React.createElement("div", {
+  }, busy ? "Applying…" : "Apply")), compact ? /*#__PURE__*/React.createElement("div", {
+    className: "text-[11px] text-[var(--text-dim)] truncate",
+    title: s.detail
+  }, s.detail) : /*#__PURE__*/React.createElement(Note, null, s.detail), !compact && /*#__PURE__*/React.createElement("div", {
     className: "font-mono text-[10px] text-[var(--text-faint)]"
   }, `${fmtInt(s.presses)} presses at ${s.current_mm.toFixed(2)} mm · ${s.codes.length} key${s.codes.length === 1 ? "" : "s"}`));
 
@@ -496,7 +503,8 @@
   /* Reusable list: `limit` = 3 gives the Phase 5 dashboard's top-3. */
   const SuggestionList = ({
     ctx,
-    limit
+    limit,
+    compact
   }) => {
     const s = useAnalytics(ctx && ctx.apiCall);
     const t = s.tune;
@@ -513,6 +521,7 @@
       key: x.id,
       s: x,
       busy: s.applying === x.id,
+      compact: !!compact,
       disabled: !connected || !!s.applying,
       onApply: sg => applySuggestion(ctx, sg)
     })));
