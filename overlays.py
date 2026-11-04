@@ -208,3 +208,212 @@ class OverlayLayer:
             a = 1.0 - (now - t0) / (ms / 1000.0)
             for idx in self.all:
                 frame[idx] = mix(frame.get(idx, (0, 0, 0)), rgb, a)
+
+# ---- samplers ----------------------------------------------------------------
+class _FILETIME(ctypes.Structure):
+    _fields_ = [("lo", ctypes.c_uint32), ("hi", ctypes.c_uint32)]
+
+
+class _MEMSTATUS(ctypes.Structure):
+    _fields_ = [("dwLength", ctypes.c_uint32), ("dwMemoryLoad", ctypes.c_uint32),
+                ("ullTotalPhys", ctypes.c_uint64), ("ullAvailPhys", ctypes.c_uint64),
+                ("ullTotalPageFile", ctypes.c_uint64), ("ullAvailPageFile", ctypes.c_uint64),
+                ("ullTotalVirtual", ctypes.c_uint64), ("ullAvailVirtual", ctypes.c_uint64),
+                ("ullAvailExtendedVirtual", ctypes.c_uint64)]
+
+
+def _read_text(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    except OSError:
+        return ""
+
+
+def parse_proc_stat(text):
+    """First 'cpu' line of /proc/stat -> (idle, total) jiffies, or None."""
+    for line in (text or "").splitlines():
+        parts = line.split()
+        if parts and parts[0] == "cpu":
+            try:
+                nums = [int(x) for x in parts[1:9]]
+            except ValueError:
+                return None
+            if len(nums) < 4:
+                return None
+            return (nums[3] + (nums[4] if len(nums) > 4 else 0), sum(nums))
+    return None
+
+
+def parse_meminfo(text):
+    """/proc/meminfo -> used fraction 0..1, or None."""
+    vals = {}
+    for line in (text or "").splitlines():
+        k, _, rest = line.partition(":")
+        bits = rest.split()
+        if bits and bits[0].isdigit():
+            vals[k.strip()] = int(bits[0])
+    total, avail = vals.get("MemTotal"), vals.get("MemAvailable")
+    if not total or avail is None:
+        return None
+    return unit(1.0 - avail / total)
+
+
+def cpu_load(prev, cur):
+    """Load 0..1 between two (idle, total) counter samples, or None."""
+    if not prev or not cur:
+        return None
+    dt = cur[1] - prev[1]
+    if dt <= 0:
+        return None
+    return unit(1.0 - (cur[0] - prev[0]) / dt)
+
+
+def read_cpu_counters():
+    """(idle, total) system CPU counters: GetSystemTimes on Windows, /proc/stat
+    on Linux, None elsewhere or on any failure."""
+    try:
+        if sys.platform.startswith("win"):
+            idle, kern, user = _FILETIME(), _FILETIME(), _FILETIME()
+            if not ctypes.windll.kernel32.GetSystemTimes(
+                    ctypes.byref(idle), ctypes.byref(kern), ctypes.byref(user)):
+                return None
+            ft = lambda f: (f.hi << 32) | f.lo
+            return (ft(idle), ft(kern) + ft(user))   # kernel time includes idle
+        if sys.platform.startswith("linux"):
+            return parse_proc_stat(_read_text("/proc/stat"))
+    except Exception:
+        pass
+    return None
+
+
+def read_memory_load():
+    """Physical memory in use 0..1: GlobalMemoryStatusEx / /proc/meminfo, else None."""
+    try:
+        if sys.platform.startswith("win"):
+            m = _MEMSTATUS()
+            m.dwLength = ctypes.sizeof(m)
+            if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m)):
+                return None
+            return unit(m.dwMemoryLoad / 100.0)
+        if sys.platform.startswith("linux"):
+            return parse_meminfo(_read_text("/proc/meminfo"))
+    except Exception:
+        pass
+    return None
+
+
+NVIDIA_SMI_ARGS = ("--query-gpu=utilization.gpu", "--format=csv,noheader,nounits")
+GPU_TIMEOUT_S = 1.5
+
+
+def parse_gpu_output(text):
+    """nvidia-smi csv (one utilization % per GPU) -> busiest GPU 0..1, or None."""
+    vals = []
+    for line in (text or "").splitlines():
+        try:
+            vals.append(float(line.strip()))
+        except ValueError:
+            continue
+    return unit(max(vals) / 100.0) if vals else None
+
+
+def _run_nvidia_smi(exe):
+    res = subprocess.run([exe, *NVIDIA_SMI_ARGS], capture_output=True, text=True,
+                         timeout=GPU_TIMEOUT_S,
+                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    return res.stdout if res.returncode == 0 else ""
+
+
+class GpuProbe:
+    """nvidia-smi, located ONCE with `which`; `runner(exe) -> csv text` is
+    injectable (tests never start a process). Three failed reads in a row
+    switch it off for the session."""
+    MAX_FAILS = 3
+
+    def __init__(self, which=shutil.which, runner=None):
+        self._exe = which("nvidia-smi")
+        self._runner = runner or _run_nvidia_smi
+        self._fails = 0
+
+    @property
+    def available(self):
+        return bool(self._exe) and self._fails < self.MAX_FAILS
+
+    @property
+    def reason(self):
+        if not self._exe:
+            return "nvidia-smi not found (NVIDIA GPU only)"
+        if self._fails >= self.MAX_FAILS:
+            return "nvidia-smi is not answering"
+        return None
+
+    def read(self):
+        if not self.available:
+            return None
+        try:
+            v = parse_gpu_output(self._runner(self._exe))
+        except Exception:
+            v = None
+        self._fails = 0 if v is not None else self._fails + 1
+        return v
+
+
+class Sampler:
+    """One-second sampling of the ENABLED sensors into the layer. `gate()`
+    (e.g. "the keyboard is open") skips a tick entirely, so nothing is read
+    and no process starts while there is nothing to draw on."""
+
+    def __init__(self, layer, cpu=None, mem=None, gpu=None, gate=None, interval=1.0):
+        self.layer = layer
+        self._cpu = cpu if cpu is not None else read_cpu_counters
+        self._mem = mem if mem is not None else read_memory_load
+        self._gpu = gpu
+        self._gate = gate
+        self._interval = float(interval)
+        self._prev_cpu = None
+        self._stop = threading.Event()
+        self._stop.set()
+        self._thread = None
+
+    @property
+    def running(self):
+        return self._thread is not None and self._thread.is_alive() and not self._stop.is_set()
+
+    def sample_once(self):
+        if self._gate is not None and not self._gate():
+            return
+        lay = self.layer
+        if lay.enabled("cpu"):
+            cur = self._cpu()
+            lay.set_value("cpu", cpu_load(self._prev_cpu, cur))
+            self._prev_cpu = cur
+        else:
+            self._prev_cpu = None
+        if lay.enabled("ram"):
+            lay.set_value("ram", self._mem())
+        if lay.enabled("gpu") and self._gpu is not None:
+            lay.set_value("gpu", self._gpu.read())
+
+    def start(self):
+        if self.running:
+            return
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, args=(self._stop,), daemon=True)
+        self._thread.start()
+
+    def stop(self):
+        self._stop.set()
+        th = self._thread
+        if th is not None and th is not threading.current_thread():
+            th.join(timeout=2.0)
+        self._thread = None
+
+    def _run(self, stop_ev):
+        while not stop_ev.is_set():
+            t0 = time.monotonic()
+            try:
+                self.sample_once()
+            except Exception:
+                pass
+            stop_ev.wait(max(0.01, self._interval - (time.monotonic() - t0)))
