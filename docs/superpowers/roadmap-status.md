@@ -60,8 +60,19 @@ Entry format:
 - For the user (morning): 11 hardware checks at the end of docs/superpowers/plans/2026-11-04-phase-1-telemetry.md (typing feel/CPU with the always-on reader, calibration with stats on, shallow counting, Clear, reconnect).
 - Stopped early? No.
 
+## 2026-11-04 Phase 2 plan — planner (Opus)
+- Landed: 35e635b docs/superpowers/plans/2026-11-04-phase-2-pressure.md (5 TDD tasks, 42 new tests; expect 808 passing, 12 skipped). The plan's test code and implementation were prototyped against the real tree (all 42 green, full suite 808) and then reverted; the worktree holds only the plan.
+- Decisions: `pressure` joins `effects.PRESS_REACTIVE`; level = 0 released / 0.5 at the key's actuation / 1.0 at 3.40 mm, linear each side; colour = 65-entry LUT of lerp(bg, non-looping palette gradient, level); instant attack, fall <= dt/0.12 s (frame-rate independent).
+- Decisions: per-key actuation source = `Api._act_mm` (device index -> mm) filled by `verify_actuation` read-back and SUCCESSFUL `set_trigger_codes`/`set_trigger_all`, cleared by `select_board`; engine pulls `fx.get_actuation()` every 0.5 s; unknown key -> median of known, none known -> 1.70 mm.
+- Decisions: LiveReader timing is untouched (worst case release->dark about 0.27 s = 0.15 s release window + 0.12 s fade). UI lists: lighting.jsx LIGHT_MODES/ZONE_MODES/HOST_FX_IDS/HOST_FX_FAST/previewKindFor + legacy sections.jsx; tray grid derives from LIGHT_MODES (no tray change); registry modes and FW_MODES not needed.
+- Decisions: tester marker = 2 px line (`data-act-tick`) at `actuationPoint / TRAVEL_SCALE_MM (4)` of the key height, same scale as the travel fill, data from the existing `perKeyActuation` -> `override.actuation` (no new bridge).
+- For next phase: `Api._actuation_snapshot()` is a reusable per-key actuation source (Phase 4/5 could use it); `tests/test_pressure_ui_sources.py` pins HOST_FX_IDS == engine generators and HOST_FX_FAST == PRESS_REACTIVE, so Phase 7's `music` effect must update both lists.
+- For the user (morning): 9 hardware checks at the end of the plan (pressure feel, 120 ms fade, no stuck keys, actuation lines on the tester).
+- Stopped early? No.
+
 ## Waiting on the user
 - [DKS] Run the advanced-keys capture checklist (docs/context/aula-win60-advanced-keys-capture-checklist.md, ~20 min in hed.aulacn.com) to confirm the source-only decode.
 - [DKS] Open: does WIN60 firmware act on DKS/MT/TGL; DKS step codes 2/3; single-slot writes accepted; MT 10 ms unit; per-profile table?
 - [Phase 1] Veto check: key statistics collection defaults ON on Windows (OFF on Linux unless opted in); stored as per-key daily aggregates only, 90 days.
 - [Phase 1] Run the 11 hardware checks at the end of docs/superpowers/plans/2026-11-04-phase-1-telemetry.md (typing feel + CPU with the always-on reader, calibration with stats on, shallow/bottom counting, Clear, reconnect).
+- [Phase 2] Run the 9 hardware checks at the end of docs/superpowers/plans/2026-11-04-phase-2-pressure.md (pressure feel, 120 ms fade, no stuck keys, actuation lines on the Travel Test board).
