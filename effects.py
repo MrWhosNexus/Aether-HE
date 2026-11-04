@@ -14,6 +14,7 @@ Runs only while the app is connected (the host generates each frame).
 """
 import math
 import random
+import statistics
 import threading
 import time
 
@@ -36,7 +37,7 @@ _SPAWN_NORM = 30.0 / FPS
 # source of truth: app_web._ensure_reactive and play_effect.py both read this so
 # a new press-reactive generator can't be half-wired (attach a reader in one
 # place but forget the other).
-PRESS_REACTIVE = ("reactive", "ripple", "speedres", "cross", "fireworks")
+PRESS_REACTIVE = ("reactive", "ripple", "speedres", "cross", "fireworks", "pressure")
 
 # Hard ceiling on live particles (stars / ripples / bursts / drops) per zone.
 # Every spawner already prunes by age, so this never trips in normal use — it
@@ -90,6 +91,30 @@ def _palette_at(pal, pos):
     return _lerp(pal[i], pal[(i + 1) % n], pos - i)
 
 
+# ---- "pressure" effect constants (Phase 2) ----
+PRESSURE_DECAY_S = 0.12          # full-scale fall time after the key rises
+PRESSURE_DEFAULT_ACT_MM = 1.70   # factory actuation, used until a read-back exists
+PRESSURE_MAX_MM = 3.40           # bottom-out
+PRESSURE_NOISE_MM = 0.05         # LiveReader.NOISE_MM: below this = released
+PRESSURE_RAMP_STEPS = 64         # colour ramp resolution (65 entries)
+PRESSURE_ACT_REFRESH_S = 0.5     # how often the engine re-reads the actuation map
+
+
+def pressure_level(mm, act, max_mm=PRESSURE_MAX_MM):
+    """Depth -> 0..1 along the ramp: 0 = released, 0.5 = at the key's actuation
+    point, 1.0 = bottomed out. Linear on both sides of the actuation point."""
+    if not mm >= PRESSURE_NOISE_MM:          # also catches NaN and negatives
+        return 0.0
+    if mm >= max_mm:
+        return 1.0
+    if not act == act:                       # NaN
+        act = PRESSURE_DEFAULT_ACT_MM
+    act = min(max(act, 0.08), max_mm - 0.10)
+    if mm < act:
+        return 0.5 * mm / act
+    return 0.5 + 0.5 * (mm - act) / (max_mm - act)
+
+
 class Zone:
     def __init__(self, indices, mode, palette, bg, speed, bright, direction, orient="v"):
         self.indices = list(indices)
@@ -140,7 +165,7 @@ class PerKeyEffectEngine:
             "ripple": self._g_ripple, "aurora": self._g_aurora,
             "striation": self._g_striation, "radar": self._g_radar, "cross": self._g_cross,
             "fireworks": self._g_fireworks, "frenzy": self._g_frenzy,
-            "reactive": self._g_reactive,
+            "reactive": self._g_reactive, "pressure": self._g_pressure,
             "neon": self._g_breath, "speedres": self._g_speedres, "static": self._g_static,
             "rain": self._g_rain, "comet": self._g_comet, "tide": self._g_slopewave,
             "autorip": self._g_autorip,
@@ -150,6 +175,7 @@ class PerKeyEffectEngine:
         self.base = {}            # static per-key colors under the zones
         self.global_bg = (0, 0, 0)
         self.get_depths = None    # optional () -> {device_index: mm} for reactive
+        self.get_actuation = None  # optional () -> {device_index: mm} for pressure
         self._depths = {}
         self.get_calibrated = None  # optional () -> iterable of design codes (calibration)
         self.last_frame = {}      # most recent frame (for the in-app keyboard mirror)
@@ -718,6 +744,67 @@ class PerKeyEffectEngine:
                 s["f"] = max(0.0, s["f"] - decay)
             col = palette[i % n] if n > 1 else palette[0]
             frame[idx] = _scale(_lerp(bg, col, s["f"]), bright)
+
+
+    def _pressure_acts(self, z, t):
+        """({idx: actuation mm}, default mm) for the pressure effect, refreshed
+        at most every PRESSURE_ACT_REFRESH_S. Unknown keys use the median of
+        the known ones, or PRESSURE_DEFAULT_ACT_MM when nothing is known."""
+        st = z.state
+        if t - st.get("act_t", -1e9) >= PRESSURE_ACT_REFRESH_S:
+            st["act_t"] = t
+            acts = {}
+            src = self.get_actuation
+            if src is not None:
+                try:
+                    raw = src() or {}
+                except Exception:
+                    raw = {}
+                for i, v in raw.items():
+                    try:
+                        v = float(v)
+                    except (TypeError, ValueError):
+                        continue
+                    if v == v and 0.0 < v < 100.0:
+                        acts[i] = v
+            st["acts"] = acts
+            st["act_default"] = (statistics.median(acts.values()) if acts
+                                 else PRESSURE_DEFAULT_ACT_MM)
+        return st["acts"], st["act_default"]
+
+    def _g_pressure(self, z, t, frame):
+        # Each key's colour follows its live depth along a background -> palette
+        # ramp (pressure_level). Attack is instant; the level falls at most
+        # 1/PRESSURE_DECAY_S per second, so a released key is dark ~120 ms later
+        # even if the reader never reports a ~0 frame.
+        st = z.state
+        ramp = st.get("ramp")
+        if ramp is None:
+            pal, n, steps = z.palette, len(z.palette), PRESSURE_RAMP_STEPS
+            ramp = []
+            for k in range(steps + 1):
+                u = k / steps
+                if n == 1:
+                    g = pal[0]
+                else:
+                    p = u * (n - 1)
+                    i = min(int(p), n - 2)
+                    g = _lerp(pal[i], pal[i + 1], p - i)
+                ramp.append(_scale(_lerp(z.bg, g, u), z.bright))
+            st["ramp"] = ramp
+        lvl = st.setdefault("lvl", {})
+        last_t = st.get("t")
+        fall = 0.0 if last_t is None else max(0.0, t - last_t) / PRESSURE_DECAY_S
+        st["t"] = t
+        acts, default_act = self._pressure_acts(z, t)
+        depths = self._depths
+        top = len(ramp) - 1
+        for idx in z.indices:
+            target = pressure_level(depths.get(idx, 0.0), acts.get(idx, default_act))
+            cur = lvl.get(idx, 0.0)
+            cur = target if target >= cur else max(target, cur - fall)
+            lvl[idx] = cur
+            frame[idx] = ramp[int(cur * top + 0.5)]
 
 
 # Back-compat alias for stale imports.
