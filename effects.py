@@ -178,6 +178,7 @@ class PerKeyEffectEngine:
         self.get_actuation = None  # optional () -> {device_index: mm} for pressure
         self._depths = {}
         self.get_calibrated = None  # optional () -> iterable of design codes (calibration)
+        self.overlay = None       # optional object with apply(frame, now): status-on-keys layer
         self.last_frame = {}      # most recent frame (for the in-app keyboard mirror)
 
         self.indices = sorted(km.by_index.keys())
@@ -272,6 +273,12 @@ class PerKeyEffectEngine:
             frame = self._base_frame.copy()
             for z in zones:
                 gens.get(z.mode, default_gen)(z, t, frame)
+            ov = self.overlay
+            if ov is not None:
+                try:
+                    ov.apply(frame, t_start)    # same monotonic clock as `_now`
+                except Exception:
+                    pass                        # a broken overlay must never stop the stream
             self.last_frame = frame   # for the in-app keyboard mirror
             try:
                 send(frame)            # palette already gamma-corrected; bg left linear

@@ -86,3 +86,125 @@ def bar_levels(value, n):
 def paint_bar(frame, indices, value, color):
     for idx, lv in zip(indices, bar_levels(value, len(indices))):
         frame[idx] = mix(TRACK, color, lv)
+
+# ---- Pomodoro ----------------------------------------------------------------
+PomoState = namedtuple("PomoState", "phase remaining_s progress elapsed_s")
+
+
+class Pomodoro:
+    """Repeating work / break cycle (default 25 / 5 min), driven by the clock
+    passed in: no thread. `start(now)` begins a cycle; `state(now)` is pure."""
+
+    def __init__(self, work_s=1500.0, break_s=300.0):
+        self.work_s = max(1.0, float(work_s))
+        self.break_s = max(1.0, float(break_s))
+        self._start = None
+
+    @property
+    def running(self):
+        return self._start is not None
+
+    def start(self, now):
+        self._start = float(now)
+
+    def stop(self):
+        self._start = None
+
+    def state(self, now):
+        if self._start is None:
+            return None
+        cycle = self.work_s + self.break_s
+        pos = max(0.0, float(now) - self._start) % cycle
+        if pos < self.work_s:
+            return PomoState("work", self.work_s - pos, pos / self.work_s, pos)
+        el = pos - self.work_s
+        return PomoState("break", self.break_s - el, el / self.break_s, el)
+
+
+def phase_color(phase):
+    return POMO_BREAK_RGB if phase == "break" else POMO_WORK_RGB
+
+
+# ---- the compositing layer the effect engine calls -----------------------------
+class OverlayLayer:
+    """`apply(frame, now)` paints the enabled overlays and live flashes onto the
+    engine's per-frame dict. Called on the engine thread; everything else
+    (Api threads, the sampler) goes through the lock."""
+
+    def __init__(self, rows, all_indices, pomodoro=None, clock=time.monotonic):
+        self.rows = {k: list(v) for k, v in rows.items()}
+        self.all = list(all_indices)
+        self.pomodoro = pomodoro or Pomodoro()
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._on = {k: False for k in IDS}
+        self._val = {k: None for k in SENSOR_IDS}
+        self._flashes = []            # (rgb, start, ms)
+        self._last_phase = None
+
+    def set_enabled(self, oid, on, now=None):
+        if oid not in self._on:
+            return
+        now = self._clock() if now is None else now
+        on = bool(on)
+        with self._lock:
+            was, self._on[oid] = self._on[oid], on
+            if oid == "pomodoro":
+                if on and not was:
+                    self.pomodoro.start(now)
+                if not on:
+                    self.pomodoro.stop()
+                self._last_phase = None
+            elif not on:
+                self._val[oid] = None
+
+    def enabled(self, oid):
+        return self._on.get(oid, False)
+
+    def any_enabled(self):
+        return any(self._on.values())
+
+    def set_value(self, oid, value):
+        if oid in self._val:
+            with self._lock:
+                self._val[oid] = unit(value)
+
+    def value(self, oid):
+        return self._val.get(oid)
+
+    def flash(self, rgb, ms, now=None):
+        now = self._clock() if now is None else now
+        rgb = tuple(min(255, max(0, int(c))) for c in rgb[:3])
+        ms = min(FLASH_MAX_MS, max(FLASH_MIN_MS, int(ms)))
+        with self._lock:
+            self._add_flash(rgb, now, ms)
+
+    def _add_flash(self, rgb, now, ms):
+        self._flashes = (self._flashes + [(rgb, now, ms)])[-FLASH_KEEP:]
+
+    def pomodoro_state(self, now=None):
+        if not self._on["pomodoro"]:
+            return None
+        return self.pomodoro.state(self._clock() if now is None else now)
+
+    def apply(self, frame, now=None):
+        now = self._clock() if now is None else now
+        with self._lock:
+            on, vals = dict(self._on), dict(self._val)
+            st = self.pomodoro.state(now) if on["pomodoro"] else None
+            if st is not None:
+                if (self._last_phase is not None and st.phase != self._last_phase
+                        and st.elapsed_s < PHASE_FLASH_WINDOW_S):
+                    self._add_flash(phase_color(st.phase), now, PHASE_FLASH_MS)
+                self._last_phase = st.phase
+            self._flashes = [f for f in self._flashes if now - f[1] < f[2] / 1000.0]
+            flashes = list(self._flashes)
+        for oid in SENSOR_IDS:
+            if on[oid] and self.rows.get(oid):
+                paint_bar(frame, self.rows[oid], vals[oid], color_for(oid, vals[oid]))
+        if st is not None and self.rows.get("pomodoro"):
+            paint_bar(frame, self.rows["pomodoro"], st.progress, phase_color(st.phase))
+        for rgb, t0, ms in flashes:
+            a = 1.0 - (now - t0) / (ms / 1000.0)
+            for idx in self.all:
+                frame[idx] = mix(frame.get(idx, (0, 0, 0)), rgb, a)
