@@ -18,8 +18,9 @@ Press segmentation (integer hundredths of a millimetre, ``raw = round(mm*100)``)
   * Every other run goes into hist[min(33, raw // 10)]. With the key's
     actuation known: peak < act -> ``shallow`` only; otherwise ``presses``
     (+ ``barely`` when peak <= act + BARELY_RAW). With it unknown: ``presses``
-    and ``unrated``. Presses reaching BOTTOM_RAW also count ``bottom`` and add
-    their (capped) time-to-peak to ``ttp_ms``.
+    and ``unrated``. Every press adds its (capped) time-to-peak to ``ttp_ms``.
+    Any run (press or shallow) peaking at BOTTOM_RAW or more also counts
+    ``bottom``.
   Invariant: sum(hist) == presses + shallow.
 """
 import datetime
@@ -179,6 +180,8 @@ class Telemetry:
         agg = self._pending.setdefault((self._today(), self._board), {}) \
             .setdefault(idx, empty_agg())
         agg["hist"][min(HIST_BINS - 1, peak // 10)] += 1
+        if peak >= BOTTOM_RAW:
+            agg["bottom"] += 1
         act = self._act.get(idx)
         if act is not None and peak < act:
             agg["shallow"] += 1
@@ -188,8 +191,6 @@ class Telemetry:
                 agg["unrated"] += 1
             elif peak <= act + BARELY_RAW:
                 agg["barely"] += 1
-            if peak >= BOTTOM_RAW:
-                agg["bottom"] += 1
             agg["ttp_ms"] += min(TTP_CAP_MS, int(round((t_peak - t_start) * 1000)))
         self._ensure_flusher()
 

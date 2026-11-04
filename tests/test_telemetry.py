@@ -139,3 +139,12 @@ def test_peak_percentile_interpolates_inside_the_bin():
     assert peak_percentile(hist, 0.10) == 0.6
     assert peak_percentile(hist, 0.50) == 2.04
     assert peak_percentile([0] * HIST_BINS, 0.10) is None
+
+
+def test_bottom_counts_even_when_the_press_is_below_actuation(tmp_path):
+    tel = _tel(tmp_path)
+    tel.set_actuation({W: 3.40})
+    _press(tel, W, [1.0, 3.35])
+    agg = tel.aggregate(1)[W]
+    assert agg["bottom"] == 1 and agg["shallow"] == 1 and agg["presses"] == 0
+    assert sum(agg["hist"]) == agg["presses"] + agg["shallow"]
