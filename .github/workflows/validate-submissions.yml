@@ -15,6 +15,11 @@ on:
       - "README.md"
       - "ui/runtime_src/src/**"
       - "ui/runtime_src/workspaces/**"
+      - "ui/layouts/**"
+      - "data/board_registry.json"
+      - "protocol*.py"
+      - "drivers/**"
+      - "tools/scan_contrib.py"
       - ".github/workflows/validate-submissions.yml"
   push:
     branches: [main]
@@ -26,6 +31,10 @@ on:
       - "README.md"
       - "ui/runtime_src/src/**"
       - "ui/runtime_src/workspaces/**"
+      - "ui/layouts/**"
+      - "data/board_registry.json"
+      - "protocol*.py"
+      - "drivers/**"
 
 permissions:
   contents: read
@@ -73,3 +82,39 @@ jobs:
             exit 1
           fi
           echo "OK: no raw-HTML sinks in ui/runtime_src/src or ui/runtime_src/workspaces."
+
+  board-code-scan:
+    name: Board code may not reach network, processes or files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Scan protocol*.py and drivers/ (AST only, nothing is imported or run)
+        run: python tools/scan_contrib.py
+
+  no-built-output:
+    name: PRs may not ship built UI or installer files
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fail if the PR changes CI-built files
+        shell: bash
+        # PR metadata goes through env, never an expression inside the script, so no
+        # PR-controlled text can become shell code.
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          THIS_REPO: ${{ github.repository }}
+        run: |
+          changed=$(git diff --name-only "$BASE_SHA" HEAD -- ui/index_runtime.html 'ui/runtime_src/build/' 'dist/' || true)
+          if [ -n "$changed" ] && [ "$HEAD_REPO" != "$THIS_REPO" ]; then
+            echo "$changed"
+            echo "::error::Built files come from our CI, never from a contribution. Remove them from the PR; edit ui/runtime_src/src or workspaces instead."
+            exit 1
+          fi
+          echo "OK"

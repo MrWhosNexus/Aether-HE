@@ -287,35 +287,63 @@ def _download_dir(kind):
     return tempfile.gettempdir()
 
 
-def apply_update(asset_url, asset_name=None, asset_size=None, asset_sha256=None):
+_RELEASE_DOWNLOAD = "https://github.com/{repo}/releases/download/"
+
+
+def _trusted_asset_url(url):
+    """True only for an https download of THIS repo's GitHub release assets
+    (GitHub then redirects to its own asset CDN; the bytes are hash-checked)."""
+    if not isinstance(url, str):
+        return False
+    prefix = _RELEASE_DOWNLOAD.format(repo=version.GITHUB_REPO)
+    rest = url[len(prefix):] if url.startswith(prefix) else None
+    return bool(rest) and ".." not in rest and "\\" not in rest and "?" not in rest \
+        and "#" not in rest and "@" not in url
+
+
+def apply_update(asset_url=None, asset_name=None, asset_size=None, asset_sha256=None):
     """Download the asset and install it with the OS-native mechanism.
     Returns {ok, action, ...}. On Windows this spawns the installer and asks
     the caller to quit; on Flatpak it installs on the host and asks the user to
     relaunch.
 
-    `asset_size`/`asset_sha256` are the values from check_for_update(); when the
-    caller omits them (an older UI) they are re-fetched here rather than
-    skipped, so the integrity check cannot be bypassed by calling this directly.
+    NOTHING the caller passes is trusted: the arguments arrive over the JS
+    bridge, and if they were believed any script in the UI could make the app
+    download and run a file of its choosing. The asset (URL, name, size,
+    SHA-256) is re-resolved here from GitHub's latest release for
+    version.GITHUB_REPO; the URL must be one of that repo's release downloads;
+    a caller URL that differs from it (a release cut since the check, or a
+    forged one) is refused. The caller's size/sha256 are ignored.
     """
-    if not asset_url:
-        return {"ok": False, "error": "no installable asset for this platform"}
+    del asset_name, asset_size, asset_sha256      # bridge input: never trusted
     kind = platform_kind()
-    # basename() on BOTH sources: the asset name comes over the JS bridge, and
-    # a name with a path separator would otherwise let the download land
-    # outside the download dir.
-    name = os.path.basename(asset_name or "") or os.path.basename(asset_url.split("?")[0])
+    try:
+        chk = check_for_update()
+    except Exception as e:
+        chk = {"ok": False, "error": str(e)}
+    if not chk.get("ok"):
+        _set_progress(phase="idle", done=0, total=0)
+        return {"ok": False, "error": "could not verify the update "
+                f"({chk.get('error') or 'no reply from GitHub'}) - refusing to install"}
+    url = chk.get("asset_url")
+    if not url:
+        return {"ok": False, "error": "no installable asset for this platform"}
+    if asset_url and asset_url != url:
+        log.warning("update: refused a caller URL that is not the latest release asset")
+        return {"ok": False, "error": "the update changed since it was checked - "
+                                      "check for updates again"}
+    if not _trusted_asset_url(url):
+        log.error("update: release asset URL is not a %s release download",
+                  version.GITHUB_REPO)
+        return {"ok": False, "error": "update refused: unexpected download location"}
+    asset_url = url
+    asset_size = chk.get("asset_size")
+    asset_sha256 = chk.get("asset_sha256")
+    # basename(): never let a name with a path separator escape the download dir.
+    name = os.path.basename(chk.get("asset_name") or "") \
+        or os.path.basename(url.split("?")[0])
     if not name:
         return {"ok": False, "error": "asset has no usable filename"}
-
-    if asset_sha256 is None:
-        # Re-derive from the release rather than trusting an unverified download.
-        try:
-            chk = check_for_update()
-            if chk.get("ok") and chk.get("asset_url") == asset_url:
-                asset_size = asset_size if asset_size is not None else chk.get("asset_size")
-                asset_sha256 = chk.get("asset_sha256")
-        except Exception as e:
-            log.warning("update: could not re-fetch asset digest: %s", e)
 
     if asset_sha256 is None and asset_size is None:
         # Neither a checksum nor a size to verify the bytes against — refuse

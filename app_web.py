@@ -2661,11 +2661,31 @@ class Api:
         except Exception as e:
             return {"ok": False, "errors": [str(e)]}
 
+    @staticmethod
+    def _is_submission_url(url):
+        """Only this repo's new-issue form, over https. The URL arrives over the
+        JS bridge: anything else (file:, custom schemes, other hosts) would let
+        an injected script launch programs or phish through the OS browser."""
+        import urllib.parse
+        import version
+        if not isinstance(url, str) or len(url) > 8192:
+            return False
+        try:
+            u = urllib.parse.urlsplit(url)
+        except ValueError:
+            return False
+        return (u.scheme == "https" and u.netloc == "github.com"
+                and u.path == f"/{version.GITHUB_REPO}/issues/new"
+                and not u.fragment)
+
     def open_submission_url(self, url):
         """Open the pre-filled GitHub issue in the default browser."""
         try:
+            if not self._is_submission_url(url):
+                log.warning("open_submission_url refused a non-issue URL")
+                return {"ok": False, "error": "refused: not the Aether issue form"}
             import webbrowser
-            webbrowser.open(str(url))
+            webbrowser.open(url)
             return {"ok": True}
         except Exception as e:
             return {"ok": False, "error": str(e)}

@@ -85,8 +85,37 @@ def test_run_happy_path(tmp_path, monkeypatch):
     res = bot.run(9, gh=fake_gh, complete=lambda p: _MODEL_OUT, repo_root=str(tmp_path))
     assert res["ok"] is True and res["pr_url"] == "https://github.com/x/pull/3"
     assert (tmp_path / "ui" / "layouts" / "acme-60.json").exists()
-    assert (tmp_path / "protocol_acme_60.py").exists()
+    # Security plan hole A: model output never lands as runnable Python.
+    assert not list(tmp_path.glob("protocol_*.py"))
+    body = calls["pr"][calls["pr"].index("--body") + 1]
+    assert "def build" in body and "text only" in body.lower()
+    import json as _json
+    entry = _json.loads((tmp_path / "data" / "board_registry.json").read_text())["boards"][0]
+    assert entry["protocol"] is None and entry["status"] == "experimental"
+    assert entry["offerInUi"] is False
     assert calls["comment"] is not None   # commented the PR link on the issue
+
+
+def test_safe_registry_entry_drops_unknown_keys_and_pins_behaviour():
+    e = bot.safe_registry_entry({"slug": "a", "name": "A", "vid": "0x1", "pid": "0x2",
+                                 "usage_page": None, "formFactor": "60%",
+                                 "protocol": "protocol", "keymap": "x.json",
+                                 "capabilities": {}, "status": "supported",
+                                 "offerInUi": True, "lighting": {"hostEngine": True},
+                                 "evil": "<script>"})
+    assert e["protocol"] is None and e["status"] == "experimental" and e["offerInUi"] is False
+    assert "lighting" not in e and "evil" not in e
+
+
+def test_pr_body_fence_cannot_be_closed_by_the_adapter():
+    adapter = "x = 1\n```\n# injected markdown after a closing fence\n````\n"
+    body = bot.pr_body(7, adapter, False)
+    fence = bot._fence(adapter)
+    assert len(fence) == 5 and body.count(fence) == 2
+
+
+def test_pr_body_is_bounded():
+    assert len(bot.pr_body(7, "a" * 500000, False)) <= bot._PR_BODY_MAX
 
 def test_run_invalid_submission_comments_no_pr(tmp_path, monkeypatch):
     def fake_gh(args):

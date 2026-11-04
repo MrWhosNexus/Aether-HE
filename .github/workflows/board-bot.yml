@@ -1,9 +1,14 @@
 # .github/workflows/board-bot.yml
 name: Board draft bot
 
+# SECURITY: the bot sends a PUBLIC issue's text to a model and pushes the
+# result with a write token, so it runs only when a MAINTAINER asks for it:
+# adding the `bot-draft` label (issue authors cannot add labels; the issue
+# template's own labels are different), or a manual dispatch. It commits data
+# files only; the drafted adapter goes into the PR body as text.
 on:
   issues:
-    types: [opened]
+    types: [labeled]
   workflow_dispatch:
     inputs:
       issue:
@@ -20,8 +25,7 @@ jobs:
     # Only run for add-a-board submissions (label or template marker in the title).
     if: >
       github.event_name == 'workflow_dispatch' ||
-      contains(github.event.issue.title, '[Board]') ||
-      contains(toJSON(github.event.issue.labels.*.name), 'add-a-board')
+      github.event.label.name == 'bot-draft'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

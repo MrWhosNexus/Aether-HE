@@ -1,0 +1,15 @@
+# Security plan rule 6 (docs/security/2026-11-04-submissions-plan.md): changes
+# here need the owner's review. Takes effect with branch protection on main
+# ("Require review from Code Owners").
+/.github/                  @MrWhosNexus
+/updater.py                @MrWhosNexus
+/version.py                @MrWhosNexus
+/service/                  @MrWhosNexus
+/AetherHE.spec             @MrWhosNexus
+/installer.iss             @MrWhosNexus
+/build_installer.bat       @MrWhosNexus
+/requirements.txt          @MrWhosNexus
+/drivers/__init__.py       @MrWhosNexus
+/tools/scan_contrib.py     @MrWhosNexus
+/tools/board_bot.py        @MrWhosNexus
+/app_web.py                @MrWhosNexus

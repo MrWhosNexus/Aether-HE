@@ -24,6 +24,46 @@ _FILE_BLOCK = re.compile(r"=== FILE: (?P<name>[^\n=]+?) ===\n(?P<body>.*?)(?=\n=
 _REQUIRED_ENTRY_KEYS = {"slug", "name", "vid", "pid", "usage_page", "formFactor",
                         "protocol", "keymap", "capabilities", "status"}
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+# The registry entry is model output driven by an UNTRUSTED issue: keep only
+# plain identity/layout fields and pin everything that changes app behaviour.
+_ENTRY_KEEP = _REQUIRED_ENTRY_KEYS | {"productString", "_note"}
+_PR_BODY_MAX = 60000
+
+
+def safe_registry_entry(reg):
+    """The drafted registry entry, reduced to known keys, with the protocol
+    unset (no driver until a human wires one), status experimental and never
+    offered in the UI."""
+    out = {k: v for k, v in reg.items() if k in _ENTRY_KEEP}
+    out["protocol"] = None
+    out["status"] = "experimental"
+    out["offerInUi"] = False
+    return out
+
+
+def _fence(text):
+    """A markdown code fence longer than any backtick run inside `text`."""
+    run = max((len(m) for m in re.findall(r"`+", text)), default=0)
+    return "`" * max(3, run + 1)
+
+
+def pr_body(issue_number, adapter, syntax_error):
+    """PR description. The drafted adapter is shown as TEXT for a human to
+    review and port; it is never committed as a .py file (a prompt-injected
+    issue could otherwise land runnable code in a bot-authored PR)."""
+    head = (f"AI-drafted from #{issue_number}. UNVERIFIED and UNTRUSTED: the draft "
+            "was generated from a public issue. Verify on hardware before promoting. "
+            "See DECODE_NOTES.md.\n\nThis PR commits data only (registry entry with "
+            "`protocol: null`, layout). The drafted protocol adapter is below as text: "
+            "review it line by line and port it by hand - never copy it in unread.\n")
+    if not adapter:
+        return head
+    if syntax_error:
+        head += "\n> The drafted adapter does not even parse.\n"
+    fence = _fence(adapter)
+    room = _PR_BODY_MAX - len(head) - 2 * len(fence) - 200   # wrapper + marker
+    shown = adapter if len(adapter) <= room else adapter[:max(0, room)] + "\n# ... truncated"
+    return f"{head}\n<details><summary>Drafted adapter (text only)</summary>\n\n{fence}python\n{shown}\n{fence}\n</details>\n"
 
 _ALLOWED_HOSTS = {"github.com", "objects.githubusercontent.com",
                    "user-images.githubusercontent.com", "raw.githubusercontent.com"}
@@ -227,25 +267,22 @@ def run(issue_number, *, gh, complete, repo_root):
         return {"ok": False, "pr_url": None, "reason": "sanity failed"}
 
     slug = artifacts["registry"]["slug"]
-    # write files
+    syntax_error = any("syntax error" in p for p in problems)
+    # write files: DATA ONLY (no Python is ever committed from model output)
     reg = json.load(open(reg_path))
-    reg["boards"].append(artifacts["registry"])
+    reg["boards"].append(safe_registry_entry(artifacts["registry"]))
     json.dump(reg, open(reg_path, "w"), indent=2)
     lay_path = os.path.join(repo_root, "ui", "layouts", f"{slug}.json")
     os.makedirs(os.path.dirname(lay_path), exist_ok=True)
     json.dump(artifacts["layout"], open(lay_path, "w"), indent=2)
-    open(os.path.join(repo_root, f"protocol_{slug.replace('-', '_')}.py"), "w",
-         encoding="utf-8").write(artifacts["adapter"])
-    notes = artifacts["notes"] + ("\n\n> NOTE: adapter has a syntax error — needs a human fix."
-                                  if any("syntax error" in p for p in problems) else "")
+    notes = artifacts["notes"] + ("\n\n> NOTE: the drafted adapter has a syntax error."
+                                  if syntax_error else "")
     open(os.path.join(repo_root, "DECODE_NOTES.md"), "w", encoding="utf-8").write(notes)
 
     branch = f"board/{slug}"
     # Stage only the files this bot wrote — never `git add -A`, which would sweep
     # in any stray untracked file that happens to be in the working tree.
-    written = [reg_path, lay_path,
-               os.path.join(repo_root, f"protocol_{slug.replace('-', '_')}.py"),
-               os.path.join(repo_root, "DECODE_NOTES.md")]
+    written = [reg_path, lay_path, os.path.join(repo_root, "DECODE_NOTES.md")]
     # Only do real git ops when repo_root is an actual git checkout (production).
     # In tests repo_root is a bare tmp_path with no .git, so this is skipped —
     # keeps tests hermetic and never risks running git against the real repo cwd.
@@ -263,7 +300,7 @@ def run(issue_number, *, gh, complete, repo_root):
     except Exception:
         pass  # already exists (or no perms) — non-fatal
     pr_url = gh(["pr", "create", "--title", f"Draft board: {slug} (experimental)",
-                 "--body", f"AI-drafted from #{issue_number}. UNVERIFIED — verify on hardware before promoting to supported. See DECODE_NOTES.md.",
+                 "--body", pr_body(issue_number, artifacts.get("adapter") or "", syntax_error),
                  "--label", "experimental", "--head", branch]).strip()
     gh(["issue", "comment", str(issue_number), "--body", f"Automated draft opened: {pr_url}"])
     return {"ok": True, "pr_url": pr_url, "reason": "ok"}
