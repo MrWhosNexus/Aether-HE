@@ -410,11 +410,12 @@
     transition: color 0.15s, background 0.15s, border-color 0.15s;
   }
   .topbar-tab:hover { color: var(--text); background: rgba(234,244,240,0.03); }
-  /* Nine labelled tabs + the connect cluster need ~1560 px (the bar is
-     capped at 1600). Below that only the active tab keeps its label (the
+  /* Nine labelled tabs + the connect cluster need the bar's full 1600 px
+     cap (measured connected: 1581 px overflowed by 3 px, 1600 px fit with no
+     slack). At or below that only the active tab keeps its label (the
      others show the icon, label in the tooltip), so the Pair / zoom / gear
      cluster stays on screen down to the 1160 px minimum window. */
-  @media (max-width: 1580px) {
+  @media (max-width: 1600px) {
     .topbar-tab:not(.on) > span { display: none; }
   }
   .topbar-tab.on {

@@ -255,7 +255,7 @@ def test_dashboard_page_replaces_the_widget_desktop():
 
 
 def test_top_bar_stays_on_screen_at_the_minimum_width():
-    assert "@media (max-width: 1580px)" in HEAD
+    assert "@media (max-width: 1600px)" in HEAD
     assert "height: 34px; padding: 0 11px; border-radius: 10px;" in HEAD
     assert ".topbar-tab:not(.on) > span { display: none; }" in HEAD
     assert "title={s.label} aria-label={s.label}" in DESK
@@ -265,7 +265,7 @@ def test_built_page_lands_on_the_dashboard():
     with open(os.path.join(HERE, "ui", "index_runtime.html"), encoding="utf-8") as fh:
         html = fh.read()
     assert 'useState("dashboard")' in html and "DASHBOARD_PAGE" in html
-    assert "max-width: 1580px" in html
+    assert "max-width: 1600px" in html
 
 
 @pytest.mark.skipif(not hasattr(app_web.Api, "get_overlays"),
