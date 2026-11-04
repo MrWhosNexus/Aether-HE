@@ -516,3 +516,106 @@ def running_programs(index, procs=None, path_of=None, limit=200, own_pid=None):
                      "gameId": gid})
     rows.sort(key=lambda r: (r["gameId"] is None, r["name"].lower()))
     return rows[:limit]
+
+
+class GameSwitcher:
+    """Debounced "which profile should be active" decisions. Pure: the
+    caller passes the clock, so tests drive it directly.
+
+    step(now, running, fg, mapping, auto, active_profile) is called once per
+    poll with the running KNOWN games, the foreground one, {game id: profile
+    id} for mapped games, the auto-switch flag and the profile the app shows.
+    It returns a switch dict {"seq", "profileId", "reason": "game"|"revert",
+    "gameId", "gameName"} when the app should switch, else None.
+
+    - Wanted game: the foreground one if it is a running mapped game; else
+      the one already applied while it still runs (alt-tab to a browser does
+      not switch back); else the most recently started.
+    - A change must hold for `debounce_s` before it commits (alt-tab, game
+      restarts and launchers never hammer the keyboard's flash).
+    - The first game of a session remembers the active profile; when the
+      last mapped game exits the app reverts to it.
+    - A manual switch during a session (note_active) cancels that revert and
+      the game is not re-applied until it exits or another game takes over.
+    - Auto-switch off: nothing is emitted (status still tracks the game).
+    """
+
+    def __init__(self, debounce_s=DEBOUNCE_S):
+        self.debounce_s = debounce_s
+        self.seq = 0
+        self.last = None
+        self.reset()
+
+    def reset(self):
+        """Forget the session (auto-switch toggled): the next poll re-decides
+        from scratch, through the debounce, without a revert."""
+        self.current = None
+        self.current_profile = None
+        self.session = False
+        self.prev_profile = None
+        self.overridden = False
+        self._cand = None
+        self._cand_since = None
+        self._first_seen = {}
+
+    def pick(self, running, fg):
+        if fg in running:
+            return fg
+        if self.current in running:
+            return self.current
+        if not running:
+            return None
+        return max(running, key=lambda g: (self._first_seen.get(g, 0.0), g))
+
+    def step(self, now, running, fg, mapping, auto, active_profile, names=None):
+        running = {g for g in running if mapping.get(g)}
+        for g in list(self._first_seen):
+            if g not in running:
+                del self._first_seen[g]
+        for g in running:
+            self._first_seen.setdefault(g, now)
+        want = self.pick(running, fg)
+        target = (want, mapping.get(want) if want else None)
+        if target == (self.current, self.current_profile):
+            self._cand = None
+            return None
+        if self._cand != target:
+            self._cand, self._cand_since = target, now
+            return None
+        if now - self._cand_since < self.debounce_s:
+            return None
+        self._cand = None
+        game, profile = target
+        self.current, self.current_profile = target
+        if not auto:
+            return None
+        if game is not None:
+            if not self.session:
+                self.session = True
+                self.prev_profile = active_profile
+                self.overridden = False
+            elif self.overridden:
+                self.overridden = False          # a new game takes over
+            return self._emit(profile, "game", game, (names or {}).get(game))
+        was = self.session
+        prev, overridden = self.prev_profile, self.overridden
+        self.session, self.prev_profile, self.overridden = False, None, False
+        if was and not overridden and prev:
+            return self._emit(prev, "revert", None, None)
+        return None
+
+    def _emit(self, profile, reason, game, name):
+        self.seq += 1
+        self.last = {"seq": self.seq, "profileId": profile, "reason": reason,
+                     "gameId": game, "gameName": name}
+        return dict(self.last)
+
+    def note_active(self, active_profile, handled_seq):
+        """The app reports its active profile and the newest switch it has
+        handled. Once it has handled our last switch, a different active
+        profile means the user switched by hand: no revert, no re-apply."""
+        if (self.session and self.last is not None and active_profile
+                and isinstance(handled_seq, int) and handled_seq >= self.seq
+                and active_profile != self.last["profileId"]):
+            self.overridden = True
+            self.prev_profile = None
