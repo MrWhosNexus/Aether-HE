@@ -619,3 +619,287 @@ class GameSwitcher:
                 and active_profile != self.last["profileId"]):
             self.overridden = True
             self.prev_profile = None
+
+
+def _norm_entry(gid, e):
+    if not isinstance(e, dict):
+        return None
+    custom = gid.startswith(CUSTOM_PREFIX)
+    if not custom and not _ID_RE.match(gid):
+        return None
+    if custom and not norm_exe(gid[len(CUSTOM_PREFIX):]):
+        return None
+    name = clean_name(e.get("name"))
+    exes = [n for n in (norm_exe(x) for x in (e.get("exes") or []) if isinstance(x, str))
+            if n and n.count("/") < MAX_SEGMENTS][:MAX_EXES_PER_GAME]
+    prof = e.get("profile")
+    if not (isinstance(prof, str) and _PROFILE_RE.match(prof)):
+        prof = None
+    if not name or not exes:
+        return None
+    return {"name": name, "exes": exes, "profile": prof, "custom": custom}
+
+
+def norm_block(b):
+    """settings.json "games" block -> {"autoSwitch": bool|None, "map": {...}};
+    anything malformed is dropped (the file is user-editable)."""
+    b = b if isinstance(b, dict) else {}
+    auto = b.get("autoSwitch")
+    out = {"autoSwitch": auto if isinstance(auto, bool) else None, "map": {}}
+    m = b.get("map")
+    if isinstance(m, dict):
+        for gid, e in list(m.items())[:MAX_MAPPED]:
+            if isinstance(gid, str):
+                ne = _norm_entry(gid, e)
+                if ne:
+                    out["map"][gid] = ne
+    return out
+
+
+class GameService:
+    """Owns the user's game map (settings.json "games"), the matcher, the
+    switcher and the poll thread. Every public method is called from a
+    pywebview bridge thread or the poll thread; one lock guards the state.
+
+    read_settings() -> settings dict or None; write_settings(partial) merges
+    (Api.save_settings). scanner(index) -> (running, fg) and the clock are
+    injectable for tests; start() is the only thing that creates a thread."""
+
+    def __init__(self, data_dir, read_settings, write_settings, platform=None,
+                 store=None, scanner=None, programs=None, clock=time.monotonic):
+        self._lock = threading.RLock()
+        self.available = processes_supported(platform)
+        self.store = store or DetectableStore(os.path.join(data_dir, "games"))
+        self._read, self._write = read_settings, write_settings
+        self._scan = scanner or scan
+        self._programs = programs or running_programs
+        self._clock = clock
+        self.switcher = GameSwitcher()
+        self.on_detected = None            # callback(name or None): tray tooltip
+        self.profiles = []                 # [{"id", "name"}] from games_sync
+        self.active_profile = None
+        self.detected = []
+        self.foreground = None
+        self.shown = None
+        self._thread = None
+        self._stop = threading.Event()
+        self._refreshing = False
+        try:
+            self._block = norm_block((read_settings() or {}).get(SETTINGS_KEY))
+        except Exception:
+            self._block = norm_block(None)
+        self.store.load()
+        self._rebuild()
+
+    # ---- map + persistence ----------------------------------------------
+    def _rebuild(self):
+        extra = [{"id": gid, "name": e["name"], "exes": e["exes"]}
+                 for gid, e in self._block["map"].items()]
+        self.index = DetectableIndex(self.store.games, extra)
+
+    def _save(self):
+        r = self._write({SETTINGS_KEY: {"autoSwitch": self._block["autoSwitch"],
+                                        "map": self._block["map"]}})
+        if isinstance(r, dict) and not r.get("ok", True):
+            raise RuntimeError(r.get("error") or "settings not saved")
+
+    @property
+    def auto_switch(self):
+        a = self._block["autoSwitch"]
+        if isinstance(a, bool):
+            return a
+        return any(e["profile"] for e in self._block["map"].values())
+
+    def _mapping(self):
+        return {gid: e["profile"] for gid, e in self._block["map"].items() if e["profile"]}
+
+    def _check_profile(self, profile_id):
+        if not (isinstance(profile_id, str) and _PROFILE_RE.match(profile_id)):
+            raise ValueError("invalid profile id")
+        known = {p["id"] for p in self.profiles}
+        if known and profile_id not in known:
+            raise ValueError(f"unknown profile {profile_id!r}")
+
+    def set_profile(self, game_id, profile_id):
+        with self._lock:
+            if not isinstance(game_id, str) or not game_id:
+                raise ValueError("invalid game id")
+            m = self._block["map"]
+            if profile_id is None:
+                m.pop(game_id, None)
+            else:
+                self._check_profile(profile_id)
+                if game_id in m:
+                    m[game_id]["profile"] = profile_id
+                else:
+                    if len(m) >= MAX_MAPPED:
+                        raise ValueError("too many games")
+                    exes = self.index.exes_of(game_id)
+                    name = self.index.name_of(game_id)
+                    if game_id.startswith(CUSTOM_PREFIX) or not exes or not name:
+                        raise ValueError("unknown game")
+                    m[game_id] = {"name": name, "exes": exes,
+                                  "profile": profile_id, "custom": False}
+            self._save()
+            self._rebuild()
+            return {"ok": True, "autoSwitch": self.auto_switch}
+
+    def add_custom(self, exe_path, name=None):
+        with self._lock:
+            suffix = exe_suffix(exe_path, 2)
+            if not suffix or not suffix.endswith(".exe"):
+                raise ValueError("pick a program (.exe)")
+            gid = CUSTOM_PREFIX + suffix
+            label = clean_name(name) or suffix.rsplit("/", 1)[-1]
+            m = self._block["map"]
+            if gid in m:
+                m[gid]["name"] = label
+            else:
+                if len(m) >= MAX_MAPPED:
+                    raise ValueError("too many games")
+                m[gid] = {"name": label, "exes": [suffix], "profile": None, "custom": True}
+            self._save()
+            self._rebuild()
+            return {"ok": True, "id": gid, "name": label}
+
+    def set_auto(self, on):
+        with self._lock:
+            self._block["autoSwitch"] = bool(on)
+            self._save()
+            self.switcher.reset()
+            return {"ok": True, "autoSwitch": self.auto_switch}
+
+    def sync(self, state):
+        """games_sync from app.jsx: profile list, active profile, newest
+        switch handled."""
+        if not isinstance(state, dict):
+            raise ValueError("state must be an object")
+        profs = []
+        for p in (state.get("profiles") or [])[:MAX_PROFILES]:
+            if isinstance(p, dict) and isinstance(p.get("id"), str) and _PROFILE_RE.match(p["id"]):
+                profs.append({"id": p["id"], "name": clean_name(p.get("name")) or p["id"]})
+        active = state.get("activeProfile")
+        active = active if isinstance(active, str) and _PROFILE_RE.match(active) else None
+        seq = state.get("handledSeq")
+        seq = seq if isinstance(seq, int) and not isinstance(seq, bool) else -1
+        with self._lock:
+            if profs:
+                self.profiles = profs
+            if active:
+                self.active_profile = active
+                self.switcher.note_active(active, seq)
+        return {"ok": True}
+
+    def _active_profile(self):
+        if self.active_profile:
+            return self.active_profile
+        try:
+            a = (self._read() or {}).get("activeProfile")
+        except Exception:
+            a = None
+        return a if isinstance(a, str) and _PROFILE_RE.match(a) else None
+
+    # ---- detection --------------------------------------------------------
+    def tick(self):
+        """One poll: scan, decide, notify. Returns the switch dict or None."""
+        if not self.available:
+            return None
+        running, fg = self._scan(self.index)
+        with self._lock:
+            self.detected = sorted(running)
+            self.foreground = fg if fg in running else None
+            names = {g: self.index.name_of(g) for g in running}
+            sw = self.switcher.step(self._clock(), set(running), self.foreground,
+                                    self._mapping(), self.auto_switch,
+                                    self._active_profile(), names)
+            shown = self.foreground if self.foreground else (
+                self.shown if self.shown in running else
+                (min(running, key=lambda g: (names.get(g) or "", g)) if running else None))
+            changed = shown != self.shown
+            self.shown = shown
+            label = self.index.name_of(shown) if shown else None
+        if sw:
+            log.info("game profile switch: %s -> %s (%s)",
+                     sw["gameName"] or "-", sw["profileId"], sw["reason"])
+        if changed and self.on_detected is not None:
+            try:
+                self.on_detected(label)
+            except Exception:
+                pass
+        return sw
+
+    def running(self):
+        if not self.available:
+            return []
+        with self._lock:
+            index = self.index
+        return self._programs(index)
+
+    def refresh_detectable(self):
+        r = self.store.refresh()
+        if r.get("ok"):
+            with self._lock:
+                self._rebuild()
+        return r
+
+    def _maybe_refresh(self):
+        if self._refreshing or not self.store.should_refresh():
+            return
+        self._refreshing = True
+
+        def run():
+            try:
+                self.refresh_detectable()
+            finally:
+                self._refreshing = False
+        threading.Thread(target=run, name="aether-games-list", daemon=True).start()
+
+    def status(self):
+        with self._lock:
+            m = self._block["map"]
+            sw = self.switcher
+            detected = [{"id": g, "name": self.index.name_of(g) or g,
+                         "mapped": bool(m.get(g, {}).get("profile")),
+                         "profileId": m.get(g, {}).get("profile")} for g in self.detected]
+            games = sorted(({"id": gid, "name": e["name"], "profileId": e["profile"],
+                             "custom": e["custom"]} for gid, e in m.items()),
+                           key=lambda g: g["name"].lower())
+            active = None
+            if sw.session and sw.current:
+                active = {"id": sw.current,
+                          "name": self.index.name_of(sw.current) or sw.current,
+                          "profileId": sw.current_profile}
+            return {"ok": True, "available": self.available,
+                    "autoSwitch": self.auto_switch,
+                    "detected": detected, "foreground": self.foreground,
+                    "active": active, "games": games,
+                    "switch": dict(sw.last) if sw.last else None,
+                    "detectable": self.store.info()}
+
+    # ---- thread -----------------------------------------------------------
+    def start(self):
+        """Start polling (Windows only). Returns whether a thread runs."""
+        if not self.available:
+            return False
+        if self._thread is not None and self._thread.is_alive():
+            return True
+        self._stop.clear()
+        self._thread = threading.Thread(target=self._loop, name="aether-games", daemon=True)
+        self._thread.start()
+        return True
+
+    def stop(self):
+        self._stop.set()
+        t = self._thread
+        if t is not None and t is not threading.current_thread():
+            t.join(timeout=2)
+        self._thread = None
+
+    def _loop(self):
+        while not self._stop.is_set():
+            try:
+                self._maybe_refresh()
+                self.tick()
+            except Exception as e:
+                log.warning("game detection pass failed: %s", e)
+            self._stop.wait(POLL_S)
