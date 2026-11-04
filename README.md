@@ -1,24 +1,24 @@
 # AETHER HE — Aula WIN60 HE Controller
 
-> ## ✨ v0.5.4 — Aether keeps working when your keyboard restarts
-> **If lighting, actuation or SOCD ever stopped responding until you relaunched the app,
-> this release fixes it.** Aether now notices a lost connection and reconnects by itself.
+> ## ✨ v0.6.0 — Aether learns how you type
+> **A Dashboard, key statistics with a per-game heatmap, actuation suggestions, game profiles,
+> status bars on your keys and a music visualizer.**
 >
-> - **Self-healing connection.** The status light now proves the keyboard is answering.
->   After a USB reset or a polling-rate change, Aether reconnects in a few
->   seconds and restores your lighting effect, travel test and gamepad capture.
-> - **Polling Rate is safe.** Changing it restarts the keyboard; Aether now follows it
->   through the restart and shows *Restarting keyboard…* instead of going silent.
-> - **A keyboard on the Actuation tab.** Click or drag keys to select them, and see each
->   key's actuation point, Rapid Trigger values and live travel depth on the board itself.
-> - **No more false "applied" messages.** Actuation, dead band, switch, SOCD and gamepad
->   changes only show as applied once the keyboard accepts them. Actuation values are read
->   back from the keyboard.
-> - **SOCD clears for real.** Deleting the last pair and pressing Apply now removes it from
->   the keyboard. The unused hotkey and mode controls are gone.
-> - **Auto-connect is on by default.**
->
-> Reconnect and Polling Rate were verified on hardware with an Aula Win60 HE on Windows.
+> - **Dashboard.** The new first tab: a heatmap of today's presses, live key depth or each
+>   key's actuation point, plus your connection, profile and a lighting quick switch.
+> - **Key statistics and Analytics.** Per-key press counts, bottom-outs and depth, with a
+>   heatmap you can filter by game. Counts only: Aether never records what you type, the
+>   order of keys or when you pressed them. Turn it off or clear it in Settings.
+> - **Actuation suggestions.** After enough presses, Analytics suggests a better actuation
+>   point for keys you press too shallow or barely past it. Nothing changes until you press Apply.
+> - **Game profiles.** Aether spots a running game and switches to the profile you picked
+>   for it, then switches back when you quit.
+> - **Status on keys.** CPU, RAM and GPU load and a Pomodoro timer as bars on the key rows.
+> - **New effects.** Pressure (each key glows with how far it is pressed) and Music
+>   (bars that follow whatever your PC is playing).
+> - **Fixes.** Calibration works again with press-reactive lighting on; the Travel Test no
+>   longer leaves keys stuck after a quick tap; the SOCD editor warns when two pairs use the
+>   same keys (use Model 4 for whichever-pressed-last-wins).
 >
 > ### → [**Download the latest release**](https://github.com/MrWhosNexus/Aether-HE/releases/latest)
 >
