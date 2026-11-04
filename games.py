@@ -819,8 +819,9 @@ class GameService:
             self.shown = shown
             label = self.index.name_of(shown) if shown else None
         if sw:
-            log.info("game profile switch: %s -> %s (%s)",
-                     sw["gameName"] or "-", sw["profileId"], sw["reason"])
+            # No game name here: aether.log is timestamped and rotated, so a
+            # name would be a play history. The profile id and reason suffice.
+            log.info("game profile switch: -> %s (%s)", sw["profileId"], sw["reason"])
         if changed and self.on_detected is not None:
             try:
                 self.on_detected(label)

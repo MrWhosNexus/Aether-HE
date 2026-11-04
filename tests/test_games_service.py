@@ -156,6 +156,20 @@ def test_tick_switches_and_reports_the_tooltip_name(tmp_path):
     assert shown == ["Starfall Arena", None]
 
 
+def test_a_profile_switch_logs_no_game_name(tmp_path, caplog):
+    """aether.log is a rotating, timestamped file: a game name there is a play history."""
+    import logging
+    svc, _, scan, clock = _svc(tmp_path)
+    svc.set_profile(STARFALL, "pg")
+    scan.running, scan.fg = {STARFALL}, STARFALL
+    with caplog.at_level(logging.INFO):
+        sw = _polls(svc, clock, 3)
+    assert sw["profileId"] == "pg"
+    info = [r for r in caplog.records if r.levelno >= logging.INFO]
+    assert any("pg" in r.getMessage() for r in info)          # the switch itself is still logged
+    assert not any("Starfall" in r.getMessage() or STARFALL in r.getMessage() for r in info)
+
+
 def test_detected_but_unmapped_games_show_but_never_switch(tmp_path):
     svc, _, scan, clock = _svc(tmp_path)
     shown = []
