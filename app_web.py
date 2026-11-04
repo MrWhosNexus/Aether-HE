@@ -38,6 +38,7 @@ import telemetry
 import updater
 import tray
 import single_instance
+import analytics
 from tools import board_submission
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -665,6 +666,55 @@ class Api:
                 self._release_reader("telemetry")
                 tel.flush()
             return {"ok": True, "enabled": on}
+        except Exception as e:
+            return self._fail(e)
+
+    # ---- typing analytics + auto-tune (Phase 4; aggregates only) ----
+    def get_analytics(self, days=14):
+        """Analytics views over the last `days` days (1..90): per design code
+        presses / shallow / barely / bottom-out counts and percentages,
+        average peak depth, heat 0..1; board totals; and presses per day for
+        the last 14 days. Built from telemetry's per-key day aggregates only."""
+        try:
+            tel = getattr(self, "telemetry", None)
+            if tel is None:
+                return dict(self._STATS_UNAVAILABLE)
+            days = _clamp_stats_days(days)
+            km = getattr(self, "km", None)
+            code_of = km.code_of if km else (lambda i: None)
+            out = analytics.summarize(
+                tel.recent_buckets(max(days, analytics.DAILY_DAYS)), code_of, days)
+            out.update(ok=True, enabled=tel.enabled,
+                       supported=self._stats_supported(), board=tel.board,
+                       days=days)
+            return out
+        except Exception as e:
+            return self._fail(e)
+
+    def get_tune_suggestions(self):
+        """Actuation auto-tune SUGGESTIONS (never writes anything). Uses only
+        presses recorded at each key's current read-back actuation over the
+        last analytics.TUNE_WINDOW_DAYS days. Applying one is the UI's normal
+        Actuation Apply path (set_trigger_codes + verify_actuation)."""
+        try:
+            tel = getattr(self, "telemetry", None)
+            km = getattr(self, "km", None)
+            if tel is None or km is None:
+                return dict(self._STATS_UNAVAILABLE)
+            out = {"ok": True, "enabled": tel.enabled,
+                   "supported": self._stats_supported(),
+                   "min_presses": analytics.MIN_PRESSES,
+                   "window_days": analytics.TUNE_WINDOW_DAYS,
+                   "read_back": False, "suggestions": [], "notes": []}
+            if not out["supported"]:
+                return out
+            act = tel.actuation()
+            trig = dict(getattr(self, "_trig_mode", None) or {})
+            out["read_back"] = bool(act) and bool(trig)
+            days = [d for _, d in tel.recent_buckets(analytics.TUNE_WINDOW_DAYS)]
+            out.update(analytics.suggest(analytics.rated_at(days, act), act,
+                                         trig, km.index_of_code))
+            return out
         except Exception as e:
             return self._fail(e)
 
