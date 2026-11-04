@@ -1265,6 +1265,14 @@ class Api:
                 self.driver.set_actuation(idxs, mode,
                                           float(travel_mm), float(rt_press_mm),
                                           float(rt_release_mm))
+            # Per-key edits resend whole groups from _trigger_state: record
+            # this write there too, or the next single-key flush would put
+            # a stale group (e.g. keys set before a game switch) back.
+            cfg = ((0, _mm_to_raw(travel_mm), None, None) if mode == 0 else
+                   (mode, _mm_to_raw(travel_mm), _mm_to_raw(rt_press_mm),
+                    _mm_to_raw(rt_release_mm)))
+            for i in idxs:
+                self._trigger_state[i] = cfg
             self._note_actuation({i: float(travel_mm) for i in idxs})
             self._note_trigger_modes(idxs, mode, rt_press_mm, rt_release_mm)
             return {"ok": True, "keys": len(idxs)}

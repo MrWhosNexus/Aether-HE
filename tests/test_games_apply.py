@@ -168,3 +168,27 @@ def test_selecting_another_board_drops_board_state(tmp_path):
     a._remaps, a._deadband_state, a._fn_layer_raw = {}, {}, None
     assert a.select_board("aula-mini60he-pro")["ok"] is True
     assert a._trig_mode == {} and a._socd_last is None and a._pending_board is None
+
+
+def test_game_apply_updates_the_trigger_groups_later_flushes_resend(tmp_path):
+    """User sets some keys to 1.0 mm, a game applies 1.5 mm to all keys, then
+    the user edits one key: the flush must not resend the stale 1.0 mm group."""
+    a = _a(tmp_path)
+    codes = list(a.km.index_of_code)
+    wasd, space = codes[:4], codes[4]
+    assert a.set_trigger_codes(wasd, 1.0)["ok"]
+    assert a.apply_profile_to_board(dict(SPEC, actuation=1.5, socd=None))["actuation"] == "written"
+    a.driver.actuation.clear()
+    assert a.set_trigger_codes([space], 0.5)["ok"]
+    assert a.driver.actuation == [(1, 0, 0.5, None, None)]      # only the edited key's group
+    state = set(a._trigger_state.values())
+    assert state == {(0, 150, None, None), (0, 50, None, None)}  # nothing left at 1.0 mm
+
+
+def test_game_apply_in_rt_mode_is_remembered_with_its_pair(tmp_path):
+    a = _a(tmp_path)
+    rt = dict(SPEC, rtEnabled=True, rtPress=0.1, rtRelease=0.2, socd=None)
+    a.apply_profile_to_board(rt)
+    assert set(a._trigger_state.values()) == {(13, 80, 10, 20)}
+    assert len(a._trigger_state) == len(a.km.indices())
+
