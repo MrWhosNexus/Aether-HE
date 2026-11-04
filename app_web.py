@@ -457,6 +457,13 @@ class Api:
         # (firmware read-back) and successful actuation writes; read lock-free
         # (the engine takes dict() copies via _actuation_snapshot).
         self._act_mm = {}
+        # idx -> (trigger mode, rt press mm|None, rt release mm|None) from the
+        # same read-back / successful writes; with _act_mm it tells
+        # apply_profile_to_board whether the board already holds a profile's
+        # actuation (skip the flash write). Cleared on every connect.
+        self._trig_mode = {}
+        self._socd_last = None      # last SOCD pairs written this connection
+        self._pending_board = None  # game-profile board apply waiting for connect
         self._init_link_state()
         self.telemetry = self._make_telemetry()
         self._games = self._make_games()
@@ -581,6 +588,30 @@ class Api:
         """Copy of the per-key actuation map ({device index: mm})."""
         return dict(getattr(self, "_act_mm", None) or {})
 
+    def _note_trigger_modes(self, idxs, mode, rt_press_mm, rt_release_mm):
+        """A successful actuation write: remember each key's trigger mode
+        (and RT pair in an RT mode; mode 0 keeps the stored pair, unknown)."""
+        cur = getattr(self, "_trig_mode", None)
+        if cur is None:
+            cur = self._trig_mode = {}
+        mode = int(mode)
+        rt = ((None, None) if mode == 0
+              else (round(float(rt_press_mm), 2), round(float(rt_release_mm), 2)))
+        for i in idxs:
+            cur[i] = (mode,) + rt
+
+    def _note_read_back_modes(self, detail_by_idx):
+        """verify_actuation's per-key trigger detail -> _trig_mode."""
+        cur = getattr(self, "_trig_mode", None)
+        if cur is None:
+            cur = self._trig_mode = {}
+        for idx, d in (detail_by_idx or {}).items():
+            try:
+                cur[idx] = (int(d["mode"]), round(float(d.get("rt_press_mm") or 0.0), 2),
+                            round(float(d.get("rt_release_mm") or 0.0), 2))
+            except (KeyError, TypeError, ValueError):
+                cur.pop(idx, None)
+
     def _stats_forget_actuation(self, idxs):
         """An actuation write makes the stored read-back stale: forget it."""
         tel = getattr(self, "telemetry", None)
@@ -665,6 +696,10 @@ class Api:
             # Driver-specific open + handshake (Win60: heartbeat; MINI60:
             # 0x10 device info + LED-table seed; inert boards: open only).
             info = self.driver.connect()
+            # Fresh handle: what the board holds is unknown until the UI's
+            # read-back, so the next profile apply writes instead of skipping.
+            self._trig_mode = {}
+            self._socd_last = None
             if verify and self.driver.probe_link(self._PROBE_TIMEOUT_S) is False:
                 try:
                     self.dev.close()
@@ -691,6 +726,7 @@ class Api:
             if resume:
                 self._resume_session()
             self._start_stats_reader()
+            self._apply_pending_board()
             return {"ok": True, "iface": info["interface_number"]}
         except Exception as e:
             return self._fail(e)
@@ -814,6 +850,9 @@ class Api:
             self._trigger_state = {}
             self._deadband_state = {}
             self._act_mm = {}
+            self._trig_mode = {}
+            self._socd_last = None
+            self._pending_board = None
             self._fn_layer_raw = None
             self._idx2code = None
             self._init_link_state()
@@ -1227,6 +1266,7 @@ class Api:
                                           float(travel_mm), float(rt_press_mm),
                                           float(rt_release_mm))
             self._note_actuation({i: float(travel_mm) for i in idxs})
+            self._note_trigger_modes(idxs, mode, rt_press_mm, rt_release_mm)
             return {"ok": True, "keys": len(idxs)}
         except Exception as e:
             return self._fail(e)
@@ -1415,6 +1455,7 @@ class Api:
             else:
                 self._flush_triggers(edited_idxs=idxs)
             self._note_actuation({i: travel_mm for i in idxs})
+            self._note_trigger_modes(idxs, mode, rt_press_mm, rt_release_mm)
             return {"ok": True, "keys": len(idxs), "idxs": sorted(idxs)}
         except Exception as e:
             return self._fail(e)
@@ -1448,7 +1489,7 @@ class Api:
                 else:
                     vals_by_name = self.driver.read_actuation(self.km)
             # Build {design_code: mm} for every key we have a mapping for.
-            all_by_code, trig_by_code, act_by_idx = {}, {}, {}
+            all_by_code, trig_by_code, act_by_idx, trig_by_idx = {}, {}, {}, {}
             for design_code, idx in self.km.index_of_code.items():
                 name = self.km.by_index[idx]["name"]
                 mm = vals_by_name.get(name)
@@ -1457,8 +1498,10 @@ class Api:
                     act_by_idx[idx] = mm
                 if detail is not None and name in detail:
                     trig_by_code[design_code] = dict(detail[name])
+                    trig_by_idx[idx] = detail[name]
             self._stats_actuation(act_by_idx)
             self._note_actuation(act_by_idx)
+            self._note_read_back_modes(trig_by_idx)
             wanted = (lambda c: c in codes) if codes else (lambda c: True)
             out = {c: v for c, v in all_by_code.items() if wanted(c)}
             res = {"ok": True, "actuation_mm": out}
@@ -1643,6 +1686,13 @@ class Api:
             return self._fail(e)
 
     # ---- SOCD / PRCS ----
+    @staticmethod
+    def _socd_key(pairs):
+        """Comparable form of a set_socd pair list (order kept: it is the
+        slot order on the board)."""
+        return tuple((int(p["model"]), str(p["key1"]), str(p["key2"])) for p in pairs)
+
+
     def set_socd(self, pairs):
         """pairs: [{model, key1, key2}] using design codes."""
         if not self.km:
@@ -1656,6 +1706,7 @@ class Api:
                     return {"ok": False, "error": f"unknown SOCD key: {p}"}
                 plist.append({"model": int(p["model"]), "key1_hid": key1_hid, "key2_hid": key2_hid})
             self.driver.set_socd(plist)
+            self._socd_last = self._socd_key(pairs)
             return {"ok": True}
         except Exception as e:
             return self._fail(e)
@@ -2007,6 +2058,116 @@ class Api:
         except Exception as e:
             return self._fail(e)
 
+
+    def _board_spec(self, spec):
+        """Validate apply_profile_to_board's argument. ValueError if bad."""
+        if not isinstance(spec, dict):
+            raise ValueError("profile spec must be an object")
+        out = {"actuation": None, "mode": 0, "rtPress": None, "rtRelease": None,
+               "socd": None}
+        a = spec.get("actuation")
+        if a is not None:
+            a = float(a)
+            if not (a == a) or not 0.0 < a <= 10.0:
+                raise ValueError("invalid actuation")
+            out["actuation"] = round(self._clamp_mm("travelRange", a), 2)
+            if spec.get("rtEnabled"):
+                out["mode"] = 13
+                out["rtPress"] = round(self._clamp_mm("rtRange", float(spec.get("rtPress", 0.05))), 2)
+                out["rtRelease"] = round(self._clamp_mm("rtRange", float(spec.get("rtRelease", 0.05))), 2)
+        pairs = spec.get("socd")
+        if pairs is not None:
+            if not isinstance(pairs, list) or len(pairs) > 16:
+                raise ValueError("invalid SOCD list")
+            norm = []
+            for p in pairs:
+                if not isinstance(p, dict):
+                    raise ValueError("invalid SOCD pair")
+                k1, k2, model = p.get("key1"), p.get("key2"), int(p.get("model", 1))
+                if not (isinstance(k1, str) and isinstance(k2, str) and 0 < len(k1) <= 32
+                        and 0 < len(k2) <= 32 and 0 <= model <= 255):
+                    raise ValueError("invalid SOCD pair")
+                norm.append({"model": model, "key1": k1, "key2": k2})
+            out["socd"] = norm
+        return out
+
+    def _board_has_actuation(self, spec):
+        """True only when the last read-back/write says EVERY key already has
+        this travel and trigger mode (and RT pair in RT mode)."""
+        km = getattr(self, "km", None)
+        if not km:
+            return False
+        idxs = set(km.index_of_code.values())
+        act = getattr(self, "_act_mm", None) or {}
+        trig = getattr(self, "_trig_mode", None) or {}
+        if not idxs:
+            return False
+        for i in idxs:
+            mm, t = act.get(i), trig.get(i)
+            if mm is None or t is None or t[0] != spec["mode"]:
+                return False
+            if abs(mm - spec["actuation"]) > 0.005:
+                return False
+            if spec["mode"] != 0 and (t[1] is None or t[2] is None
+                                      or abs(t[1] - spec["rtPress"]) > 0.005
+                                      or abs(t[2] - spec["rtRelease"]) > 0.005):
+                return False
+        return True
+
+    def _apply_board_spec(self, spec):
+        """Write a validated spec through the normal paths, skipping what the
+        board already holds (flash wear)."""
+        out = {"ok": True, "deferred": False, "actuation": "skipped", "socd": "skipped"}
+        if spec["actuation"] is not None:
+            if self._board_has_actuation(spec):
+                out["actuation"] = "unchanged"
+            else:
+                r = self.set_trigger_all(spec["actuation"], spec["rtPress"] or 0.0,
+                                         spec["rtRelease"] or 0.0, mode=spec["mode"])
+                if not r.get("ok"):
+                    return {**r, "step": "actuation"}
+                out["actuation"] = "written"
+        if spec["socd"] is not None:
+            if self._socd_key(spec["socd"]) == getattr(self, "_socd_last", None):
+                out["socd"] = "unchanged"
+            else:
+                r = self.set_socd(spec["socd"])
+                if not r.get("ok"):
+                    return {**r, "step": "socd", "actuation": out["actuation"]}
+                out["socd"] = "written"
+        return out
+
+    def apply_profile_to_board(self, spec):
+        """A game switch's board half: {actuation, rtEnabled, rtPress,
+        rtRelease, socd: [{model, key1, key2}]} from the profile app.jsx just
+        switched to (null fields are left alone). Actuation/RT go to ALL keys
+        via set_trigger_all, SOCD via set_socd; anything the board already
+        holds is skipped. While disconnected the spec is kept and applied on
+        the next connect (the newest one wins)."""
+        try:
+            norm = self._board_spec(spec)
+            dev = getattr(self, "dev", None)
+            if dev is None or not dev.is_open():
+                self._pending_board = norm
+                return {"ok": True, "deferred": True}
+            self._pending_board = None
+            return self._apply_board_spec(norm)
+        except Exception as e:
+            return self._fail(e)
+
+    def _apply_pending_board(self):
+        """connect(): apply a game profile that arrived while offline. Never
+        raises (connect must still report the open handle)."""
+        spec = getattr(self, "_pending_board", None)
+        if spec is None:
+            return
+        self._pending_board = None
+        try:
+            r = self._apply_board_spec(spec)
+            if not r.get("ok"):
+                log.warning("game profile not applied after connect: %s", r.get("error"))
+        except Exception as e:
+            log.warning("game profile not applied after connect: %s", e)
 
     # ---- advanced keys + per-key remap (MINI 60 HE PRO family) ----
     #
