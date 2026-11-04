@@ -18,8 +18,10 @@ A `BoardProfile` carries everything the rest of the app needs to talk to a board
   * capabilities    — feature flags, each True | False | "wip". Core three are
                       lighting / actuation / perKeyRgb; finer-grained flags
                       (rapidTrigger, socd, macros, calibration, gamepad,
-                      deadzone) default to False when a board doesn't declare
-                      them, so old registry entries keep working unchanged.
+                      deadzone, keyStats) default to False when a board doesn't
+                      declare them, so old registry entries keep working
+                      unchanged. keyStats = host-side key statistics from the
+                      live travel stream (telemetry.py).
   * lighting        — OPTIONAL per-board effect table + UI scales: the firmware
                       mode list (id/byte/name + per-mode control rules), slider
                       maxima (brightnessMax/speedMax), off/custom mode bytes,

@@ -24,7 +24,8 @@
         "deadzone": true,
         "calibration": true,
         "gamepad": true,
-        "macros": true
+        "macros": true,
+        "keyStats": true
       },
       "lighting": {
         "_note": "Firmware cmd-7 mode table, HARDWARE-VERIFIED (CLAUDE.md cheat-sheet; byte set + max bri/speed 4/4 re-confirmed on hardware via readLightList cmd 10). VENDOR NAME CORRECTION (hed.aulacn.com config__language.json lightMode<N>): byte 7 = Aurora (gather/spread direction), byte 11 = Cross (no direction), byte 16 = Fireworks — an earlier table had those three swapped. Side-light list (cmd 2) is EMPTY on the Win60: no side LEDs. Originally moved from ui/runtime_src/src/app.jsx FW_MODES. 'frenzy' intentionally shares byte 16 with 'fireworks' (host-engine alias over the same firmware mode). direction kinds: lr | ud | all | rotate | gather (cmd-7 direction bytes right0 left1 up2 down3 spread4 gather5). brightness/speed bytes clamp 0..4 (0 = off). modeListSource 'hybrid': this static table is authoritative, but the firmware also answers readLightList (protocol.build_read_light_list, cmd 10) — usable as a registry validator; nothing calls it yet (SOURCE-ONLY as an app path, exercised on hardware only by the standalone cycle_modes.py tool). hostEngineMaxFps 60: this field means the board's SUSTAINABLE host-stream rate, and 60 is it — effects.py runs at FPS=60 precisely because a 120 bump saturated the USB pipe (8 cmd-9 pages/frame x 120 = 960 HID writes/s) and was reverted on hardware. It was briefly recorded as 120, which was the engine's historical target, not an achievable rate; quoting 120 anywhere also understates what a capped board achieves relative to it. Declared so the UI reads one uniform field on every board; equal to the engine default, so pacing is unchanged.",

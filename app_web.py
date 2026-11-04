@@ -33,6 +33,7 @@ from drivers import UnsupportedFeature
 import effects
 import device_state
 import gamepad
+import telemetry
 import updater
 import tray
 import single_instance
@@ -40,6 +41,18 @@ from tools import board_submission
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("aether.web")
+
+#: settings.json key for the key-statistics switch (Settings > Key statistics).
+STATS_SETTING = "collectKeyStats"
+
+
+def _stats_default_enabled(settings, platform=None):
+    """Whether key statistics collect. A stored bool wins; otherwise ON only
+    on Windows (the shipping target), so Linux behaviour is unchanged unless
+    the user opts in."""
+    if isinstance(settings, dict) and isinstance(settings.get(STATS_SETTING), bool):
+        return settings[STATS_SETTING]
+    return (platform or sys.platform).startswith("win")
 
 
 # When frozen by PyInstaller, ui/ ships next to the exe (or inside _MEIPASS for
@@ -428,6 +441,73 @@ class Api:
         # to one group doesn't reset the others to defaults.
         self._deadband_state = {}  # idx -> (top_raw, bottom_raw)
         self._init_link_state()
+        self.telemetry = self._make_telemetry()
+
+    # ---- key statistics plumbing ----
+    def _make_telemetry(self):
+        """Key-statistics collector (no disk or threads until the first
+        flush). Never raises: None disables the feature."""
+        try:
+            s = (self.load_settings() or {}).get("settings")
+            return telemetry.Telemetry(
+                os.path.join(user_data_dir(), "stats"),
+                enabled=_stats_default_enabled(s),
+                board=self.board.slug if self.board else None)
+        except Exception as e:
+            log.warning("key statistics unavailable: %s", e)
+            return None
+
+    def _stats_supported(self):
+        """Does the active board declare keyStats AND stream live travel?"""
+        try:
+            board = getattr(self, "board", None)
+            drv = getattr(self, "driver", None)
+            return bool(board is not None and drv is not None
+                        and board.cap("keyStats") is True
+                        and drv.supports("travel_stream"))
+        except Exception:
+            return False
+
+    def _make_live_reader(self, indices=None):
+        """The ONLY place live readers are built: attaches the telemetry hook
+        (a new reader means the old stream ended, so in-flight presses are
+        dropped rather than left open)."""
+        if indices is None:
+            r = self.driver.make_live_reader(self.km)
+        else:
+            r = self.driver.make_live_reader(self.km, indices)
+        tel = getattr(self, "telemetry", None)
+        if tel is not None and self._stats_supported():
+            try:
+                tel.abort_open()
+                r.on_sample = tel.feed
+            except Exception:
+                pass
+        return r
+
+    def _start_stats_reader(self):
+        """Claim the shared reader under owner "telemetry" so the travel
+        stream runs whenever statistics are on. Never raises."""
+        tel = getattr(self, "telemetry", None)
+        try:
+            if (tel is None or not tel.enabled or not self._stats_supported()
+                    or not self.km or not self.dev.is_open()):
+                return False
+            if self._calibrating:
+                # CalibrationReader must be the only drain; the calibrate-off
+                # restore starts the stream.
+                with self._lock:
+                    self._reader_users.add("telemetry")
+                return True
+            self._acquire_reader("telemetry", self._make_live_reader)
+            return True
+        except Exception as e:
+            log.warning("key statistics reader not started: %s", e)
+            try:
+                self._release_reader("telemetry")
+            except Exception:
+                pass
+            return False
 
     # ---- connection ----
     @staticmethod
@@ -482,6 +562,7 @@ class Api:
             self._dead_seen = getattr(self.dev, "dead_events", 0)
             if resume:
                 self._resume_session()
+            self._start_stats_reader()
             return {"ok": True, "iface": info["interface_number"]}
         except Exception as e:
             return self._fail(e)
@@ -586,6 +667,9 @@ class Api:
                 pass
             self.board = p
             self._registry = reg
+            tel = getattr(self, "telemetry", None)
+            if tel is not None:
+                tel.set_board(p.slug)
             self.dev = AulaDevice(p)
             self.driver = drivers.get_driver(p, self.dev, self._lock)
             try:
@@ -768,12 +852,12 @@ class Api:
         with self._reader_paused():
             return drv.probe_link(self._PROBE_TIMEOUT_S)
 
-    def _park_readers(self):
-        """Stop both readers but keep their owners registered (unlike
-        _stop_readers) so a reconnect can bring the stream back."""
+    def _park_readers(self, attrs=("reader", "calib_reader")):
+        """Stop the readers named in `attrs` but keep their owners registered
+        (unlike _stop_readers) so a reconnect can bring the stream back."""
         stopping = []
         with self._lock:
-            for attr in ("reader", "calib_reader"):
+            for attr in attrs:
                 r = getattr(self, attr, None)
                 if r is not None:
                     setattr(self, attr, None)
@@ -865,11 +949,13 @@ class Api:
         self.reader on every call, so it picks the new instance up by itself.
         Never raises."""
         try:
+            if getattr(self, "_calibrating", False):
+                return      # CalibrationReader owns the stream until it ends
             if not self._reader_users or self.reader is not None or not self.km:
                 return
             if not self.dev.is_open():
                 return
-            self.reader = self.driver.make_live_reader(self.km)
+            self.reader = self._make_live_reader()
             self.reader.start()
         except Exception as e:
             log.warning("could not restore live reader after capture: %s", e)
@@ -939,6 +1025,13 @@ class Api:
             except Exception:
                 pass
             self._calibrating = False
+        tel = getattr(self, "telemetry", None)
+        if tel is not None:
+            try:
+                tel.abort_open()
+                tel.flush()
+            except Exception as e:
+                log.warning("key statistics flush failed: %s", e)
         self._stop_readers()
         self.dev.close()
         return {"ok": True}
@@ -1031,7 +1124,7 @@ class Api:
                     old, self.reader = self.reader, None
                     if old:
                         old.stop()       # LiveReader only takes the inner lock
-                    self.reader = self.driver.make_live_reader(self.km, idxs)
+                    self.reader = self._make_live_reader(idxs)
                     self.reader.start()
             else:
                 self.driver.open_trigger_test(list(range(64)))
@@ -1455,7 +1548,14 @@ class Api:
                 # Lighting keeps running during calibration (user's choice). The
                 # calibration reader uses a short blocking read so it shares the
                 # device with the lighting engine without busy-spinning the lock.
-                self.driver.set_calibration(True, bool(any_key))
+                # CalibrationReader must be the sole drain, so park the shared
+                # stats/analog reader (owners kept) until calibration ends.
+                self._park_readers(("reader",))
+                try:
+                    self.driver.set_calibration(True, bool(any_key))
+                except Exception:
+                    self._restore_shared_reader()
+                    raise
                 self._calibrating = True   # armed: disconnect() must disarm on abort
                 self.calib_reader = self.driver.make_calibration_reader(self.km)
                 self.calib_reader.start()
@@ -1465,6 +1565,7 @@ class Api:
                     self.calib_reader = None
                 self.driver.set_calibration(False, bool(any_key))
                 self._calibrating = False
+                self._restore_shared_reader()
             return {"ok": True}
         except Exception as e:
             return self._fail(e)
@@ -1504,8 +1605,7 @@ class Api:
             # leave the analog stream armed on our behalf.
             if self.pad is None:
                 self.pad = gamepad.VirtualGamepad(self._pad_map).open()
-            self._acquire_reader("gamepad",
-                                 lambda: self.driver.make_live_reader(self.km))
+            self._acquire_reader("gamepad", self._make_live_reader)
             self._pad_stop.clear()
             if not self._pad_thread or not self._pad_thread.is_alive():
                 self._pad_thread = threading.Thread(target=self._gamepad_loop,
@@ -2187,8 +2287,7 @@ class Api:
             return
         if any(m in effects.PRESS_REACTIVE for m in modes):
             try:
-                self._acquire_reader(
-                    "reactive", lambda: self.driver.make_live_reader(self.km))
+                self._acquire_reader("reactive", self._make_live_reader)
             except UnsupportedFeature:
                 pass
             if self.reader is None:
