@@ -108,6 +108,15 @@ Entry format:
 - For the user (morning): 10 hardware checks at the end of the plan; Phase 3 interaction queued below.
 - Stopped early? No.
 
+## 2026-11-04 Phase 4 — implementer (Sonnet)
+- Landed: 8f9874a telemetry actuation buckets ("idx@act", load_day_buckets/recent_buckets/actuation()); b8f7cc2 analytics.py views (groups, summarize, 14-day series); c5f1869 auto-tune evaluate/suggest; 6a9a725 get_analytics/get_tune_suggestions bridges (+ Flatpak cp list); a6f7348 analytics.jsx workspace (+ ws_analytics.js); 5be0c6e Analytics tab gated on keyStats + app.jsx writeActuation/applyTuneSuggestion; f479521 CLAUDE.md.
+- Suite: 985 passed, 13 skipped (plan said 984: tests/test_ui_sources.py parametrises over workspaces, so the new analytics.jsx adds one case). Green at every commit; `node --check` ok on ws_analytics.js, app.js, desktop.js.
+- Decisions later phases must respect: suggestions come only from the current read-back bucket (a changed actuation restarts at zero); suggestions never write, Apply = `ctx.applyTuneSuggestion` -> `ctx.writeActuation` (set_trigger_codes + verify_actuation). Phase 5 reuses `window.AetherAnalytics`: `useAnalytics(ctx.apiCall)`, `HeatmapBoard`, `heatLedMap`, `SuggestionList limit={3}`, `topSuggestions`.
+- Deviations: none in behaviour; code/tests copied from the plan. Working-tree sources are CRLF, so edits went through a CRLF-preserving script. Only app.js, desktop.js, ws_analytics.js (new) and index_runtime.html had real build diffs; the other 13 build files were line-ending noise and were reverted.
+- Gotchas: tests never touch HID or the network; the Apply test uses the fake driver. The tab polls both bridges every 5 s only while a widget is mounted.
+- For the user (morning): the 10 hardware checks and the veto/accept items for Phase 4 are already in "Waiting on the user" below (nothing new added).
+- Stopped early? No.
+
 ## Waiting on the user
 - [DKS] Run the advanced-keys capture checklist (docs/context/aula-win60-advanced-keys-capture-checklist.md, ~20 min in hed.aulacn.com) to confirm the source-only decode.
 - [DKS] Open: does WIN60 firmware act on DKS/MT/TGL; DKS step codes 2/3; single-slot writes accepted; MT 10 ms unit; per-profile table?
