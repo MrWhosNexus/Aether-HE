@@ -434,6 +434,179 @@
     }, err));
   }
 
+  /* ===== Games widget =====
+     Discord-style game detection (games.py). Every 3 s Aether checks which
+     programs run, matches them against Discord's public game list (downloaded,
+     cached, refreshed weekly) and the programs you added, and switches to the
+     mapped profile while a game runs (back again when it closes). Bridge:
+     games_status / list_running_games / set_game_profile / add_custom_game /
+     refresh_detectable / set_games_auto_switch. Game and program names come
+     from outside Aether: they are rendered as plain text only. */
+  const agoText = epochS => {
+    if (!epochS) return "never";
+    const d = Math.max(0, Date.now() / 1000 - epochS);
+    if (d < 3600) return "just now";
+    if (d < 86400) return `${Math.round(d / 3600)} h ago`;
+    return `${Math.round(d / 86400)} days ago`;
+  };
+  function GamesWidget(ctx) {
+    const {
+      profiles = [],
+      activeId
+    } = ctx;
+    const [st, setSt] = useState(null);
+    const [err, setErr] = useState("");
+    const [picker, setPicker] = useState(null); // null = closed, [] = programs
+    const [busy, setBusy] = useState("");
+    const alive = useRef(true);
+    const refresh = () => {
+      const api = window.pywebview?.api;
+      if (!api || !api.games_status) return;
+      api.games_status().then(r => {
+        if (!alive.current) return;
+        if (r && r.ok) setSt(r);else setErr(r && r.error || "failed");
+      }).catch(() => {});
+    };
+    useEffect(() => {
+      alive.current = true;
+      refresh();
+      const id = setInterval(refresh, 3000);
+      return () => {
+        alive.current = false;
+        clearInterval(id);
+      };
+    }, []);
+    const call = async (fn, ...args) => {
+      setErr("");
+      const api = window.pywebview?.api;
+      if (!api || !api[fn]) return null;
+      try {
+        const r = await api[fn](...args);
+        if (!(r && r.ok)) setErr(r && r.error || "failed");
+        refresh();
+        return r;
+      } catch (e) {
+        setErr(String(e));
+        return null;
+      }
+    };
+    const openPicker = async () => {
+      setBusy("scan");
+      const r = await call("list_running_games");
+      setBusy("");
+      setPicker(r && r.ok ? r.programs || [] : null);
+    };
+    const pick = async prog => {
+      let id = prog.gameId;
+      if (!id) {
+        const r = await call("add_custom_game", prog.exe, prog.name);
+        if (!(r && r.ok)) return;
+        id = r.id;
+      }
+      await call("set_game_profile", id, activeId || profiles[0] && profiles[0].id || null);
+      setPicker(null);
+    };
+    const refreshList = async () => {
+      setBusy("list");
+      await call("refresh_detectable");
+      setBusy("");
+    };
+    const profName = id => (profiles.find(p => p.id === id) || {}).name || "missing profile";
+    const head = /*#__PURE__*/React.createElement("div", {
+      className: "font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)] mb-3"
+    }, "Games");
+    if (!st) return /*#__PURE__*/React.createElement("div", null, head, /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[10.5px] text-[var(--text-faint)]"
+    }, "Loading\u2026"));
+    if (!st.available) {
+      return /*#__PURE__*/React.createElement("div", null, head, /*#__PURE__*/React.createElement("div", {
+        className: "font-mono text-[10.5px] text-[var(--text-faint)] leading-relaxed"
+      }, "Game detection (switch profiles when a game starts) is available on Windows."));
+    }
+    const detected = st.detected || [];
+    const now = detected.find(d => d.id === st.foreground) || detected[0] || null;
+    const games = st.games || [];
+    const dl = st.detectable || {};
+    const btn = "px-2.5 h-8 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] font-display text-[10.5px] uppercase tracking-[0.16em] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)] disabled:opacity-50";
+    return /*#__PURE__*/React.createElement("div", null, head, /*#__PURE__*/React.createElement(Toggle, {
+      on: !!st.autoSwitch,
+      onClick: () => call("set_games_auto_switch", !st.autoSwitch),
+      label: "Auto-switch profiles for games",
+      desc: "When a mapped game starts or comes to the front, switch to its profile and apply it to the keyboard (actuation and rapid trigger on all keys, SOCD, lighting). Switches back when the game closes."
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "mt-3 flex items-center gap-2 font-mono text-[10.5px] text-[var(--text-dim)]",
+      "data-games-now": true
+    }, /*#__PURE__*/React.createElement("span", {
+      className: `w-2 h-2 rounded-full shrink-0 ${now ? "bg-[var(--accent)] shadow-[0_0_8px_var(--accent-glow)]" : "bg-[var(--text-faint)]"}`
+    }), /*#__PURE__*/React.createElement("span", {
+      className: "truncate"
+    }, now ? `Now playing: ${now.name}` : "No game detected"), st.active && /*#__PURE__*/React.createElement("span", {
+      className: "text-[var(--accent)] truncate"
+    }, `→ ${profName(st.active.profileId)}`)), /*#__PURE__*/React.createElement("div", {
+      className: "mt-3 flex flex-col gap-1.5"
+    }, games.length === 0 && /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[10px] text-[var(--text-faint)] leading-relaxed"
+    }, "No games mapped yet. Start a game, then add it from the running programs."), games.map(g => /*#__PURE__*/React.createElement("div", {
+      key: g.id,
+      className: "flex items-center gap-2 rounded-lg border border-[var(--line)] bg-white/[0.02] px-2.5 py-1.5"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "flex-1 min-w-0 truncate font-display text-[12px] text-[var(--text)]",
+      title: g.name
+    }, g.name), /*#__PURE__*/React.createElement("select", {
+      value: g.profileId || "",
+      "aria-label": `Profile for ${g.name}`,
+      onChange: e => e.target.value && call("set_game_profile", g.id, e.target.value),
+      className: "h-7 max-w-[140px] rounded-md border border-[var(--line)] bg-[rgba(5,11,14,0.5)] px-1.5 text-[11px] text-[var(--text)] font-display outline-none"
+    }, !g.profileId && /*#__PURE__*/React.createElement("option", {
+      value: ""
+    }, "Choose profile"), profiles.map(p => /*#__PURE__*/React.createElement("option", {
+      key: p.id,
+      value: p.id
+    }, p.name || "Untitled"))), /*#__PURE__*/React.createElement("button", {
+      onClick: () => call("set_game_profile", g.id, null),
+      title: "Remove",
+      className: "w-6 h-6 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-rose-400/40 hover:text-rose-300 flex items-center justify-center text-[10px]"
+    }, "\u2715")))), /*#__PURE__*/React.createElement("div", {
+      className: "mt-3 flex gap-2"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: openPicker,
+      disabled: busy === "scan",
+      className: btn
+    }, busy === "scan" ? "Scanning…" : "Add running program"), picker && /*#__PURE__*/React.createElement("button", {
+      onClick: () => setPicker(null),
+      className: btn
+    }, "Cancel")), picker && /*#__PURE__*/React.createElement("div", {
+      className: "mt-2 max-h-[180px] overflow-auto flex flex-col gap-1 rounded-lg border border-[var(--line)] p-1.5",
+      "data-games-picker": true
+    }, picker.length === 0 && /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[10px] text-[var(--text-faint)] p-1"
+    }, "No programs found."), picker.slice(0, 60).map(p => /*#__PURE__*/React.createElement("button", {
+      key: p.exe,
+      onClick: () => pick(p),
+      className: "text-left rounded-md px-2 py-1 hover:bg-[var(--accent)]/10 border border-transparent hover:border-[var(--accent)]/30"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "font-display text-[11.5px] text-[var(--text)] truncate"
+    }, p.name, p.gameId && /*#__PURE__*/React.createElement("span", {
+      className: "ml-2 text-[9.5px] text-[var(--accent)] uppercase tracking-[0.14em]"
+    }, "game")), /*#__PURE__*/React.createElement("div", {
+      className: "font-mono text-[9.5px] text-[var(--text-faint)] truncate"
+    }, p.exe)))), /*#__PURE__*/React.createElement("div", {
+      className: "mt-3 flex items-center justify-between gap-2 font-mono text-[10px] text-[var(--text-faint)]"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "truncate"
+    }, `Discord game list: ${(dl.count || 0).toLocaleString()} games · updated ${agoText(dl.fetched)}`), /*#__PURE__*/React.createElement("button", {
+      onClick: refreshList,
+      disabled: busy === "list",
+      className: btn
+    }, busy === "list" ? "Updating…" : "Update")), dl.error && /*#__PURE__*/React.createElement("div", {
+      className: "mt-1 font-mono text-[10px] text-rose-300/90"
+    }, dl.error), err && /*#__PURE__*/React.createElement("div", {
+      className: "mt-2 font-mono text-[10px] text-rose-300/90"
+    }, err), /*#__PURE__*/React.createElement("div", {
+      className: "mt-3 font-mono text-[10px] text-[var(--text-faint)] leading-relaxed"
+    }, "Program names are checked on this PC only and never stored or sent. The game list is downloaded from Discord; nothing is uploaded."));
+  }
+
   /* ===== Backup/Import widget ===== */
   function BackupWidget(ctx) {
     const {
@@ -775,6 +948,20 @@
       h: 200
     },
     render: StatsWidget
+  }, {
+    id: "games",
+    title: "Games",
+    default: {
+      x: 800,
+      y: 632,
+      w: 360,
+      h: 460
+    },
+    min: {
+      w: 320,
+      h: 300
+    },
+    render: GamesWidget
   }];
   window.AetherWorkspaces = window.AetherWorkspaces || {};
   window.AetherWorkspaces.SETTINGS_WIDGETS = SETTINGS_WIDGETS;

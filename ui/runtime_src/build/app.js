@@ -315,6 +315,29 @@
     return map;
   })();
 
+  // SOCD tab rows ({k1, k2, mode} with key LABELS) -> set_socd pairs (design
+  // codes). Rows missing a key are skipped; [] clears the board's pairs.
+  const socdPairsFrom = rows => (rows || []).filter(p => p && p.k1 && p.k2).map(p => ({
+    model: p.mode || 1,
+    key1: LABEL_TO_CODE[p.k1] || p.k1,
+    key2: LABEL_TO_CODE[p.k2] || p.k2
+  }));
+
+  // A saved profile's board-side settings for Api.apply_profile_to_board (game
+  // auto-switch). A field the profile never stored is null, so the board keeps
+  // what it has instead of receiving a default.
+  const profileBoardSpec = st => {
+    const s = st || {};
+    const num = v => typeof v === "number" && isFinite(v) ? v : null;
+    return {
+      actuation: num(s.actuation),
+      rtEnabled: !!s.rtEnabled,
+      rtPress: num(s.rtPress) ?? 0.05,
+      rtRelease: num(s.rtRelease) ?? 0.05,
+      socd: Array.isArray(s.socdProfiles) ? socdPairsFrom(s.socdProfiles) : null
+    };
+  };
+
   // Keymap target label → USB HID usage code (page 0x07). Used by Remap Key.
   const HID_BY_LABEL = (() => {
     const m = {};
@@ -1700,11 +1723,7 @@
     } : z));
     const removeZone = id => setZones(zs => zs.filter(z => z.id !== id));
     const handleSocdApply = profiles => {
-      const pairs = (profiles || []).filter(p => p.k1 && p.k2).map(p => ({
-        model: p.mode || 1,
-        key1: LABEL_TO_CODE[p.k1] || p.k1,
-        key2: LABEL_TO_CODE[p.k2] || p.k2
-      }));
+      const pairs = socdPairsFrom(profiles);
       // No complete pair = clear: the keyboard keeps its pairs in flash, so
       // skipping the call (as before) left the old pairs active on the board.
       return apiCall("set_socd", pairs).then(r => {
@@ -1712,6 +1731,69 @@
         return r;
       });
     };
+
+    // ---- game auto-switch (games.py) ------------------------------------------
+    // Python detects games and decides, debounced 5 s, which profile should be
+    // active; games_status().switch carries that decision with a sequence
+    // number. We poll it (WebView2 timers keep full rate while hidden: see
+    // app_web.main), switch the profile exactly like the profile menu (the
+    // lighting effects below then re-send), and hand the profile's actuation /
+    // RT / SOCD to apply_profile_to_board, which skips anything the board
+    // already holds and defers the write while the board is offline.
+    // games_sync reports the active profile and the newest switch handled, so
+    // Python can tell a manual switch (no revert) from its own.
+    const gameSeqRef = useRef(0);
+    const activeIdRef = useRef(activeId);
+    activeIdRef.current = activeId;
+    const profilesRef = useRef(profiles);
+    profilesRef.current = profiles;
+    const switchProfileRef = useRef(null);
+    switchProfileRef.current = switchProfile;
+    const [actReadNonce, setActReadNonce] = useState(0); // bump = re-read actuation
+    const profileListKey = JSON.stringify(profiles.map(p => [p.id, p.name || ""]));
+    const gameSync = (active, seq) => apiCall("games_sync", {
+      activeProfile: active,
+      handledSeq: seq,
+      profiles: profilesRef.current.map(p => ({
+        id: p.id,
+        name: p.name || ""
+      }))
+    });
+    useEffect(() => {
+      if (hydrated) gameSync(activeId, gameSeqRef.current);
+    }, [hydrated, activeId, profileListKey]);
+    useEffect(() => {
+      if (!hydrated) return;
+      let alive = true,
+        busy = false;
+      const applyGameSwitch = async sw => {
+        const p = profilesRef.current.find(x => x.id === sw.profileId);
+        if (p && p.id !== activeIdRef.current && switchProfileRef.current) switchProfileRef.current(p.id);
+        await gameSync(p ? p.id : activeIdRef.current, sw.seq);
+        if (!p) return;
+        const r = await apiCall("apply_profile_to_board", profileBoardSpec(p.state));
+        if (r && r.ok && r.actuation === "written") setActReadNonce(n => n + 1);else if (r && r.ok === false && !r.unsupported) pushNotice(`Game profile not applied to the keyboard: ${r.error || "no reply"}`);
+      };
+      const tick = async () => {
+        if (!alive || busy) return;
+        busy = true;
+        try {
+          const s = await apiCall("games_status");
+          const sw = s && s.ok ? s.switch : null;
+          if (alive && sw && sw.seq > gameSeqRef.current) {
+            gameSeqRef.current = sw.seq;
+            await applyGameSwitch(sw);
+          }
+        } catch {}
+        busy = false;
+      };
+      tick();
+      const id = setInterval(tick, 2000);
+      return () => {
+        alive = false;
+        clearInterval(id);
+      };
+    }, [hydrated]);
 
     /* ===== HID bridge: effects (push state to the board) ===== */
     // Persist the auto-connect preference.
@@ -1961,9 +2043,10 @@
     };
     // On connect, snapshot per-key actuation once so the board reflects reality
     // before the user touches anything.
+    // A game profile that rewrote actuation re-reads it too (actReadNonce).
     useEffect(() => {
       if (connected) refreshPerKeyActuation();
-    }, [connected]);
+    }, [connected, actReadNonce]);
 
     // Returns the backend result so the widget only confirms a real write.
     // The board view is then drawn from the FIRMWARE's read-back of the keys
