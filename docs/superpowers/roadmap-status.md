@@ -137,6 +137,15 @@ Entry format:
 - For the user (morning): the 10 hardware checks at the end of the plan (already queued); the Phase 5 veto bullet now says 1600 px. Nothing new added.
 - Stopped early? No.
 
+## 2026-11-04 Phase 6 plan — planner (Sonnet)
+- Landed: ee84013 docs/superpowers/plans/2026-11-04-phase-6-overlays.md (8 tasks, 93 new passing tests incl. 3 UI + the Phase 5 contract test un-skipping; expect 1103 passed, 14 skipped). Code and tests were prototyped against the real tree (full suite green, node --check ok), then reverted; the worktree holds only the plan.
+- Decisions: new `overlays.py` (pure bar/colour maths, Pomodoro clock, `OverlayLayer`, 1 s `Sampler`, per-profile prefs, `OverlayManager`); one new engine hook `PerKeyEffectEngine.overlay.apply(frame, now)` in `_run` (try/except, no frame-rate change). Rows: CPU 1-0, RAM Q-P, GPU A-; (10 keys), Pomodoro whole shift row (12). Bars are OPAQUE with fixed colours (green/amber/red; RAM cyan/violet/magenta so ordinary 70 % is not an alarm); phase change = 0.7 s whole-board flash.
+- Decisions: overlays over FIRMWARE lighting use a host-engine "carrier": `Api.set_light`/`set_custom_colors` record the UI call (`_light_src`) and, while an overlay is on, stream `carrier_plan(...)` instead of writing the board; last overlay off stops the engine and re-sends the firmware lighting once. A UI-started host effect is never touched. Lights-off still shows the bars on black.
+- Decisions: persistence = settings.json top-level `overlays.profiles.<profileId>.{cpu,ram,gpu,pomodoro}` (+ optional `pomodoro.workMin/breakMin`), followed through `games_sync` (no app.jsx change). Contract kept exactly; additive: pomodoro row carries `phase`/`remaining_s`; new bridge `flash(color, ms)`. GPU via nvidia-smi found once with shutil.which, 1.5 s timeout, 3 failures = off; tests inject the runner.
+- For next phase: Phase 7's `music` effect streams through the same engine, so overlays draw over it automatically; nothing else to wire. Dashboard `overlayText` lives on `window.AetherDashboard`.
+- For the user (morning): 12 hardware checks at the end of the plan; veto/accept items queued below.
+- Stopped early? No.
+
 ## Waiting on the user
 - [DKS] Run the advanced-keys capture checklist (docs/context/aula-win60-advanced-keys-capture-checklist.md, ~20 min in hed.aulacn.com) to confirm the source-only decode.
 - [DKS] Open: does WIN60 firmware act on DKS/MT/TGL; DKS step codes 2/3; single-slot writes accepted; MT 10 ms unit; per-profile table?
@@ -153,3 +162,7 @@ Entry format:
 - [Phase 5] Run the 10 hardware checks at the end of docs/superpowers/plans/2026-11-04-phase-5-dashboard.md (landing tab + remembered tab, heatmap/today numbers, live depth opens and closes the stream, Apply from the dashboard, game line, lighting quick switch, offline/other board).
 - [Phase 5] Veto check: Aether now opens on the Dashboard (existing installs once after the update, then the remembered tab); at or below 1600 px window width inactive top-bar tabs show only their icon (tooltip has the name). Before this the top bar already pushed Pair / zoom / gear off screen below ~1480 px.
 - [Phase 5] Accept: opening the Dashboard resets the Analytics tab's range to "Today".
+- [Phase 6] Run the 12 hardware checks at the end of docs/superpowers/plans/2026-11-04-phase-6-overlays.md (bars over static / busy effects / per-key paint / lights off, Pomodoro pulse, per-profile, reconnect, no console window from nvidia-smi).
+- [Phase 6] Veto check: with an overlay on, Static / Full-RGB / per-key paint / lights-off are rendered by the host engine (Full-RGB becomes a host rainbow wave; the board streams frames like any host effect) and the firmware lighting is re-sent once when the last overlay goes off. Lights-off with an overlay on still shows the bar. If you would rather overlays refuse to run over firmware lighting, say so.
+- [Phase 6] Accept: Pomodoro has no start/pause or minutes UI (on = running 25/5; change minutes by editing `overlays.pomodoro.workMin/breakMin` in settings.json); a static carrier streams at the normal engine rate (unchanged frames cost no HID writes); GPU needs NVIDIA's nvidia-smi; no temperatures or notification pings (out of scope per spec).
+
