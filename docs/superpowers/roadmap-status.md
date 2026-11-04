@@ -95,6 +95,7 @@ Entry format:
 - Deviations: none in behaviour. Code/tests were copied verbatim from the plan; working-tree sources are CRLF (core.autocrlf) so app_web.py/tray.py/JSX edits were applied through a CRLF-preserving script, not the Edit tool. Only app.js and ws_settings.js build files had real diffs; the other 13 were line-ending noise and were reverted.
 - Gotchas: tests never touch the network, the HID, or persist/print process names (the one Windows smoke test only reads this process's own pid).
 - For the user (morning): the 12 hardware checks and the veto/limitation items are already in "Waiting on the user" below (nothing new added).
+- Review fixes: 547d6d9 an all-keys apply now updates `_trigger_state` (later single-key edits no longer resend stale groups); 680cc27 `_board_has_actuation` checks every `km.indices()` key, missing cache entry = mismatch (suite 919 passed, 13 skipped).
 - Stopped early? No.
 
 ## Waiting on the user
@@ -103,7 +104,7 @@ Entry format:
 - [Phase 1] Veto check: key statistics collection defaults ON on Windows (OFF on Linux unless opted in); stored as per-key daily aggregates only, 90 days.
 - [Phase 1] Run the 11 hardware checks at the end of docs/superpowers/plans/2026-11-04-phase-1-telemetry.md (typing feel + CPU with the always-on reader, calibration with stats on, shallow/bottom counting, Clear, reconnect).
 - [Phase 2] Run the 9 hardware checks at the end of docs/superpowers/plans/2026-11-04-phase-2-pressure.md (pressure feel, 120 ms fade, no stuck keys, actuation lines on the Travel Test board).
-- [Phase 3] Veto check: a game switch writes the game profile's actuation/RT slider value to ALL keys (per-key actuation layouts get flattened) plus its SOCD pairs; auto-switch defaults ON once any game is mapped.
+- [Phase 3] Veto check: a game switch writes the game profile's actuation/RT slider value to ALL keys (per-key actuation layouts get flattened) plus its SOCD pairs (a switch or revert also writes the profile's SOCD pairs, default A/D and W/S, even if you never applied SOCD); auto-switch defaults ON once any game is mapped.
 - [Phase 3] Discord list size: the cap is 5 MB on the wire (gzip requested, 32 MB after unpacking). If Settings > Games > Update reports "larger than 5 MB", decide whether to raise `games.MAX_DETECTABLE_BYTES`.
 - [Phase 3] Known limitation to accept or schedule: the revert target is not persisted, so if Aether restarts mid-game the game's exit does not revert the profile.
 - [Phase 3] Run the 12 hardware checks at the end of docs/superpowers/plans/2026-11-04-phase-3-games.md (switch/revert, debounce, offline apply, tooltip, anti-cheat/CPU).
