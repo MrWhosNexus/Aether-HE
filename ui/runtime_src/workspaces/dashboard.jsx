@@ -131,6 +131,15 @@ const gameLine = (games, profiles) => {
 const overlayView = (r) => ((r && r.ok && r.supported !== false && Array.isArray(r.overlays))
   ? r.overlays.filter(o => o && typeof o.id === "string") : null);
 
+// Chip text: a running Pomodoro shows its phase and countdown, the sensors their load.
+const overlayText = (o) => {
+  if (o.id === "pomodoro" && o.on && typeof o.remaining_s === "number") {
+    const sec = Math.max(0, Math.floor(o.remaining_s));
+    return `${o.phase === "break" ? "Break" : "Focus"} ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+  }
+  return `${o.label}${typeof o.value === "number" && o.id !== "pomodoro" ? ` ${Math.round(o.value * 100)}%` : ""}`;
+};
+
 const readHero = () => { try { return localStorage.getItem(HERO_KEY); } catch (e) { return null; } };
 const writeHero = (m) => { try { localStorage.setItem(HERO_KEY, m); } catch (e) {} };
 const fmtInt = (v) => (v == null ? "–" : Number(v).toLocaleString());
@@ -456,7 +465,7 @@ function OverlaysPanel({ ctx }) {
       {list.map(o => (
         <Chip key={o.id} on={!!o.on} disabled={o.available === false} onClick={() => toggle(o)}
               title={o.available === false ? (o.reason || "unavailable") : `${o.label} on the ${o.row || "keys"}`}>
-          {o.label}{typeof o.value === "number" ? ` ${Math.round(o.value * 100)}%` : ""}
+          {overlayText(o)}
         </Chip>
       ))}
     </Panel>
@@ -517,6 +526,6 @@ window.AetherWorkspaces = window.AetherWorkspaces || {};
 window.AetherWorkspaces.DASHBOARD_PAGE = DashboardPage;
 window.AetherDashboard = {
   HERO_MODES, OVERLAY_POLL_MS, heroModesFor, pickHeroMode, perKeyOverrideOf,
-  actuationSummary, todayFrom, gameLine, overlayView,
+  actuationSummary, todayFrom, gameLine, overlayView, overlayText,
 };
 })();

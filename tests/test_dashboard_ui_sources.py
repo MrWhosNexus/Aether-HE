@@ -76,7 +76,7 @@ def test_dashboard_exports_the_page_and_helpers():
     names = {n.strip() for n in m.group(1).replace("\n", " ").split(",") if n.strip()}
     assert names == {"HERO_MODES", "OVERLAY_POLL_MS", "heroModesFor", "pickHeroMode",
                      "perKeyOverrideOf", "actuationSummary", "todayFrom", "gameLine",
-                     "overlayView"}
+                     "overlayView", "overlayText"}
 
 
 def test_dashboard_calls_only_the_phase6_bridges():
