@@ -208,6 +208,8 @@ class TrayController:
         self._lock = threading.Lock()
         self._pystray = None
         self._Image = None
+        # Tooltip text; set_game() puts the detected game in it.
+        self.title = APP_NAME
 
     # ---- lifecycle -------------------------------------------------------
     def start(self):
@@ -226,7 +228,7 @@ class TrayController:
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem(f"Exit {APP_NAME}", self._on_exit),
             )
-            self.icon = pystray.Icon("aether-he", image, APP_NAME, menu)
+            self.icon = pystray.Icon("aether-he", image, self.title, menu)
             self._pystray, self._Image = pystray, Image
             self.icon.run_detached()
             self.available = True
@@ -334,6 +336,22 @@ class TrayController:
             w.evaluate_js("window.dispatchEvent(new CustomEvent('aether:tray', {detail:{hidden:true}}))")
         except Exception:
             pass
+
+    def set_game(self, name):
+        """Tooltip: "Aether HE — <game>" while a game is detected, plain
+        "Aether HE" otherwise (games.GameService.on_detected). The name is
+        untrusted text from Discord's list; the shell shows it as text and
+        Windows caps tooltips at 128 characters."""
+        name = name if isinstance(name, str) else ""
+        name = "".join(ch for ch in name if ch >= " ").strip()
+        title = f"{APP_NAME} — {name}" if name else APP_NAME
+        self.title = title[:120]
+        icon = self.icon
+        if icon is not None:
+            try:
+                icon.title = self.title
+            except Exception as e:
+                log.debug("tray tooltip not updated: %s", e)
 
     # ---- windows ---------------------------------------------------------
     def show_main(self):

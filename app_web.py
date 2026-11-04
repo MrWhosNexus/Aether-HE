@@ -2891,6 +2891,9 @@ def main():
         if extra not in cur:
             os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = (cur + " " + extra).strip()
     tray_ctl = tray.TrayController(api, webview)
+    # Game detection polls from here on (Windows only); the tray tooltip
+    # names the detected game.
+    api._start_games(tray_ctl.set_game)
     window = webview.create_window(
         "Aether", url, js_api=api,
         width=1340, height=900, min_size=(1160, 800),
@@ -2957,6 +2960,7 @@ def main():
             tray_ctl.exit()
         except Exception:
             pass
+        api._stop_games()
         inst.release()
 
 
