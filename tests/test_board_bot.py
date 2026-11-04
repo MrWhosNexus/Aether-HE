@@ -87,6 +87,11 @@ def test_run_happy_path(tmp_path, monkeypatch):
     assert (tmp_path / "ui" / "layouts" / "acme-60.json").exists()
     assert (tmp_path / "protocol_acme_60.py").exists()
     assert calls["comment"] is not None   # commented the PR link on the issue
+    pr = calls["pr"]
+    assert "--draft" in pr
+    labels = [pr[i + 1] for i, a in enumerate(pr) if a == "--label"]
+    assert "untrusted-ai-code" in labels
+    assert "UNTRUSTED" in pr[pr.index("--body") + 1]
 
 def test_run_invalid_submission_comments_no_pr(tmp_path, monkeypatch):
     def fake_gh(args):

@@ -262,9 +262,20 @@ def run(issue_number, *, gh, complete, repo_root):
             "--description", "AI-drafted board support, unverified on hardware"])
     except Exception:
         pass  # already exists (or no perms) — non-fatal
-    pr_url = gh(["pr", "create", "--title", f"Draft board: {slug} (experimental)",
-                 "--body", f"AI-drafted from #{issue_number}. UNVERIFIED — verify on hardware before promoting to supported. See DECODE_NOTES.md.",
-                 "--label", "experimental", "--head", branch]).strip()
+    try:
+        gh(["label", "create", "untrusted-ai-code", "--color", "B60205",
+            "--description", "Code written by a model from public issue text - review every line"])
+    except Exception:
+        pass  # already exists (or no perms) — non-fatal
+    # Draft + untrusted: protocol_<slug>.py is model-written Python derived from
+    # attacker-influenceable issue text, so it must never be run or merged unread.
+    pr_url = gh(["pr", "create", "--draft",
+                 "--title", f"Draft board: {slug} (experimental)",
+                 "--body", f"AI-drafted from #{issue_number}. UNVERIFIED and UNTRUSTED: "
+                           f"protocol_{slug}.py was written by a model from public issue text. "
+                           "Read every line before running or merging. See DECODE_NOTES.md.",
+                 "--label", "experimental", "--label", "untrusted-ai-code",
+                 "--head", branch]).strip()
     gh(["issue", "comment", str(issue_number), "--body", f"Automated draft opened: {pr_url}"])
     return {"ok": True, "pr_url": pr_url, "reason": "ok"}
 
