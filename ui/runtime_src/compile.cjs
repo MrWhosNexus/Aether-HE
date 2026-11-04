@@ -5,7 +5,10 @@ const path = require("path");
 const Babel = require(path.resolve(process.argv[2]));
 const pairs = JSON.parse(process.argv[3]);
 for (const [inp, out] of pairs) {
-  const src = fs.readFileSync(inp, "utf8");
+  // Normalize CRLF: a Windows checkout (core.autocrlf=true) otherwise bakes
+  // "\r" into every multi-line className string and the build drifts from
+  // the committed one.
+  const src = fs.readFileSync(inp, "utf8").replace(/\r\n?/g, "\n");
   const { code } = Babel.transform(src, {
     presets: [["react", { runtime: "classic" }]],
     compact: false,
