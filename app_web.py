@@ -2105,7 +2105,10 @@ class Api:
         km = getattr(self, "km", None)
         if not km:
             return False
-        idxs = set(km.index_of_code.values())
+        # EVERY key the keymap has, not just the design-coded ones: boards
+        # with more keys than DESIGN_CODES must not be skipped on a partial
+        # check. A missing cache entry below counts as a mismatch.
+        idxs = set(km.indices())
         act = getattr(self, "_act_mm", None) or {}
         trig = getattr(self, "_trig_mode", None) or {}
         if not idxs:

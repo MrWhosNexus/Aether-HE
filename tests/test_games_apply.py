@@ -192,3 +192,24 @@ def test_game_apply_in_rt_mode_is_remembered_with_its_pair(tmp_path):
     assert set(a._trigger_state.values()) == {(13, 80, 10, 20)}
     assert len(a._trigger_state) == len(a.km.indices())
 
+
+def test_a_key_the_design_codes_do_not_cover_blocks_the_skip(tmp_path):
+    """Boards with more keys than DESIGN_CODES (61): every key index must be
+    confirmed, and a missing cache entry counts as a mismatch."""
+    a = _a(tmp_path)
+    a.km.keys.append({"index": 500, "name": "Extra", "hidCode": "0", "x": 900, "y": 10})
+    a.km.by_index[500] = {"index": 500, "name": "Extra", "hid": 0, "x": 900.0, "y": 10.0}
+    assert 500 not in a.km.index_of_code.values()
+    a._act_mm, a._trig_mode = {}, {}
+    for i in a.km.indices():
+        if i != 500:
+            a._act_mm[i] = 0.8
+            a._trig_mode[i] = (0, None, None)
+    assert a.apply_profile_to_board(dict(SPEC, socd=None))["actuation"] == "written"
+    a.driver.actuation.clear()
+    a._act_mm[500], a._trig_mode[500] = 0.8, (0, None, None)
+    for i in a.km.indices():
+        a._act_mm[i] = 0.8
+        a._trig_mode[i] = (0, None, None)
+    assert a.apply_profile_to_board(dict(SPEC, socd=None))["actuation"] == "unchanged"
+    assert a.driver.actuation == []
