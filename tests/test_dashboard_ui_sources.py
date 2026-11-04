@@ -224,3 +224,51 @@ def test_overlay_tile_needs_a_supported_bridge(helpers):
     none, unsupported, ok = helpers["overlays"]
     assert none is None and unsupported is None
     assert ok == [{"id": "cpu", "on": True}]
+
+
+# ---- Task 4: landing tab + wiring ------------------------------------------
+DESK = _read("src", "desktop.jsx")
+HEAD = _read("head_inner.html")
+
+
+def test_dashboard_is_the_first_tab_and_the_landing_tab():
+    first = DESK.index('{ id: "dashboard", label: "Dashboard", icon: IGrid },')
+    assert first < DESK.index('{ id: "keymap",')
+    assert "IGrid = I.IGrid" in DESK
+    assert 'const [section, setSection] = useState("dashboard");' in APP
+
+
+def test_remembered_tab_wins_after_the_one_time_intro():
+    assert "if (migrated.globals?.section && migrated.globals?.dashboardIntro)" in APP
+    assert APP.count("globals: { autoConnect, section, dashboardIntro: true }") == 2
+
+
+def test_an_unavailable_tab_falls_back_to_the_dashboard():
+    assert 'if (!sectionAllowed(section, board)) setSection("dashboard");' in APP
+    assert 'setSection("keymap")' not in APP
+
+
+def test_dashboard_page_replaces_the_widget_desktop():
+    assert "const DashboardPage = window.AetherWorkspaces && window.AetherWorkspaces.DASHBOARD_PAGE;" in APP
+    assert "<DashboardPage {...ctx}/>" in APP
+    assert 'dashboard: comingSoon("Dashboard"),' in APP
+
+
+def test_top_bar_stays_on_screen_at_the_minimum_width():
+    assert "@media (max-width: 1580px)" in HEAD
+    assert "height: 34px; padding: 0 11px; border-radius: 10px;" in HEAD
+    assert ".topbar-tab:not(.on) > span { display: none; }" in HEAD
+    assert "title={s.label} aria-label={s.label}" in DESK
+
+
+def test_built_page_lands_on_the_dashboard():
+    with open(os.path.join(HERE, "ui", "index_runtime.html"), encoding="utf-8") as fh:
+        html = fh.read()
+    assert 'useState("dashboard")' in html and "DASHBOARD_PAGE" in html
+    assert "max-width: 1580px" in html
+
+
+@pytest.mark.skipif(not hasattr(app_web.Api, "get_overlays"),
+                    reason="Phase 6 (status on keys) not built yet")
+def test_phase6_overlay_bridge_matches_the_dashboard_contract():
+    assert callable(app_web.Api.get_overlays) and callable(app_web.Api.set_overlay)

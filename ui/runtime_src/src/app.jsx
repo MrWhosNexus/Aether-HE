@@ -45,7 +45,12 @@ const wsArr = (key, label) => {
   const a = (window.AetherWorkspaces && window.AetherWorkspaces[key]) || [];
   return a.length ? a : comingSoon(label);
 };
+// The Dashboard (roadmap Phase 5) is ONE composed page, not a widget
+// desktop: workspaces/dashboard.jsx exports a component as DASHBOARD_PAGE.
+// If that file failed to load, the "coming soon" placeholder shows instead.
+const DashboardPage = window.AetherWorkspaces && window.AetherWorkspaces.DASHBOARD_PAGE;
 const WIDGETS = {
+  dashboard: comingSoon("Dashboard"),
   actuation: wsArr("ACTUATION_WIDGETS", "Actuation"),
   keymap:    wsArr("KEYMAP_WIDGETS", "Keymap"),
   macros:    wsArr("MACROS_WIDGETS", "Macros"),
@@ -622,7 +627,10 @@ function App() {
     // re-enumerates (replug, Poll Rate) is never reconnected.
     try { return localStorage.getItem("aether-autoconnect") !== "0"; } catch { return true; }
   });
-  const [section, setSection] = useState("actuation");
+  // Dashboard is the landing tab. A remembered tab (globals.section) still
+  // wins, except once: settings written before the Dashboard existed lack
+  // globals.dashboardIntro, so the first launch after the update lands here.
+  const [section, setSection] = useState("dashboard");
 
   // ---- board awareness (additive; single-board path unchanged) --------------
   // `board` mirrors get_board().active; `boardRoster` mirrors list_boards().boards
@@ -766,7 +774,8 @@ function App() {
           const active = migrated.profiles.find(p => p.id === aid);
           if (active?.state) applyState(active.state);
           if (migrated.globals?.autoConnect !== undefined) setAutoConnect(!!migrated.globals.autoConnect);
-          if (migrated.globals?.section) setSection(migrated.globals.section === "other" ? "settings" : migrated.globals.section);
+          if (migrated.globals?.section && migrated.globals?.dashboardIntro)
+            setSection(migrated.globals.section === "other" ? "settings" : migrated.globals.section);
         }
       } catch {}
       setTimeout(() => { applyingRef.current = false; setHydrated(true); }, 100);
@@ -792,7 +801,7 @@ function App() {
         if (!window.pywebview?.api?.save_settings) return;
         setSaveStatus("saving");
         const blob = { profiles: next, activeProfile: activeId,
-                       globals: { autoConnect, section } };
+                       globals: { autoConnect, section, dashboardIntro: true } };
         Promise.resolve(window.pywebview.api.save_settings(blob)).then(r => {
           setSaveStatus(r && r.ok ? "saved" : "error");
           setTimeout(() => setSaveStatus(null), 1400);
@@ -815,7 +824,7 @@ function App() {
       const state = collectState();
       const ps = profiles.map(p => p.id === activeId ? { ...p, state } : p);
       try { window.pywebview.api.save_settings({ profiles: ps, activeProfile: activeId,
-                                                  globals: { autoConnect, section } }); } catch {}
+                                                  globals: { autoConnect, section, dashboardIntro: true } }); } catch {}
     };
     window.addEventListener("beforeunload", flush);
     window.addEventListener("pagehide", flush);
@@ -1730,11 +1739,11 @@ function App() {
   // provider below.
   // Capability-gated tabs: filter the section list per board, and if the
   // open section just became unavailable (board switch / first board data)
-  // fall back to the Keymap tab rather than showing an orphaned workspace.
+  // fall back to the (ungated) Dashboard rather than an orphaned workspace.
   const sectionDefs = useMemo(
     () => SECTION_DEFS.filter(sdef => sectionAllowed(sdef.id, board)), [board]);
   useEffect(() => {
-    if (!sectionAllowed(section, board)) setSection("keymap");
+    if (!sectionAllowed(section, board)) setSection("dashboard");
   }, [section, board]);
 
   const tree = (
@@ -1750,7 +1759,11 @@ function App() {
       />
 
       <main id="desktop-main" className="desktop-main">
-        <Workspace section={section} widgets={WIDGETS[section] || []} ctx={ctx}/>
+        {section === "dashboard" && DashboardPage
+          ? <div className="workspace" data-section="dashboard" style={{ paddingBottom: 0 }}>
+              <DashboardPage {...ctx}/>
+            </div>
+          : <Workspace section={section} widgets={WIDGETS[section] || []} ctx={ctx}/>}
       </main>
 
       {/* Board picker — lists the registry's OFFERED boards (same flag as the

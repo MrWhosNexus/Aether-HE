@@ -99,7 +99,12 @@
     const a = window.AetherWorkspaces && window.AetherWorkspaces[key] || [];
     return a.length ? a : comingSoon(label);
   };
+  // The Dashboard (roadmap Phase 5) is ONE composed page, not a widget
+  // desktop: workspaces/dashboard.jsx exports a component as DASHBOARD_PAGE.
+  // If that file failed to load, the "coming soon" placeholder shows instead.
+  const DashboardPage = window.AetherWorkspaces && window.AetherWorkspaces.DASHBOARD_PAGE;
   const WIDGETS = {
+    dashboard: comingSoon("Dashboard"),
     actuation: wsArr("ACTUATION_WIDGETS", "Actuation"),
     keymap: wsArr("KEYMAP_WIDGETS", "Keymap"),
     macros: wsArr("MACROS_WIDGETS", "Macros"),
@@ -1034,7 +1039,10 @@
         return true;
       }
     });
-    const [section, setSection] = useState("actuation");
+    // Dashboard is the landing tab. A remembered tab (globals.section) still
+    // wins, except once: settings written before the Dashboard existed lack
+    // globals.dashboardIntro, so the first launch after the update lands here.
+    const [section, setSection] = useState("dashboard");
 
     // ---- board awareness (additive; single-board path unchanged) --------------
     // `board` mirrors get_board().active; `boardRoster` mirrors list_boards().boards
@@ -1240,7 +1248,7 @@
             const active = migrated.profiles.find(p => p.id === aid);
             if (active?.state) applyState(active.state);
             if (migrated.globals?.autoConnect !== undefined) setAutoConnect(!!migrated.globals.autoConnect);
-            if (migrated.globals?.section) setSection(migrated.globals.section === "other" ? "settings" : migrated.globals.section);
+            if (migrated.globals?.section && migrated.globals?.dashboardIntro) setSection(migrated.globals.section === "other" ? "settings" : migrated.globals.section);
           }
         } catch {}
         setTimeout(() => {
@@ -1278,7 +1286,8 @@
             activeProfile: activeId,
             globals: {
               autoConnect,
-              section
+              section,
+              dashboardIntro: true
             }
           };
           Promise.resolve(window.pywebview.api.save_settings(blob)).then(r => {
@@ -1309,7 +1318,8 @@
             activeProfile: activeId,
             globals: {
               autoConnect,
-              section
+              section,
+              dashboardIntro: true
             }
           });
         } catch {}
@@ -2503,10 +2513,10 @@
     // provider below.
     // Capability-gated tabs: filter the section list per board, and if the
     // open section just became unavailable (board switch / first board data)
-    // fall back to the Keymap tab rather than showing an orphaned workspace.
+    // fall back to the (ungated) Dashboard rather than an orphaned workspace.
     const sectionDefs = useMemo(() => SECTION_DEFS.filter(sdef => sectionAllowed(sdef.id, board)), [board]);
     useEffect(() => {
-      if (!sectionAllowed(section, board)) setSection("keymap");
+      if (!sectionAllowed(section, board)) setSection("dashboard");
     }, [section, board]);
     const tree = /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(DesktopTopBar, {
       sections: sectionDefs,
@@ -2523,7 +2533,13 @@
     }), /*#__PURE__*/React.createElement("main", {
       id: "desktop-main",
       className: "desktop-main"
-    }, /*#__PURE__*/React.createElement(Workspace, {
+    }, section === "dashboard" && DashboardPage ? /*#__PURE__*/React.createElement("div", {
+      className: "workspace",
+      "data-section": "dashboard",
+      style: {
+        paddingBottom: 0
+      }
+    }, /*#__PURE__*/React.createElement(DashboardPage, ctx)) : /*#__PURE__*/React.createElement(Workspace, {
       section: section,
       widgets: WIDGETS[section] || [],
       ctx: ctx

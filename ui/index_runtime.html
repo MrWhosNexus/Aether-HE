@@ -402,7 +402,7 @@
   .topbar-tabs { display: flex; align-items: center; gap: 2px; }
   .topbar-tab {
     display: flex; align-items: center; gap: 7px;
-    height: 34px; padding: 0 14px; border-radius: 10px;
+    height: 34px; padding: 0 11px; border-radius: 10px;
     border: 1px solid transparent; background: transparent;
     color: var(--text-dim); cursor: pointer;
     font-family: var(--font-title); font-weight: 400;
@@ -410,6 +410,13 @@
     transition: color 0.15s, background 0.15s, border-color 0.15s;
   }
   .topbar-tab:hover { color: var(--text); background: rgba(234,244,240,0.03); }
+  /* Nine labelled tabs + the connect cluster need ~1560 px (the bar is
+     capped at 1600). Below that only the active tab keeps its label (the
+     others show the icon, label in the tooltip), so the Pair / zoom / gear
+     cluster stays on screen down to the 1160 px minimum window. */
+  @media (max-width: 1580px) {
+    .topbar-tab:not(.on) > span { display: none; }
+  }
   .topbar-tab.on {
     color: var(--text);
     background: linear-gradient(180deg,
@@ -37088,7 +37095,8 @@
     ICheck = I.ICheck,
     IMore = I.IMore,
     ILayers = I.ILayers,
-    IActivity = I.IActivity;
+    IActivity = I.IActivity,
+    IGrid = I.IGrid;
   const GRID = 8;
   const snap = v => Math.max(0, Math.round(v / GRID) * GRID);
 
@@ -37389,11 +37397,15 @@
 
   /* ============================================================
      TopBar — horizontal section tabs (Impact) + brand + connect cluster.
-     Sections: keymap, macros, lighting, actuation, analytics, socd, gamepad,
-     settings. (app.jsx filters this list per board — "macros" and
-     "analytics" are capability-gated.)
+     Sections: dashboard (first = the landing tab), keymap, macros, lighting,
+     actuation, analytics, socd, gamepad, settings. (app.jsx filters this list
+     per board — "macros" and "analytics" are capability-gated.)
      ============================================================ */
   const SECTION_DEFS = [{
+    id: "dashboard",
+    label: "Dashboard",
+    icon: IGrid
+  }, {
     id: "keymap",
     label: "Keymap",
     icon: IKeyboard
@@ -37462,6 +37474,8 @@
       return /*#__PURE__*/React.createElement("button", {
         key: s.id,
         onClick: () => onSelect(s.id),
+        title: s.label,
+        "aria-label": s.label,
         className: `topbar-tab font-title${on ? " on" : ""}`
       }, Icon && /*#__PURE__*/React.createElement(Icon, {
         size: 14
@@ -45769,7 +45783,12 @@
     const a = window.AetherWorkspaces && window.AetherWorkspaces[key] || [];
     return a.length ? a : comingSoon(label);
   };
+  // The Dashboard (roadmap Phase 5) is ONE composed page, not a widget
+  // desktop: workspaces/dashboard.jsx exports a component as DASHBOARD_PAGE.
+  // If that file failed to load, the "coming soon" placeholder shows instead.
+  const DashboardPage = window.AetherWorkspaces && window.AetherWorkspaces.DASHBOARD_PAGE;
   const WIDGETS = {
+    dashboard: comingSoon("Dashboard"),
     actuation: wsArr("ACTUATION_WIDGETS", "Actuation"),
     keymap: wsArr("KEYMAP_WIDGETS", "Keymap"),
     macros: wsArr("MACROS_WIDGETS", "Macros"),
@@ -46704,7 +46723,10 @@
         return true;
       }
     });
-    const [section, setSection] = useState("actuation");
+    // Dashboard is the landing tab. A remembered tab (globals.section) still
+    // wins, except once: settings written before the Dashboard existed lack
+    // globals.dashboardIntro, so the first launch after the update lands here.
+    const [section, setSection] = useState("dashboard");
 
     // ---- board awareness (additive; single-board path unchanged) --------------
     // `board` mirrors get_board().active; `boardRoster` mirrors list_boards().boards
@@ -46910,7 +46932,7 @@
             const active = migrated.profiles.find(p => p.id === aid);
             if (active?.state) applyState(active.state);
             if (migrated.globals?.autoConnect !== undefined) setAutoConnect(!!migrated.globals.autoConnect);
-            if (migrated.globals?.section) setSection(migrated.globals.section === "other" ? "settings" : migrated.globals.section);
+            if (migrated.globals?.section && migrated.globals?.dashboardIntro) setSection(migrated.globals.section === "other" ? "settings" : migrated.globals.section);
           }
         } catch {}
         setTimeout(() => {
@@ -46948,7 +46970,8 @@
             activeProfile: activeId,
             globals: {
               autoConnect,
-              section
+              section,
+              dashboardIntro: true
             }
           };
           Promise.resolve(window.pywebview.api.save_settings(blob)).then(r => {
@@ -46979,7 +47002,8 @@
             activeProfile: activeId,
             globals: {
               autoConnect,
-              section
+              section,
+              dashboardIntro: true
             }
           });
         } catch {}
@@ -48173,10 +48197,10 @@
     // provider below.
     // Capability-gated tabs: filter the section list per board, and if the
     // open section just became unavailable (board switch / first board data)
-    // fall back to the Keymap tab rather than showing an orphaned workspace.
+    // fall back to the (ungated) Dashboard rather than an orphaned workspace.
     const sectionDefs = useMemo(() => SECTION_DEFS.filter(sdef => sectionAllowed(sdef.id, board)), [board]);
     useEffect(() => {
-      if (!sectionAllowed(section, board)) setSection("keymap");
+      if (!sectionAllowed(section, board)) setSection("dashboard");
     }, [section, board]);
     const tree = /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(DesktopTopBar, {
       sections: sectionDefs,
@@ -48193,7 +48217,13 @@
     }), /*#__PURE__*/React.createElement("main", {
       id: "desktop-main",
       className: "desktop-main"
-    }, /*#__PURE__*/React.createElement(Workspace, {
+    }, section === "dashboard" && DashboardPage ? /*#__PURE__*/React.createElement("div", {
+      className: "workspace",
+      "data-section": "dashboard",
+      style: {
+        paddingBottom: 0
+      }
+    }, /*#__PURE__*/React.createElement(DashboardPage, ctx)) : /*#__PURE__*/React.createElement(Workspace, {
       section: section,
       widgets: WIDGETS[section] || [],
       ctx: ctx

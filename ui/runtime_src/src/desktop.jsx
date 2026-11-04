@@ -11,7 +11,7 @@ const I = window.AetherIcons || {};
 const IKeyboard = I.IKeyboard, IBulb = I.IBulb, IGauge = I.IGauge,
       ICrosshair = I.ICrosshair, IZap = I.IZap, ISettings = I.ISettings,
       IPlug = I.IPlug, IPower = I.IPower, ICheck = I.ICheck, IMore = I.IMore,
-      ILayers = I.ILayers, IActivity = I.IActivity;
+      ILayers = I.ILayers, IActivity = I.IActivity, IGrid = I.IGrid;
 
 const GRID = 8;
 const snap = (v) => Math.max(0, Math.round(v / GRID) * GRID);
@@ -218,11 +218,12 @@ function Workspace({ section, widgets, ctx }) {
 
 /* ============================================================
    TopBar — horizontal section tabs (Impact) + brand + connect cluster.
-   Sections: keymap, macros, lighting, actuation, analytics, socd, gamepad,
-   settings. (app.jsx filters this list per board — "macros" and
-   "analytics" are capability-gated.)
+   Sections: dashboard (first = the landing tab), keymap, macros, lighting,
+   actuation, analytics, socd, gamepad, settings. (app.jsx filters this list
+   per board — "macros" and "analytics" are capability-gated.)
    ============================================================ */
 const SECTION_DEFS = [
+  { id: "dashboard", label: "Dashboard", icon: IGrid },
   { id: "keymap",    label: "Keymap",    icon: IKeyboard },
   { id: "macros",    label: "Macros",    icon: ILayers },
   { id: "lighting",  label: "Lighting",  icon: IBulb },
@@ -252,7 +253,7 @@ function TopBar({ sections, active, onSelect, connected, connecting, onTogglePai
             const Icon = s.icon;
             const on = active === s.id;
             return (
-              <button key={s.id} onClick={() => onSelect(s.id)}
+              <button key={s.id} onClick={() => onSelect(s.id)} title={s.label} aria-label={s.label}
                 className={`topbar-tab font-title${on ? " on" : ""}`}>
                 {Icon && <Icon size={14} />}
                 <span>{s.label}</span>

@@ -24,7 +24,8 @@
     ICheck = I.ICheck,
     IMore = I.IMore,
     ILayers = I.ILayers,
-    IActivity = I.IActivity;
+    IActivity = I.IActivity,
+    IGrid = I.IGrid;
   const GRID = 8;
   const snap = v => Math.max(0, Math.round(v / GRID) * GRID);
 
@@ -325,11 +326,15 @@
 
   /* ============================================================
      TopBar — horizontal section tabs (Impact) + brand + connect cluster.
-     Sections: keymap, macros, lighting, actuation, analytics, socd, gamepad,
-     settings. (app.jsx filters this list per board — "macros" and
-     "analytics" are capability-gated.)
+     Sections: dashboard (first = the landing tab), keymap, macros, lighting,
+     actuation, analytics, socd, gamepad, settings. (app.jsx filters this list
+     per board — "macros" and "analytics" are capability-gated.)
      ============================================================ */
   const SECTION_DEFS = [{
+    id: "dashboard",
+    label: "Dashboard",
+    icon: IGrid
+  }, {
     id: "keymap",
     label: "Keymap",
     icon: IKeyboard
@@ -398,6 +403,8 @@
       return /*#__PURE__*/React.createElement("button", {
         key: s.id,
         onClick: () => onSelect(s.id),
+        title: s.label,
+        "aria-label": s.label,
         className: `topbar-tab font-title${on ? " on" : ""}`
       }, Icon && /*#__PURE__*/React.createElement(Icon, {
         size: 14
