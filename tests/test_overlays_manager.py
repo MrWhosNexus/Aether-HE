@@ -193,3 +193,64 @@ def test_status_rows_carry_the_dashboard_contract_fields(tmp_path):
     assert set(row) == {"id", "label", "row", "on", "available", "reason", "value"}
     assert row["label"] == "CPU" and row["row"] == "number row" and row["value"] == 0.42
     m.close()
+
+
+# ---- concurrency: status() polls and set() both run _apply -----------------------
+def _count_sampler_threads(monkeypatch):
+    """Widen the check-then-start window and count threads the sampler spawns."""
+    made = []
+    real = threading.Thread
+
+    class SlowThread(real):
+        def __init__(self, *a, **kw):
+            if kw.get("target") is not None and getattr(kw["target"], "__name__", "") == "_run" \
+                    and isinstance(getattr(kw["target"], "__self__", None), overlays.Sampler):
+                made.append(1)
+            import time as _t
+            _t.sleep(0.03)
+            super().__init__(*a, **kw)
+    monkeypatch.setattr(overlays.threading, "Thread", SlowThread)
+    return made
+
+
+def test_concurrent_apply_calls_start_exactly_one_sampler_thread(tmp_path, monkeypatch):
+    m, _ = _mgr(tmp_path)
+    m.follow_profile("p1")
+    m._pref["cpu"] = True
+    made = _count_sampler_threads(monkeypatch)
+    gate = threading.Barrier(8)
+
+    def poll():
+        gate.wait()
+        m._apply()
+    ts = [threading.Thread(target=poll) for _ in range(8)]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join()
+    assert len(made) == 1 and m.sampler.running
+    m.close()
+
+
+def test_concurrent_sampler_start_and_stop_never_leave_a_stray_thread(tmp_path, monkeypatch):
+    m, _ = _mgr(tmp_path)
+    m.layer.set_enabled("ram", True)
+    gate = threading.Barrier(6)
+
+    def go(fn):
+        gate.wait()
+        fn()
+    ts = [threading.Thread(target=go, args=(f,)) for f in
+          (m.sampler.start, m.sampler.start, m.sampler.start, m.sampler.stop, m.sampler.start,
+           m.sampler.start)]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join()
+    m.sampler.stop()
+    import time as _t
+    _t.sleep(0.1)
+    strays = [t for t in threading.enumerate()
+              if getattr(t, "_target", None) is not None
+              and getattr(t._target, "__self__", None) is m.sampler]
+    assert strays == [] and not m.sampler.running

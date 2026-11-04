@@ -52,6 +52,10 @@ STATS_SETTING = "collectKeyStats"
 # Python-side writers (games map, stats toggle) run on different pywebview /
 # poll threads, and two interleaved merges would drop one writer's keys.
 _SETTINGS_LOCK = threading.Lock()
+# Serialises the overlay carrier (engine start/stop + firmware restore). Always the
+# OUTERMOST lock on its paths: nothing that holds Api._lock or the device lock calls
+# into the carrier, and the engine thread never takes it, so fx.stop()'s join is safe.
+_CARRIER_LOCK = threading.RLock()
 
 
 def _stats_default_enabled(settings, platform=None):
@@ -2869,43 +2873,46 @@ class Api:
             fx = getattr(self, "fx", None)
             if fx is None or getattr(self, "_overlays", None) is None:
                 return
-            if self._overlay_active():
-                if not fx.is_running() and self.dev.is_open():
-                    self._carrier_start()
-            elif getattr(self, "_carrier_on", False):
-                self._carrier_stop()
+            with _CARRIER_LOCK:
+                if self._overlay_active():
+                    if not fx.is_running() and self.dev.is_open():
+                        self._carrier_start()
+                elif getattr(self, "_carrier_on", False):
+                    self._carrier_stop()
         except Exception as e:
             log.warning("overlay carrier sync failed: %s", e)
 
     def _carrier_start(self):
         """Stream a host rendering of the last firmware lighting (black when
         none is known) with the overlay layer on top."""
-        plan = overlays.carrier_plan(getattr(self, "_light_src", None), self.fx.indices,
-                                     self._bright_max())
-        self.driver.begin_host_stream()
-        self.fx.start_zones(plan["zones"], global_bg=plan["bg"], base=plan["base"])
-        self._carrier_on = True
+        with _CARRIER_LOCK:
+            plan = overlays.carrier_plan(getattr(self, "_light_src", None), self.fx.indices,
+                                         self._bright_max())
+            self.driver.begin_host_stream()
+            self.fx.start_zones(plan["zones"], global_bg=plan["bg"], base=plan["base"])
+            self._carrier_on = True
 
     def _carrier_stop(self):
         """Stop the carrier and re-send the firmware lighting the UI last asked
         for: one set_lighting (or per-key table) write, the same bytes the UI
         itself would have sent."""
-        self._carrier_on = False
-        self.fx.stop()
-        try:
-            self.driver.end_host_stream()
-        except Exception:
-            pass
-        src = getattr(self, "_light_src", None)
-        if not src or not self.dev.is_open():
-            return
-        if src[0] == "light":
-            p = src[1]
-            self.driver.set_lighting(p["mode"], p["fg"], bg=p["bg"], brightness=p["brightness"],
-                                     speed=p["speed"], direction=p["direction"],
-                                     full_color=p["full_color"], power_on=p["power_on"])
-        elif src[0] == "custom":
-            self.driver.set_per_key_rgb(dict(src[1]), brightness=src[2], speed=src[3])
+        with _CARRIER_LOCK:
+            self._carrier_on = False
+            self.fx.stop()
+            try:
+                self.driver.end_host_stream()
+            except Exception:
+                pass
+            src = getattr(self, "_light_src", None)
+            if not src or not self.dev.is_open():
+                return
+            if src[0] == "light":
+                p = src[1]
+                self.driver.set_lighting(p["mode"], p["fg"], bg=p["bg"], brightness=p["brightness"],
+                                         speed=p["speed"], direction=p["direction"],
+                                         full_color=p["full_color"], power_on=p["power_on"])
+            elif src[0] == "custom":
+                self.driver.set_per_key_rgb(dict(src[1]), brightness=src[2], speed=src[3])
 
 
     # ---- host-driven multi-color effects (per-key, driver stream) ----

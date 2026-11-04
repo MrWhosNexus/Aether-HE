@@ -401,6 +401,7 @@ class Sampler:
         self._gate = gate
         self._interval = float(interval)
         self._prev_cpu = None
+        self._tlock = threading.RLock()     # start/stop are idempotent under this
         self._stop = threading.Event()
         self._stop.set()
         self._thread = None
@@ -425,18 +426,20 @@ class Sampler:
             lay.set_value("gpu", self._gpu.read())
 
     def start(self):
-        if self.running:
-            return
-        self._stop = threading.Event()
-        self._thread = threading.Thread(target=self._run, args=(self._stop,), daemon=True)
-        self._thread.start()
+        with self._tlock:
+            if self.running:
+                return
+            self._stop = threading.Event()
+            self._thread = threading.Thread(target=self._run, args=(self._stop,), daemon=True)
+            self._thread.start()
 
     def stop(self):
-        self._stop.set()
-        th = self._thread
-        if th is not None and th is not threading.current_thread():
-            th.join(timeout=2.0)
-        self._thread = None
+        with self._tlock:
+            self._stop.set()
+            th = self._thread
+            if th is not None and th is not threading.current_thread():
+                th.join(timeout=2.0)
+            self._thread = None
 
     def _run(self, stop_ev):
         while not stop_ev.is_set():
@@ -525,6 +528,7 @@ class OverlayManager:
         self.sampler = Sampler(self.layer, cpu, mem, self.gpu, gate, interval)
         self.pid = None
         self._pref = {k: False for k in IDS}
+        self._mlock = threading.RLock()     # status() polls and set() both run _apply
 
     def availability(self, oid):
         if len(self.layer.rows.get(oid, [])) != len(ROW_CODES[oid]):
@@ -536,29 +540,32 @@ class OverlayManager:
         return True, None
 
     def _apply(self):
-        for oid in IDS:
-            self.layer.set_enabled(oid, self._pref[oid] and self.availability(oid)[0])
-        if any(self.layer.enabled(k) for k in SENSOR_IDS):
-            self.sampler.start()
-        else:
-            self.sampler.stop()
+        with self._mlock:
+            for oid in IDS:
+                self.layer.set_enabled(oid, self._pref[oid] and self.availability(oid)[0])
+            if any(self.layer.enabled(k) for k in SENSOR_IDS):
+                self.sampler.start()
+            else:
+                self.sampler.stop()
 
     def follow_profile(self, pid):
-        self.pid = pid
-        self._pref = toggles_for(load_prefs(self._path), pid)
-        self._apply()
+        with self._mlock:
+            self.pid = pid
+            self._pref = toggles_for(load_prefs(self._path), pid)
+            self._apply()
 
     def set(self, oid, on):
         if oid not in IDS:
             return {"ok": False, "error": f"unknown overlay {oid!r}"}
         on = bool(on)
-        ok, reason = self.availability(oid)
-        if on and not ok:
-            return {"ok": False, "error": reason}
-        self._pref[oid] = on
-        save_toggle(self._path, self._lock, self.pid or "p1", oid, on)
-        self._apply()
-        return {"ok": True, "id": oid, "on": self.layer.enabled(oid)}
+        with self._mlock:
+            ok, reason = self.availability(oid)
+            if on and not ok:
+                return {"ok": False, "error": reason}
+            self._pref[oid] = on
+            save_toggle(self._path, self._lock, self.pid or "p1", oid, on)
+            self._apply()
+            return {"ok": True, "id": oid, "on": self.layer.enabled(oid)}
 
     def any_on(self):
         return self.layer.any_enabled()

@@ -221,3 +221,44 @@ def test_carrier_frame_rate_is_the_engines_normal_cap(tmp_path):
     rate = (len(a.frames) - n0) / (time.time() - t0)
     assert rate <= a.fx.fps + 5                                     # never above the existing cap
     _teardown(a)
+
+
+def test_carrier_start_and_stop_never_overlap_across_threads(tmp_path):
+    import threading
+    a = _api(tmp_path)
+    a.set_light(*LIGHT)
+    a.set_overlay("cpu", True)
+    state = {"in": 0, "max": 0}
+    guard = threading.Lock()
+
+    def slow(real):
+        def wrapped(*args, **kw):
+            with guard:
+                state["in"] += 1
+                state["max"] = max(state["max"], state["in"])
+            time.sleep(0.02)
+            try:
+                return real(*args, **kw)
+            finally:
+                with guard:
+                    state["in"] -= 1
+        return wrapped
+    a.driver.begin_host_stream = slow(a.driver.begin_host_stream)
+    a.driver.end_host_stream = slow(a.driver.end_host_stream)
+    gate = threading.Barrier(6)
+
+    def go(fn):
+        gate.wait()
+        try:
+            fn()
+        except Exception:
+            pass
+    fns = [a._carrier_start, a._carrier_stop, a._carrier_start, a._carrier_stop,
+           a._carrier_start, a._carrier_stop]
+    ts = [threading.Thread(target=go, args=(f,)) for f in fns]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join()
+    assert state["max"] == 1                                    # serialised: one at a time
+    _teardown(a)
