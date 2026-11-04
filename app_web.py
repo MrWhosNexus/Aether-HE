@@ -33,6 +33,7 @@ from drivers import UnsupportedFeature
 import effects
 import device_state
 import gamepad
+import games
 import telemetry
 import updater
 import tray
@@ -44,6 +45,11 @@ log = logging.getLogger("aether.web")
 
 #: settings.json key for the key-statistics switch (Settings > Key statistics).
 STATS_SETTING = "collectKeyStats"
+
+# Serialises Api.save_settings' read-merge-write: the UI's profile saves and
+# Python-side writers (games map, stats toggle) run on different pywebview /
+# poll threads, and two interleaved merges would drop one writer's keys.
+_SETTINGS_LOCK = threading.Lock()
 
 
 def _stats_default_enabled(settings, platform=None):
@@ -453,6 +459,7 @@ class Api:
         self._act_mm = {}
         self._init_link_state()
         self.telemetry = self._make_telemetry()
+        self._games = self._make_games()
 
     # ---- key statistics plumbing ----
     def _make_telemetry(self):
@@ -467,6 +474,33 @@ class Api:
         except Exception as e:
             log.warning("key statistics unavailable: %s", e)
             return None
+
+    def _make_games(self):
+        """Game detection service (games.py). Reads the cached Discord list;
+        no thread until _start_games. Never raises: None disables it."""
+        try:
+            return games.GameService(
+                user_data_dir(),
+                lambda: (self.load_settings() or {}).get("settings"),
+                self.save_settings)
+        except Exception as e:
+            log.warning("game detection unavailable: %s", e)
+            return None
+
+    def _start_games(self, on_detected=None):
+        """main(): start polling (Windows only). `on_detected(name|None)`
+        feeds the tray tooltip."""
+        g = getattr(self, "_games", None)
+        if g is None:
+            return False
+        g.on_detected = on_detected
+        return g.start()
+
+    def _stop_games(self):
+        g = getattr(self, "_games", None)
+        if g is not None:
+            g.stop()
+
 
     def _stats_supported(self):
         """Does the active board declare keyStats AND stream live travel?"""
@@ -1831,18 +1865,19 @@ class Api:
         try:
             import json
             path = self._settings_path()
-            existing = {}
-            try:
-                with open(path, encoding="utf-8") as f:
-                    loaded = json.load(f)
-                if isinstance(loaded, dict):
-                    existing = loaded
-            except (OSError, ValueError):
+            with _SETTINGS_LOCK:
                 existing = {}
-            merged = dict(existing)
-            merged.update(settings or {})
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(merged, f, indent=2)
+                try:
+                    with open(path, encoding="utf-8") as f:
+                        loaded = json.load(f)
+                    if isinstance(loaded, dict):
+                        existing = loaded
+                except (OSError, ValueError):
+                    existing = {}
+                merged = dict(existing)
+                merged.update(settings or {})
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(merged, f, indent=2)
             return {"ok": True, "path": path}
         except Exception as e:
             return {"ok": False, "error": str(e)}
@@ -1890,6 +1925,88 @@ class Api:
         })
         self._tray_state = cur
         return {"ok": True}
+
+    # ---- games: detection + per-game profiles (games.py) ----
+    #
+    # Python decides WHICH profile should be active (debounced); app.jsx polls
+    # games_status(), switches the profile like the profile menu does (its
+    # lighting effects then follow) and hands the profile's actuation / RT /
+    # SOCD to apply_profile_to_board. games_sync reports the active profile
+    # back, so a manual switch during a game cancels the revert.
+    _GAMES_OFF = {"ok": False, "error": "game detection is unavailable"}
+
+    def games_status(self):
+        try:
+            g = getattr(self, "_games", None)
+            if g is None:
+                return {"ok": True, "available": False, "autoSwitch": False,
+                        "detected": [], "foreground": None, "active": None,
+                        "games": [], "switch": None, "detectable": None}
+            return g.status()
+        except Exception as e:
+            return self._fail(e)
+
+    def list_running_games(self):
+        """Running user programs for the "add a game" picker. Built on demand,
+        never stored or logged."""
+        try:
+            g = getattr(self, "_games", None)
+            if g is None:
+                return dict(self._GAMES_OFF)
+            return {"ok": True, "programs": g.running()}
+        except Exception as e:
+            return self._fail(e)
+
+    def set_game_profile(self, game_id, profile_id=None):
+        """Map a game to a profile id, or unmap it (None): unmapping a
+        program you added removes it."""
+        try:
+            g = getattr(self, "_games", None)
+            if g is None:
+                return dict(self._GAMES_OFF)
+            return g.set_profile(game_id, profile_id)
+        except Exception as e:
+            return self._fail(e)
+
+    def add_custom_game(self, exe_path, name=None):
+        try:
+            g = getattr(self, "_games", None)
+            if g is None:
+                return dict(self._GAMES_OFF)
+            return g.add_custom(exe_path, name)
+        except Exception as e:
+            return self._fail(e)
+
+    def refresh_detectable(self):
+        """Download Discord's game list now (HTTPS, 5 MB cap). Nothing is
+        uploaded."""
+        try:
+            g = getattr(self, "_games", None)
+            if g is None:
+                return dict(self._GAMES_OFF)
+            return g.refresh_detectable()
+        except Exception as e:
+            return self._fail(e)
+
+    def set_games_auto_switch(self, on):
+        try:
+            g = getattr(self, "_games", None)
+            if g is None:
+                return dict(self._GAMES_OFF)
+            return g.set_auto(bool(on))
+        except Exception as e:
+            return self._fail(e)
+
+    def games_sync(self, state):
+        """app.jsx -> Python: {activeProfile, profiles: [{id, name}], handledSeq}."""
+        try:
+            g = getattr(self, "_games", None)
+            if g is None:
+                return {"ok": True}
+            return g.sync(state)
+        except Exception as e:
+            return self._fail(e)
+
 
     # ---- advanced keys + per-key remap (MINI 60 HE PRO family) ----
     #
