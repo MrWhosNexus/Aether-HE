@@ -78,9 +78,23 @@ Entry format:
 - For the user (morning): 9 hardware checks at the end of docs/superpowers/plans/2026-11-04-phase-2-pressure.md (bullet already in the Waiting section).
 - Stopped early? No.
 
+## 2026-11-04 Phase 3 plan — planner (Opus)
+- Landed: 676768d docs/superpowers/plans/2026-11-04-phase-3-games.md (10 TDD tasks, 108 new passing tests + 1 non-Windows skip; expect 916 passed, 13 skipped). Code and tests were prototyped against the real tree (full suite green), then reverted; the worktree holds only the plan.
+- Decisions: stdlib-only `games.py`; matcher = dict of normalised trailing-segment patterns, looked up longest suffix first (<= 8 lookups/process) + a file-name prefilter so only candidate processes are ever opened; generic runtimes (javaw/python/browsers) ignored from Discord's list; user games override.
+- Decisions: download = verified HTTPS, gzip requested, 5 MB cap on the wire while streaming, 32 MB decompressed cap; compact cache `<user_data_dir>/games/detectable.json` (atomic, re-validated), weekly refresh, 6 h retry; tests use tests/fixtures/discord_detectable_sample.json + injected fetchers only.
+- Decisions: poll thread starts with the app (main(), Windows only, 3 s), not on connect; service is the PRIVATE `Api._games`. `GameSwitcher`: foreground mapped game wins, else sticky current, else newest; 5 s debounce; revert to the pre-session profile; a manual switch (after the UI acked the switch via `games_sync.handledSeq`) cancels revert/re-apply.
+- Decisions: Python decides, app.jsx polls `games_status()` every 2 s, calls `switchProfile` (lighting follows) and `apply_profile_to_board(spec)` -> `set_trigger_all` (ALL keys) + `set_socd`; skipped when `_act_mm` + new `_trig_mode` / `_socd_last` show the board already holds it (cleared on every connect/select_board); deferred to `_connect` while offline. New `_SETTINGS_LOCK` serialises `save_settings`.
+- For next phase: Phase 5 dashboard can read `games_status()["active"]`/`["detected"]`; `apply_profile_to_board` is the reusable "apply a profile's board settings" path. No new dependency or PyInstaller hidden import; Flatpak cp list gains games.py.
+- For the user (morning): 12 hardware checks at the end of the plan; vetoable defaults queued below.
+- Stopped early? No.
+
 ## Waiting on the user
 - [DKS] Run the advanced-keys capture checklist (docs/context/aula-win60-advanced-keys-capture-checklist.md, ~20 min in hed.aulacn.com) to confirm the source-only decode.
 - [DKS] Open: does WIN60 firmware act on DKS/MT/TGL; DKS step codes 2/3; single-slot writes accepted; MT 10 ms unit; per-profile table?
 - [Phase 1] Veto check: key statistics collection defaults ON on Windows (OFF on Linux unless opted in); stored as per-key daily aggregates only, 90 days.
 - [Phase 1] Run the 11 hardware checks at the end of docs/superpowers/plans/2026-11-04-phase-1-telemetry.md (typing feel + CPU with the always-on reader, calibration with stats on, shallow/bottom counting, Clear, reconnect).
 - [Phase 2] Run the 9 hardware checks at the end of docs/superpowers/plans/2026-11-04-phase-2-pressure.md (pressure feel, 120 ms fade, no stuck keys, actuation lines on the Travel Test board).
+- [Phase 3] Veto check: a game switch writes the game profile's actuation/RT slider value to ALL keys (per-key actuation layouts get flattened) plus its SOCD pairs; auto-switch defaults ON once any game is mapped.
+- [Phase 3] Discord list size: the cap is 5 MB on the wire (gzip requested, 32 MB after unpacking). If Settings > Games > Update reports "larger than 5 MB", decide whether to raise `games.MAX_DETECTABLE_BYTES`.
+- [Phase 3] Known limitation to accept or schedule: the revert target is not persisted, so if Aether restarts mid-game the game's exit does not revert the profile.
+- [Phase 3] Run the 12 hardware checks at the end of docs/superpowers/plans/2026-11-04-phase-3-games.md (switch/revert, debounce, offline apply, tooltip, anti-cheat/CPU).
