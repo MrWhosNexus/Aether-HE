@@ -142,6 +142,13 @@ def test_select_board_wires_cap_into_engine():
     assert r2["active"]["lighting"]["hostEngineMaxFps"] == 60
 
 
+def test_select_board_forgets_the_old_boards_recorded_lighting():
+    a = _api()
+    a._light_src = ("light", {"mode": 0})           # what set_light recorded for the carrier
+    assert a.select_board("aula-mini60he-pro")["ok"] is True
+    assert a._light_src is None
+
+
 # ------------------------------------------------------------ engine behavior ----
 def test_spawn_density_is_rate_independent(monkeypatch):
     """The rain spawner's per-frame probability scales by the instance's

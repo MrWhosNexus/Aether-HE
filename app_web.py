@@ -923,6 +923,7 @@ class Api:
             self._pending_board = None
             self._fn_layer_raw = None
             self._idx2code = None
+            self._light_src = None      # the old board's lighting is not this board's
             self._init_link_state()
             log.info("Board selected: %s (%s)", p.name, p.vid_pid)
             return {"ok": True, "active": {
