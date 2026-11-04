@@ -175,6 +175,12 @@ Entry format:
 - For the user (morning): nothing new; the Phase 7 install, size veto, 14 audio checks and accept bullets are already queued below.
 - Stopped early? No.
 
+## 2026-11-04 Phase 8 -- whole-branch review fixes (Sonnet)
+- Landed (one commit per item): 067479d start_multicolor / start_zones / stop_multicolor now run under the module _CARRIER_LOCK (outermost) -- a games_sync overlay follow racing a Custom-zones start can no longer overwrite the zones or orphan an engine thread (tests/test_overlays_races.py, forced interleavings, failed before the fix); 28691a3 disconnect() runs _carrier_stop() first when the carrier is on (firmware lighting re-sent once) and tray exit now calls disconnect() before stop_multicolor (test_tray order updated); 2fa462a select_board clears _light_src; e41c590 games.py no longer logs the game name at INFO (profile id + reason only); b9a0e3d raw string in test_ui_sources (SyntaxWarning).
+- Deadlock ruled out: lock order is _CARRIER_LOCK -> Api._lock -> device lock only. effects/music/overlays/drivers never import or take _CARRIER_LOCK (engine thread = _send_frame -> driver.stream_frame, _music_power, OverlayLayer leaf lock); no `with self._lock` body calls a start/stop/carrier function; _on_link_lost runs outside the outer lock; fx.stop joins with a 0.5 s timeout. Tray's own lock is released before stop_multicolor.
+- Suite: 1183 passed, 17 skipped (was 1175/17 before this round). No JSX changes, no rebuild.
+- Stopped early? No.
+
 ## Waiting on the user
 - [DKS] Run the advanced-keys capture checklist (docs/context/aula-win60-advanced-keys-capture-checklist.md, ~20 min in hed.aulacn.com) to confirm the source-only decode.
 - [DKS] Open: does WIN60 firmware act on DKS/MT/TGL; DKS step codes 2/3; single-slot writes accepted; MT 10 ms unit; per-profile table?
