@@ -142,3 +142,14 @@ def test_round5_normal_code_still_passes():
            "t = time.time()\nn = pm.FRAME_LEN\nThread(target=f).start()\n"
            "from .base import BoardDriver\nclass D(BoardDriver):\n    pass\n")
     assert _hits(src) == []
+
+
+def test_round6_untracked_aliases_cannot_walk_to_modules():
+    for src in ("from threading import Thread\ng = Thread\ng.os\n",
+                "from json import loads\nf = loads\nf.__globals__\n",
+                "x = make()[0].sys.modules\n",
+                "obj.subprocess.Popen(['x'])\n",
+                "getattr(thing, 'system')\n",
+                "getattr(thing, 'modules')\n",
+                "a = b\na.popen('x')\n"):
+        assert _hits(src), src
