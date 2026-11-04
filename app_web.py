@@ -3238,7 +3238,21 @@ def _on_start(window):
         log.warning("render-state probe failed: %s", e)
 
 
+def _apply_experimental_flags(env=None):
+    """AETHER_EXPERIMENTAL=magnet turns on the WIN 68 HE Max driver's
+    SOURCE-ONLY features (actuation, live travel, SOCD) for a hardware
+    bring-up tester. Off by default; nothing else reads it."""
+    flags = {f.strip().lower() for f in
+             ((os.environ if env is None else env).get("AETHER_EXPERIMENTAL") or "").split(",")}
+    import drivers.magnet
+    drivers.magnet.MagnetDriver.experimental = "magnet" in flags
+    if "magnet" in flags:
+        log.warning("EXPERIMENTAL: WIN 68 HE Max actuation/travel/SOCD enabled "
+                    "(unverified frames, bring-up only)")
+
+
 def main():
+    _apply_experimental_flags()
     if not os.path.exists(INDEX):
         boot.show_error(f"Aether HE could not start: UI not found\n\n{INDEX}")
         raise SystemExit(f"UI not found: {INDEX}")

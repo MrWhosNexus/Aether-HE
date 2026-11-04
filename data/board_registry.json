@@ -467,17 +467,58 @@
     },
     {
       "slug": "aula-win68he-max",
+      "_offerNote": "offerInUi false (2026-11-04): drivable from a vendor-driver capture, but no WIN 68 HE Max has ever been driven by Aether. It is detected and driven when plugged in (lighting / per-key colour); it joins the picker after a bring-up run of docs/HARDWARE_TEST_CHECKLIST.md 'WIN 68 HE Max bring-up' (issue #7).",
       "offerInUi": false,
-      "name": "Aula win68 HE Max",
+      "name": "Aula WIN 68 HE Max",
       "vid": "0x1CA2",
       "pid": "0x1901",
       "formFactor": "65%",
-      "usage_page": null,
+      "_note": "magnet.aulastar.com protocol 1.0.9 (firmware App V1.1.4, hardware V4.4.8; device name 'WIN 68 HE MAX', travel 0.10-3.40 mm in 0.01 mm, global actuation 2.00 mm, all per the vendor driver's own log). Credit: nieruuu19 (issue #7) supplied the vendor key table (ui/layouts/aula-win68he-max.json), the driver console log with every WebHID frame it sent, and a protocol port (nieruuu19/Aether-HE protocol_sparkplay.py) that this entry was checked against but not merged. CONFIRMED-BY-CAPTURE (tests/fixtures/magnet_win68max_tx.txt, 344 frames; protocol_magnet.py rebuilds them byte for byte in tests/test_protocol_magnet.py): framing and checksum, the 0x18 lighting write (power/direction flags, brightness 0-4, mode 0-21, speed 0-4, sleep minutes) and the 0x2A single-key colour write. lighting / perKeyRgb = true on that evidence; drivers/magnet.py maps the UI's static colour to custom mode 21 + every key and refuses the Win60 firmware-effect numbers (this board's effects 1-20 are not named yet). The host effect engine streams only changed keys, one frame per key (no batched colour write is captured), hence the conservative hostEngineMaxFps. SOURCE-ONLY (fork, never captured: the capture READS every per-key property 0-25 but writes none): 0x23 actuation / rapid trigger, 0x12 live travel, 0x2C SOCD -> 'wip'; drivers/magnet.py sends them only with AETHER_EXPERIMENTAL=magnet. usage_page 0xFFA0 is the contributor's report from their board (not captured). Key ids are the layout hidCodes; device index = matrix slot row*21+col.",
+      "usage_page": "0xFFA0",
       "keymap": "ui/layouts/aula-win68he-max.json",
-      "protocol": null,
-      "capabilities": { "lighting": false, "actuation": false, "perKeyRgb": false },
-      "status": "planned",
-      "issues": [7]
+      "protocol": "protocol_magnet",
+      "capabilities": {
+        "lighting": true,
+        "perKeyRgb": true,
+        "actuation": "wip",
+        "rapidTrigger": "wip",
+        "socd": "wip"
+      },
+      "lighting": {
+        "_note": "Own firmware modes are numbered 0-21 (all 22 selected in the capture) but only 21 = custom per-key is identified; the rest are not listed until named. Static colour is byte 21 too: drivers/magnet.py sets custom mode and paints every key the chosen colour (all captured frames). hostEngine true: per-key 0x2A writes are captured; hostEngineMaxFps 12 is a conservative guess (one HID write per changed key) to be measured at bring-up.",
+        "brightnessMax": 4,
+        "speedMax": 4,
+        "brightnessMin": 0,
+        "speedMin": 0,
+        "modeListSource": "static",
+        "customModeByte": 21,
+        "hostEngine": true,
+        "hostEngineMaxFps": 12,
+        "modes": [
+          {
+            "id": "static",
+            "byte": 21,
+            "name": "Static colour",
+            "color": true,
+            "speed": false,
+            "brightness": true,
+            "direction": false
+          },
+          {
+            "id": "custom",
+            "byte": 21,
+            "name": "Custom (per-key)",
+            "color": false,
+            "speed": false,
+            "brightness": true,
+            "direction": false
+          }
+        ]
+      },
+      "status": "bringup",
+      "issues": [
+        7
+      ]
     },
     {
       "slug": "aula-win60he-pro",

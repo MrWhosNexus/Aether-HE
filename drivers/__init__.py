@@ -14,6 +14,9 @@ by `profile.protocol` (the registry field naming the packet-builder module):
                                        frames were FALSIFIED on the 80A2;
                                        safer inert than wrong)
     "protocol_sayo"   -> NullDriver   (lighting decoded; driver is follow-up)
+    "protocol_magnet" -> MagnetDriver (Aula WIN 68 HE Max, 1CA2:1901 — captured
+                                       lighting/per-key colour; actuation,
+                                       travel and SOCD only in experimental mode)
     null / unknown    -> NullDriver   (undecoded boards stay non-drivable)
 
 connected_profiles() is the detection layer's multi-board fix: with several
@@ -33,6 +36,7 @@ import logging
 from .base import BoardDriver, NullDriver, UnsupportedFeature
 from .win60 import Win60Driver
 from .mini60 import Mini60Driver
+from .magnet import MagnetDriver
 
 log = logging.getLogger(__name__)
 
@@ -40,6 +44,7 @@ log = logging.getLogger(__name__)
 DRIVER_BY_PROTOCOL = {
     "protocol": Win60Driver,
     "protocol_mini60": Mini60Driver,
+    "protocol_magnet": MagnetDriver,
 }
 
 
