@@ -238,3 +238,122 @@ class DetectableIndex:
 
     def exes_of(self, gid):
         return list(self._exes.get(gid, ()))
+
+
+def _atomic_write_json(path, obj):
+    """Write JSON next to `path` and swap it in, so a crash mid-write never
+    leaves a truncated cache."""
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(obj, f, separators=(",", ":"))
+    os.replace(tmp, path)
+
+
+def _gunzip_capped(data, limit):
+    d = zlib.decompressobj(16 + zlib.MAX_WBITS)
+    out = d.decompress(data, limit + 1)
+    if len(out) > limit or d.unconsumed_tail:
+        raise ValueError("detectable list is too large once decompressed")
+    if not d.eof:
+        raise ValueError("detectable list download was truncated")
+    return out
+
+
+def fetch_url(url, max_bytes, timeout=FETCH_TIMEOUT_S, urlopen=None):
+    """GET `url` over verified HTTPS and return the body, refusing more than
+    `max_bytes` on the wire (checked while streaming, before reading it all).
+    gzip is accepted and unpacked with its own cap. Raises on any failure."""
+    if not url.startswith("https://"):
+        raise ValueError("only https URLs are fetched")
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "AetherHE-Games", "Accept": "application/json",
+        "Accept-Encoding": "gzip"})
+    ctx = ssl.create_default_context()      # certificate + hostname checks on
+    opener = urlopen or urllib.request.urlopen
+    with opener(req, timeout=timeout, context=ctx) as r:
+        final = r.geturl() or url
+        if not final.startswith("https://"):
+            raise ValueError("redirected away from https")
+        length = (r.headers.get("Content-Length") or "").strip()
+        if length.isdigit() and int(length) > max_bytes:
+            raise ValueError(f"detectable list is larger than {max_bytes // 1048576} MB")
+        buf = bytearray()
+        while True:
+            chunk = r.read(65536)
+            if not chunk:
+                break
+            buf += chunk
+            if len(buf) > max_bytes:
+                raise ValueError(f"detectable list is larger than {max_bytes // 1048576} MB")
+        enc = (r.headers.get("Content-Encoding") or "").strip().lower()
+    if enc == "gzip":
+        return _gunzip_capped(bytes(buf), MAX_DECOMPRESSED_BYTES)
+    if enc not in ("", "identity"):
+        raise ValueError(f"unsupported content encoding {enc!r}")
+    return bytes(buf)
+
+
+class DetectableStore:
+    """Discord's list, cached at <dir>/detectable.json in a compact,
+    re-validated form ({"version", "fetched", "source", "games"}).
+    Works offline: a missing/corrupt cache just means no Discord games.
+    `fetcher(url, max_bytes) -> bytes` is injectable; tests never touch the
+    network."""
+
+    def __init__(self, cache_dir, fetcher=None, clock=time.time):
+        self.path = os.path.join(cache_dir, "detectable.json")
+        self._fetch = fetcher or fetch_url
+        self._clock = clock
+        self.games = []
+        self.fetched = None
+        self.last_error = None
+        self._last_attempt = None
+
+    def load(self):
+        """Read the cache; returns the number of games (0 when absent/bad)."""
+        try:
+            with open(self.path, encoding="utf-8") as f:
+                obj = json.load(f)
+            games, fetched = parse_cache(obj)
+        except FileNotFoundError:
+            return 0
+        except (OSError, ValueError) as e:
+            self.last_error = f"cached game list unusable: {e}"
+            log.warning("%s", self.last_error)
+            return 0
+        self.games, self.fetched = games, fetched
+        return len(games)
+
+    def is_stale(self):
+        return self.fetched is None or self._clock() - self.fetched >= REFRESH_AFTER_S
+
+    def should_refresh(self):
+        """Stale, and no automatic attempt in the last RETRY_AFTER_S."""
+        if not self.is_stale():
+            return False
+        return (self._last_attempt is None
+                or self._clock() - self._last_attempt >= RETRY_AFTER_S)
+
+    def refresh(self):
+        """Download, validate, cache. {"ok", "count"} or {"ok": False, "error"};
+        a failure keeps whatever list was loaded before."""
+        self._last_attempt = self._clock()
+        try:
+            games = parse_detectable(self._fetch(DETECTABLE_URL, MAX_DETECTABLE_BYTES))
+        except Exception as e:
+            self.last_error = f"game list not updated: {e}"
+            log.warning("%s", self.last_error)
+            return {"ok": False, "error": self.last_error}
+        now = self._clock()
+        try:
+            _atomic_write_json(self.path, {"version": CACHE_VERSION, "fetched": now,
+                                           "source": DETECTABLE_URL, "games": games})
+        except OSError as e:
+            log.warning("game list cache not written: %s", e)
+        self.games, self.fetched, self.last_error = games, now, None
+        return {"ok": True, "count": len(games)}
+
+    def info(self):
+        return {"count": len(self.games), "fetched": self.fetched,
+                "stale": self.is_stale(), "error": self.last_error}
