@@ -70,6 +70,14 @@ Entry format:
 - For the user (morning): 9 hardware checks at the end of the plan (pressure feel, 120 ms fade, no stuck keys, actuation lines on the tester).
 - Stopped early? No.
 
+## 2026-11-04 Phase 2 — implementer (Sonnet)
+- Landed: f9f15dd effects.py `pressure` generator + `pressure_level` (+25 tests); daed4c5 `Api._act_mm`/`_note_actuation`/`_actuation_snapshot`, `fx.get_actuation` (+9); 5174b5f Pressure in the Lighting/Zones/tray lists (+4); 1d0c0ac `data-act-tick` actuation line on the Travel Test board (+4); 731b120 CLAUDE.md. Suite: 808 passing, 12 skipped; green at every commit.
+- Decisions later phases must respect: `pressure` is in `effects.PRESS_REACTIVE` (so `_ensure_reactive` owner "reactive" attaches the shared reader); `Api._actuation_snapshot()` is the per-key actuation source (read-back + successful writes, cleared by select_board) wired to the engine as `fx.get_actuation`; `Key` draws the tick at `TRAVEL_SCALE_MM = 4`, same scale as the travel fill.
+- Deviation: `Api._act_mm` was kept as a SECOND cache next to Telemetry's `_act` on purpose, not merged. Both are fed from the same `verify_actuation` sweep, but Phase 1 telemetry deliberately FORGETS values on every write (presses read "unrated" until the next read-back) and is gated on stats enabled/supported; pressure wants the written value and must work with stats off. Merging would change Phase 1 semantics.
+- Gotchas: tests/test_pressure_ui_sources.py pins HOST_FX_IDS == engine generators and HOST_FX_FAST == PRESS_REACTIVE (Phase 7's `music` effect must update both lists). Only keyboard.js, ws_lighting.js, ws_actuation.js, sections.js build files had real diffs; the rest was CRLF noise and was reverted.
+- For the user (morning): 9 hardware checks at the end of docs/superpowers/plans/2026-11-04-phase-2-pressure.md (bullet already in the Waiting section).
+- Stopped early? No.
+
 ## Waiting on the user
 - [DKS] Run the advanced-keys capture checklist (docs/context/aula-win60-advanced-keys-capture-checklist.md, ~20 min in hed.aulacn.com) to confirm the source-only decode.
 - [DKS] Open: does WIN60 firmware act on DKS/MT/TGL; DKS step codes 2/3; single-slot writes accepted; MT 10 ms unit; per-profile table?
