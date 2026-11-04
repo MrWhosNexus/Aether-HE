@@ -156,6 +156,16 @@ Entry format:
 - Stopped early? No.
 - Review fixes: d364777 locks around Sampler start/stop, OverlayManager._apply/set and the carrier (module _CARRIER_LOCK, outermost; + concurrency tests); 247de91 a repeated pomodoro enable keeps _last_phase so a poll cannot swallow the phase pulse (suite 1107 passed, 14 skipped).
 
+## 2026-11-04 Phase 7 plan — planner (Opus)
+- Landed: a6cdeca docs/superpowers/plans/2026-11-04-phase-7-music.md (7 tasks, 68 new passing tests + 3 numpy-only skips; expect 1175 passed, 17 skipped). Code and tests were prototyped against the real tree (suite green, `node --check` ok; numpy adapter checked with the system Python's numpy), then reverted.
+- Decisions: new `music.py`: soundcard WASAPI loopback of the default output, 48 kHz, 480-frame (10 ms) blocks, 1024-pt Hann FFT (numpy), 14 geometric bands 40 Hz-16 kHz (each >= 1 bin), dB levels under an auto-gain ref (instant up, -4 dB/s, floor -45 dBFS, 40 dB range), beats = low-band (40-520 Hz) dB-rise flux > mean + 1.5 MAD, >= 6 dB, <= 1 per 0.25 s.
+- Decisions: one `aether-music` thread in `MusicSource`; numpy/soundcard imported lazily ON that thread (COM MTA init there); `availability()` is find_spec-only; lock-free snapshot hand-off, stale > 0.25 s = bars fall; default-output change re-acquired every 1 s; no device/read error -> `no_device`, retry 2 s.
+- Decisions: the ENGINE owns capture: `start_zones` keeps/starts it only when a zone is `music`, `stop()` and a dead stream stop it (palette edits do not reopen). `music` is NOT press-reactive, so not in `HOST_FX_FAST`; it is in `HOST_FX_IDS` + `_gens` in one commit (Phase 2 guards). Overlays draw over it with no wiring.
+- Decisions: mapping from KeyMap x/y (rows = distinct y, row 0 = bottom; key span = to the next key, last key to max x + median pitch; columns whose centre is in the span, Space averages 5). Instant attack, release 0.30-0.08 s by speed; beat pulse bg -> palette[0] x0.45, 0.15 s; no audio = bottom row breathes.
+- For next phase (8): the build venv needs `numpy>=1.26` + `soundcard>=0.4.3` BEFORE PyInstaller (spec collects soundcard data + hidden imports); without them the frozen app says Music is unavailable. Bridge `music_status()` -> {ok, available, reason, state, device}.
+- For the user (morning): install the 2 deps, veto the size, 14 hardware/audio checks at the end of the plan (queued below).
+- Stopped early? No.
+
 ## Waiting on the user
 - [DKS] Run the advanced-keys capture checklist (docs/context/aula-win60-advanced-keys-capture-checklist.md, ~20 min in hed.aulacn.com) to confirm the source-only decode.
 - [DKS] Open: does WIN60 firmware act on DKS/MT/TGL; DKS step codes 2/3; single-slot writes accepted; MT 10 ms unit; per-profile table?
@@ -175,4 +185,7 @@ Entry format:
 - [Phase 6] Run the 12 hardware checks at the end of docs/superpowers/plans/2026-11-04-phase-6-overlays.md (bars over static / busy effects / per-key paint / lights off, Pomodoro pulse, per-profile, reconnect, no console window from nvidia-smi).
 - [Phase 6] Veto check: with an overlay on, Static / Full-RGB / per-key paint / lights-off are rendered by the host engine (Full-RGB becomes a host rainbow wave; the board streams frames like any host effect) and the firmware lighting is re-sent once when the last overlay goes off. Lights-off with an overlay on still shows the bar. If you would rather overlays refuse to run over firmware lighting, say so.
 - [Phase 6] Accept: Pomodoro has no start/pause or minutes UI (on = running 25/5; change minutes by editing `overlays.pomodoro.workMin/breakMin` in settings.json); a static carrier streams at the normal engine rate (unchanged frames cost no HID writes); GPU needs NVIDIA's nvidia-smi; no temperatures or notification pings (out of scope per spec).
-
+- [Phase 7] Install the two new dependencies into the build venv (no network overnight): `venv-web\Scripts\pip install "numpy>=1.26" "soundcard>=0.4.3"`; then the 3 skipped numpy tests in tests/test_music_source.py run (expect 13 passed). Needed before the Phase 8 PyInstaller build or the frozen app shows Music as unavailable.
+- [Phase 7] Veto check: numpy + soundcard (Windows only) are the roadmap's only new dependencies. Estimated cost (not measured): +25-40 MB unpacked (mostly numpy's OpenBLAS), +10-15 MB installer. Say if that is too big.
+- [Phase 7] Run the 14 hardware/audio checks at the end of docs/superpowers/plans/2026-11-04-phase-7-music.md (bars, beat pulse, latency < 60 ms, CPU < 5 % of a core, silence, output switch, no device, capture stops, overlays, tray/dashboard, frozen build, size).
+- [Phase 7] Accept: Music follows the Windows default output only (no device picker); Windows only (Linux shows "needs Windows"); the tray/dashboard grids still offer Music when the deps are missing (it idles with a breathing bottom row, the Lighting tab says why).
