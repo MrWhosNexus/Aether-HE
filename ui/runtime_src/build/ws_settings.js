@@ -7,7 +7,8 @@
      ============================================================ */
   const {
     useState,
-    useEffect
+    useEffect,
+    useRef
   } = React;
   const S = window.AetherSections || {};
   const Slider = S.Slider,
@@ -318,30 +319,140 @@
     }, "Closing the window keeps Aether in the tray; right-click the icon for Open, Hide window, Mini mode and Exit."));
   }
 
-  /* ===== Backup/Import widget ===== */
+  /* ===== Key statistics widget =====
+     Per-key, per-day aggregates (presses, bottom-outs, shallow attempts) from
+     the live travel stream, kept on this PC for 90 days. Aggregates only: never
+     what you type or when. Bridge: get_stats(1) / set_stats_enabled(bool) /
+     clear_stats(). The totals refresh every few seconds while the tab is open. */
+  function StatsWidget() {
+    const [st, setSt] = useState({
+      loaded: false,
+      supported: false,
+      enabled: false,
+      totals: null
+    });
+    const [err, setErr] = useState("");
+    const [confirming, setConfirming] = useState(false);
+    const alive = useRef(true);
+    const refresh = () => {
+      const api = window.pywebview?.api;
+      if (!api || !api.get_stats) return;
+      api.get_stats(1).then(r => {
+        if (!alive.current) return;
+        if (r && r.ok) {
+          setSt({
+            loaded: true,
+            supported: !!r.supported,
+            enabled: !!r.enabled,
+            totals: r.totals || null
+          });
+        } else {
+          setErr(r && r.error || "failed");
+        }
+      }).catch(() => {});
+    };
+    useEffect(() => {
+      alive.current = true;
+      refresh();
+      const id = setInterval(refresh, 3000);
+      return () => {
+        alive.current = false;
+        clearInterval(id);
+      };
+    }, []);
+    useEffect(() => {
+      if (!confirming) return undefined;
+      const id = setTimeout(() => setConfirming(false), 4000);
+      return () => clearTimeout(id);
+    }, [confirming]);
+    const toggle = async () => {
+      const next = !st.enabled;
+      setSt(s => ({
+        ...s,
+        enabled: next
+      }));
+      setErr("");
+      const api = window.pywebview?.api;
+      if (!api || !api.set_stats_enabled) return;
+      try {
+        const r = await api.set_stats_enabled(next);
+        if (!(r && r.ok)) {
+          setSt(s => ({
+            ...s,
+            enabled: !next
+          }));
+          setErr(r && r.error || "failed");
+        }
+      } catch (e) {
+        setSt(s => ({
+          ...s,
+          enabled: !next
+        }));
+        setErr(String(e));
+      }
+    };
+    const clear = async () => {
+      if (!confirming) {
+        setConfirming(true);
+        return;
+      }
+      setConfirming(false);
+      setErr("");
+      const api = window.pywebview?.api;
+      if (!api || !api.clear_stats) return;
+      try {
+        const r = await api.clear_stats();
+        if (!(r && r.ok)) setErr(r && r.error || "failed");
+      } catch (e) {
+        setErr(String(e));
+      }
+      refresh();
+    };
+    const t = st.totals || {
+      presses: 0,
+      bottom: 0,
+      shallow: 0
+    };
+    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)] mb-3"
+    }, "Privacy"), /*#__PURE__*/React.createElement(Toggle, {
+      on: st.enabled,
+      onClick: toggle,
+      label: "Collect key statistics",
+      desc: "Counts presses, bottom-outs and press depth per key, per day, on this PC. Never what you type or when. Kept for 90 days."
+    }), st.loaded && !st.supported && /*#__PURE__*/React.createElement("div", {
+      className: "mt-2 font-mono text-[10px] text-[var(--text-faint)] leading-relaxed"
+    }, "Statistics need a board with a live travel stream (Aula Win60 HE)."), /*#__PURE__*/React.createElement("div", {
+      className: "mt-3 font-mono text-[10px] text-[var(--text-faint)] leading-relaxed"
+    }, `Today: ${t.presses} presses · ${t.bottom} bottom-outs · ${t.shallow} shallow`), /*#__PURE__*/React.createElement("div", {
+      className: "mt-3"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: clear,
+      className: confirming ? "px-2.5 h-8 rounded-md border border-rose-400/50 bg-white/[0.02] text-rose-300 font-display text-[10.5px] uppercase tracking-[0.16em]" : "px-2.5 h-8 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] font-display text-[10.5px] uppercase tracking-[0.16em] hover:border-rose-400/40 hover:text-rose-300"
+    }, confirming ? "Click again to delete all statistics" : "Clear statistics")), err && /*#__PURE__*/React.createElement("div", {
+      className: "mt-2 font-mono text-[10px] text-rose-300/90"
+    }, err));
+  }
+
+  /* ===== Backup/Import widget =====
   function BackupWidget(ctx) {
-    const {
-      applyState,
-      collectState,
-      profiles
-    } = ctx;
+    const { applyState, collectState, profiles } = ctx;
     const [message, setMessage] = useState("");
+  
     const handleExport = () => {
       try {
         // Capture the REAL current configuration. collectState() is the exact
         // flat shape applyState() consumes on import, so export->import round-
         // trips; profiles is included so the whole saved set travels with it.
-        const live = typeof collectState === "function" && collectState() || {};
+        const live = (typeof collectState === "function" && collectState()) || {};
         const state = {
           timestamp: new Date().toISOString(),
           app: "AetherHE",
           profiles: Array.isArray(profiles) ? profiles : [],
-          ...live
+          ...live,
         };
         const json = JSON.stringify(state, null, 2);
-        const blob = new Blob([json], {
-          type: "application/json"
-        });
+        const blob = new Blob([json], { type: "application/json" });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
@@ -355,11 +466,12 @@
         setTimeout(() => setMessage(""), 2400);
       }
     };
+  
     const handleImport = async () => {
       const input = document.createElement("input");
       input.type = "file";
       input.accept = "application/json";
-      input.onchange = async e => {
+      input.onchange = async (e) => {
         const file = e.target.files?.[0];
         if (!file) return;
         try {
@@ -377,23 +489,37 @@
       };
       input.click();
     };
-    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-      className: "font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)] mb-3"
-    }, "Settings"), /*#__PURE__*/React.createElement("p", {
-      className: "text-[11.5px] text-[var(--text-faint)] leading-relaxed mb-4"
-    }, "Export or import your configuration. Backups include profiles, keymaps, lighting effects, and all settings."), /*#__PURE__*/React.createElement("div", {
-      className: "flex flex-col gap-2"
-    }, /*#__PURE__*/React.createElement("button", {
-      onClick: handleExport,
-      className: "h-9 rounded-md border border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] font-display text-[11px] uppercase tracking-[0.16em] hover:bg-[var(--accent)]/25 transition-all"
-    }, IDownload ? "↓" : "Export", " Export"), /*#__PURE__*/React.createElement("button", {
-      onClick: handleImport,
-      className: "h-9 rounded-md border border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] font-display text-[11px] uppercase tracking-[0.16em] hover:bg-[var(--accent)]/25 transition-all"
-    }, IDownload ? "↑" : "Import", " Import")), message && /*#__PURE__*/React.createElement("div", {
-      className: "mt-3 text-[11px] font-mono uppercase tracking-[0.16em] text-[var(--accent)]"
-    }, "\u2713 ", message));
+  
+    return (
+      <div>
+        <div className="font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)] mb-3">
+          Settings
+        </div>
+  
+        <p className="text-[11.5px] text-[var(--text-faint)] leading-relaxed mb-4">
+          Export or import your configuration. Backups include profiles, keymaps, lighting effects, and all settings.
+        </p>
+  
+        <div className="flex flex-col gap-2">
+          <button onClick={handleExport}
+            className="h-9 rounded-md border border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] font-display text-[11px] uppercase tracking-[0.16em] hover:bg-[var(--accent)]/25 transition-all">
+            {IDownload ? "↓" : "Export"} Export
+          </button>
+          <button onClick={handleImport}
+            className="h-9 rounded-md border border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] font-display text-[11px] uppercase tracking-[0.16em] hover:bg-[var(--accent)]/25 transition-all">
+            {IDownload ? "↑" : "Import"} Import
+          </button>
+        </div>
+  
+        {message && (
+          <div className="mt-3 text-[11px] font-mono uppercase tracking-[0.16em] text-[var(--accent)]">
+            ✓ {message}
+          </div>
+        )}
+      </div>
+    );
   }
-
+  
   /* ===== About/Update widget ===== */
   function AboutWidget(ctx) {
     const {
@@ -645,6 +771,20 @@
       h: 220
     },
     render: SystemWidget
+  }, {
+    id: "stats",
+    title: "Key statistics",
+    default: {
+      x: 800,
+      y: 352,
+      w: 360,
+      h: 260
+    },
+    min: {
+      w: 300,
+      h: 200
+    },
+    render: StatsWidget
   }];
   window.AetherWorkspaces = window.AetherWorkspaces || {};
   window.AetherWorkspaces.SETTINGS_WIDGETS = SETTINGS_WIDGETS;

@@ -5,7 +5,7 @@
      { id, title, default:{x,y,w,h}, min:{w,h}, render:(ctx)=>JSX }
    Each render() reads/calls ONLY ctx.* (state + handlers app.jsx passes down).
    ============================================================ */
-const { useState, useEffect } = React;
+const { useState, useEffect, useRef } = React;
 const S = window.AetherSections || {};
 const Slider = S.Slider, Chip = S.Chip, SubTabs = S.SubTabs, ToolbarButton = S.ToolbarButton;
 const I = window.AetherIcons || {};
@@ -311,7 +311,99 @@ function SystemWidget() {
   );
 }
 
-/* ===== Backup/Import widget ===== */
+/* ===== Key statistics widget =====
+   Per-key, per-day aggregates (presses, bottom-outs, shallow attempts) from
+   the live travel stream, kept on this PC for 90 days. Aggregates only: never
+   what you type or when. Bridge: get_stats(1) / set_stats_enabled(bool) /
+   clear_stats(). The totals refresh every few seconds while the tab is open. */
+function StatsWidget() {
+  const [st, setSt] = useState({ loaded: false, supported: false, enabled: false, totals: null });
+  const [err, setErr] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const alive = useRef(true);
+
+  const refresh = () => {
+    const api = window.pywebview?.api;
+    if (!api || !api.get_stats) return;
+    api.get_stats(1).then(r => {
+      if (!alive.current) return;
+      if (r && r.ok) {
+        setSt({ loaded: true, supported: !!r.supported, enabled: !!r.enabled, totals: r.totals || null });
+      } else {
+        setErr((r && r.error) || "failed");
+      }
+    }).catch(() => {});
+  };
+  useEffect(() => {
+    alive.current = true;
+    refresh();
+    const id = setInterval(refresh, 3000);
+    return () => { alive.current = false; clearInterval(id); };
+  }, []);
+  useEffect(() => {
+    if (!confirming) return undefined;
+    const id = setTimeout(() => setConfirming(false), 4000);
+    return () => clearTimeout(id);
+  }, [confirming]);
+
+  const toggle = async () => {
+    const next = !st.enabled;
+    setSt(s => ({ ...s, enabled: next })); setErr("");
+    const api = window.pywebview?.api;
+    if (!api || !api.set_stats_enabled) return;
+    try {
+      const r = await api.set_stats_enabled(next);
+      if (!(r && r.ok)) {
+        setSt(s => ({ ...s, enabled: !next }));
+        setErr((r && r.error) || "failed");
+      }
+    } catch (e) {
+      setSt(s => ({ ...s, enabled: !next }));
+      setErr(String(e));
+    }
+  };
+  const clear = async () => {
+    if (!confirming) { setConfirming(true); return; }
+    setConfirming(false); setErr("");
+    const api = window.pywebview?.api;
+    if (!api || !api.clear_stats) return;
+    try {
+      const r = await api.clear_stats();
+      if (!(r && r.ok)) setErr((r && r.error) || "failed");
+    } catch (e) { setErr(String(e)); }
+    refresh();
+  };
+
+  const t = st.totals || { presses: 0, bottom: 0, shallow: 0 };
+  return (
+    <div>
+      <div className="font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)] mb-3">
+        Privacy
+      </div>
+      <Toggle on={st.enabled} onClick={toggle} label="Collect key statistics"
+              desc="Counts presses, bottom-outs and press depth per key, per day, on this PC. Never what you type or when. Kept for 90 days." />
+      {st.loaded && !st.supported && (
+        <div className="mt-2 font-mono text-[10px] text-[var(--text-faint)] leading-relaxed">
+          Statistics need a board with a live travel stream (Aula Win60 HE).
+        </div>
+      )}
+      <div className="mt-3 font-mono text-[10px] text-[var(--text-faint)] leading-relaxed">
+        {`Today: ${t.presses} presses · ${t.bottom} bottom-outs · ${t.shallow} shallow`}
+      </div>
+      <div className="mt-3">
+        <button onClick={clear}
+          className={confirming
+            ? "px-2.5 h-8 rounded-md border border-rose-400/50 bg-white/[0.02] text-rose-300 font-display text-[10.5px] uppercase tracking-[0.16em]"
+            : "px-2.5 h-8 rounded-md border border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] font-display text-[10.5px] uppercase tracking-[0.16em] hover:border-rose-400/40 hover:text-rose-300"}>
+          {confirming ? "Click again to delete all statistics" : "Clear statistics"}
+        </button>
+      </div>
+      {err && <div className="mt-2 font-mono text-[10px] text-rose-300/90">{err}</div>}
+    </div>
+  );
+}
+
+/* ===== Backup/Import widget =====
 function BackupWidget(ctx) {
   const { applyState, collectState, profiles } = ctx;
   const [message, setMessage] = useState("");
@@ -544,6 +636,7 @@ const SETTINGS_WIDGETS = [
   { id: "backup",   title: "Backup",        default: { x: 40,  y: 432, w: 380, h: 240 }, min: { w: 300, h: 180 }, render: BackupWidget },
   { id: "about",    title: "About/Update",  default: { x: 440, y: 432, w: 340, h: 320 }, min: { w: 280, h: 240 }, render: AboutWidget },
   { id: "system",   title: "System",        default: { x: 800, y: 32,  w: 360, h: 300 }, min: { w: 300, h: 220 }, render: SystemWidget },
+  { id: "stats",    title: "Key statistics", default: { x: 800, y: 352, w: 360, h: 260 }, min: { w: 300, h: 200 }, render: StatsWidget },
 ];
 
 window.AetherWorkspaces = window.AetherWorkspaces || {};
