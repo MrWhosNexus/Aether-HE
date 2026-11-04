@@ -80,6 +80,11 @@ def peak_percentile(hist, q):
     return None
 
 
+_KEY_RE = re.compile(r"^\d{1,3}$")
+_DAY_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\.json$")
+_CLEAR_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\.json(\.tmp)?$")
+
+
 def _default_today():
     return datetime.date.today().isoformat()
 
@@ -189,13 +194,177 @@ class Telemetry:
         self._ensure_flusher()
 
     def _ensure_flusher(self):
-        pass
+        """Start the daemon flusher on the first recorded run (lock held)."""
+        if not self._flush_interval_s:
+            return
+        if self._flusher is not None and self._flusher.is_alive():
+            return
+        stop = threading.Event()
+        self._stop = stop
+        interval = self._flush_interval_s
+
+        def loop():
+            while not stop.wait(interval):
+                self.flush()
+
+        self._flusher = threading.Thread(target=loop, name="aether-stats-flush",
+                                         daemon=True)
+        self._flusher.start()
+
+    # ---- storage -------------------------------------------------------
+    def _path(self, date):
+        return os.path.join(self._root, f"{date}.json")
+
+    @staticmethod
+    def _sanitise(rec):
+        """Keep only the known counters; anything else never survives."""
+        agg = empty_agg()
+        if not isinstance(rec, dict):
+            return agg
+        for f in FIELDS:
+            v = rec.get(f)
+            agg[f] = v if type(v) is int and v >= 0 else 0
+        h = rec.get("hist")
+        if (isinstance(h, list) and len(h) == HIST_BINS
+                and all(type(v) is int and v >= 0 for v in h)):
+            agg["hist"] = list(h)
+        return agg
+
+    def _read_day(self, date):
+        """board -> {idx: agg} from the day file; {} when missing/corrupt."""
+        try:
+            with open(self._path(date), "r", encoding="utf-8") as fh:
+                doc = json.load(fh)
+        except (OSError, ValueError):
+            return {}
+        if not isinstance(doc, dict) or doc.get("version") != FILE_VERSION:
+            return {}
+        boards = doc.get("boards")
+        if not isinstance(boards, dict):
+            return {}
+        out = {}
+        for slug, keys in boards.items():
+            if not isinstance(slug, str) or not isinstance(keys, dict):
+                continue
+            part = out.setdefault(slug, {})
+            for k, rec in keys.items():
+                if isinstance(k, str) and _KEY_RE.match(k):
+                    part[int(k)] = self._sanitise(rec)
+        return out
+
+    def load_day(self, date):
+        """idx -> aggregate for one day (file + pending) on the current board."""
+        with self._io_lock:
+            out = dict(self._read_day(date).get(self._board, {}))
+            with self._lock:
+                for idx, a in self._pending.get((date, self._board), {}).items():
+                    merge_agg(out.setdefault(idx, empty_agg()), a)
+            return out
+
+    def flush(self):
+        """Write the pending deltas into their day files. True = nothing is
+        left unwritten; False = a write failed (that delta is kept)."""
+        with self._io_lock:
+            with self._lock:
+                snap, self._pending = self._pending, {}
+            by_date = {}
+            for (date, slug), keys in snap.items():
+                by_date.setdefault(date, {})[slug] = keys
+            ok = True
+            failed = []
+            todo = by_date
+            try:
+                if by_date:
+                    os.makedirs(self._root, exist_ok=True)
+            except OSError as e:
+                log.warning("key statistics: cannot create %s: %s", self._root, e)
+                ok = False
+                failed = list(by_date)
+                todo = {}
+            for date, boards in todo.items():
+                try:
+                    cur = self._read_day(date)
+                    for slug, keys in boards.items():
+                        part = cur.setdefault(slug, {})
+                        for idx, a in keys.items():
+                            merge_agg(part.setdefault(idx, empty_agg()), a)
+                    doc = {"version": FILE_VERSION, "date": date,
+                           "boards": {slug: {str(i): a for i, a in keys.items()}
+                                      for slug, keys in cur.items()}}
+                    path = self._path(date)
+                    tmp = path + ".tmp"
+                    with open(tmp, "w", encoding="utf-8") as fh:
+                        fh.write(json.dumps(doc, sort_keys=True,
+                                            separators=(",", ":")))
+                    os.replace(tmp, path)
+                except (OSError, ValueError) as e:
+                    log.warning("key statistics: write %s failed: %s", date, e)
+                    ok = False
+                    failed.append(date)
+            if failed:
+                with self._lock:
+                    for date in failed:
+                        for slug, keys in by_date[date].items():
+                            dst = self._pending.setdefault((date, slug), {})
+                            for idx, a in keys.items():
+                                merge_agg(dst.setdefault(idx, empty_agg()), a)
+            self._prune()
+            return ok
+
+    def _prune(self):
+        try:
+            if not os.path.isdir(self._root):
+                return
+            today = datetime.date.fromisoformat(self._today())
+            for name in os.listdir(self._root):
+                m = _DAY_RE.match(name)
+                if not m:
+                    continue
+                try:
+                    d = datetime.date.fromisoformat(m.group(1))
+                except ValueError:
+                    continue
+                if (today - d).days >= self._keep_days:
+                    try:
+                        os.remove(os.path.join(self._root, name))
+                    except OSError:
+                        pass
+        except OSError:
+            pass
+
+    def clear(self):
+        """Delete every day file and the in-memory counters. Returns the
+        number of day files removed."""
+        with self._io_lock:
+            with self._lock:
+                self._pending = {}
+                self._open.clear()
+            if not os.path.isdir(self._root):
+                return 0
+            try:
+                names = os.listdir(self._root)
+            except OSError:
+                return 0
+            n = 0
+            for name in names:
+                if not _CLEAR_RE.match(name):
+                    continue
+                try:
+                    os.remove(os.path.join(self._root, name))
+                    if name.endswith(".json"):
+                        n += 1
+                except OSError:
+                    pass
+            return n
+
+    def close(self):
+        self._stop.set()
+        t = self._flusher
+        if t is not None and t is not threading.current_thread():
+            t.join(timeout=1.0)
+        self.flush()
 
     # ---- reading -------------------------------------------------------
-    def load_day(self, date):
-        with self._lock:
-            part = self._pending.get((date, self._board), {})
-            return {idx: merge_agg(empty_agg(), a) for idx, a in part.items()}
 
     def aggregate(self, days=1):
         today = datetime.date.fromisoformat(self._today())
