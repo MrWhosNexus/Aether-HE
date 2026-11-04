@@ -1,6 +1,6 @@
 # AETHER HE — Aula WIN60 HE Controller
 
-> ## ✨ v0.6.0 — Aether learns how you type
+> ## ✨ v0.6.1 — Aether learns how you type
 > **A Dashboard, key statistics with a per-game heatmap, actuation suggestions, game profiles,
 > status bars on your keys and a music visualizer.**
 >
@@ -20,8 +20,9 @@
 >   warns when two pairs use the same keys (use Model 4 for whichever-pressed-last-wins);
 >   the Music effect captures audio.
 >
-> **Known issue:** calibration from Aether is not working in this release. Use the vendor
-> driver to calibrate until a fix ships.
+> - **Calibration works again (v0.6.1).** Keys turn green as you press them and it finishes
+>   by itself. In v0.6.0 the keyboard's brief hiccup on entering calibration made Aether drop
+>   the connection, so calibration never saw a key.
 >
 > ### → [**Download the latest release**](https://github.com/MrWhosNexus/Aether-HE/releases/latest)
 >
