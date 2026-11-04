@@ -82,8 +82,10 @@ def test_partial_press_held_still_stays_visible():
 
 
 def test_release_frame_under_noise_floor_still_clears_immediately():
+    # The fake delivers the whole press in one drain, so it is a "tap": it
+    # stays visible for TAP_HOLD_S (0.12 s) and is gone right after.
     frames = [_travel_report(46, mm) for mm in (1.5, 3.0, 0.8, 0.01)]
-    assert _run(frames, 0.1) == {}
+    assert _run(frames, 0.3) == {}
 
 
 def _run_hooked(reports, wait_s, hook):
@@ -127,3 +129,58 @@ def test_reader_feeds_telemetry_one_press(tmp_path):
     _run_hooked(frames, 0.6, tel.feed)
     agg = tel.aggregate(1)[46]
     assert agg["presses"] == 1 and agg["hist"][32] == 1 and agg["unrated"] == 0
+
+
+def _run_with(reports, wait_s, is_down, stale_s=0.2, before_start=None):
+    lr = device_state.LiveReader(_FakeDev(reports), _KM, indices=[46])
+    lr.STALE_S = stale_s
+    lr.is_key_down = is_down
+    lr.start()
+    try:
+        time.sleep(wait_s)
+        return lr.snapshot()
+    finally:
+        lr.stop()
+
+
+def test_tap_with_only_downward_frames_clears_when_os_says_up():
+    # Quick/light tap: the firmware sent 0.31, 0.62 and nothing on release.
+    frames = [_travel_report(46, mm) for mm in (0.31, 0.62)]
+    assert _run_with(frames, 0.9, lambda idx: False) == {}, "tap stuck"
+
+
+def test_downward_silence_kept_while_os_says_down():
+    frames = [_travel_report(46, mm) for mm in (2.56, 3.40)]
+    assert _run_with(frames, 0.9, lambda idx: True) == {"W": 3.40}
+
+
+def test_downward_silence_kept_when_os_state_unknown():
+    frames = [_travel_report(46, mm) for mm in (0.31, 0.62)]
+    assert _run_with(frames, 0.9, lambda idx: None) == {"W": 0.62}
+
+
+def test_tap_inside_one_poll_stays_visible_briefly():
+    # Press and full release land in the same drain: without the tap hold it
+    # was cleared before the 33 ms UI poll could see it.
+    frames = [_travel_report(46, mm) for mm in (0.4, 1.1, 0.0)]
+    lr = device_state.LiveReader(_FakeDev(frames), _KM, indices=[46])
+    lr.start()
+    try:
+        time.sleep(0.03)
+        assert lr.snapshot() == {"W": 1.1}
+        assert lr.snapshot_by_index() == {46: 1.1}
+        time.sleep(0.25)
+        assert lr.snapshot() == {}
+    finally:
+        lr.stop()
+
+
+def test_os_key_probe_maps_hid_to_vk():
+    km = device_state.KeyMap()
+    idx_w = km.index_of_code["W"] if hasattr(km, "index_of_code") else None
+    if idx_w is None:
+        idx_w = next(i for i in km.indices() if km.code_of(i) == "W")
+    seen = []
+    probe = device_state.make_os_key_probe(
+        km, get_state=lambda vk: seen.append(vk) or 0x8000)
+    assert probe(idx_w) is True and seen == [0x57]

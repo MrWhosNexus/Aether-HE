@@ -118,6 +118,21 @@ class LiveReader:
         # The firmware's own gap between frames of one moving key reaches
         # ~140 ms, so a shorter window would flicker mid-release.
         self.RELEASE_SILENCE_S = 0.15
+        # A quick or light tap often reports only DOWNWARD frames (the gap
+        # between frames of one moving key reaches ~140 ms, longer than the
+        # tap), so the rule above never fires and the key sticks forever.
+        # Such a key is cleared after STALE_S of silence unless the OS says it
+        # is still down (`is_key_down(idx)`: True / False / None = unknown ->
+        # keep). Held keys stay; a partial press held perfectly flat below the
+        # actuation point disappears after STALE_S and returns on the next
+        # movement.
+        self.STALE_S = 1.0
+        self.is_key_down = None
+        # A tap that starts and ends between two UI polls (33 ms) would be
+        # cleared before anyone saw it. Presses shorter than TAP_HOLD_S stay
+        # visible at their peak depth until TAP_HOLD_S after their release.
+        self.TAP_HOLD_S = 0.12
+        self._flash = {}          # device index -> (code, peak mm, until)
         # Optional per-sample consumer (Api attaches telemetry.Telemetry.feed):
         # called (device index, mm, t) for every mapped travel report and
         # (device index, 0.0, t) when the release-silence rule clears a key.
@@ -170,6 +185,20 @@ class LiveReader:
         on_sample = self.on_sample
         lifting = {}   # device index -> (monotonic time of its last report, code)
                        # for keys whose last report moved UP (see __init__)
+        seen = {}      # device index -> (time of its last report, code) for
+                       # every key with a depth (STALE_S rule)
+        pressed = {}   # device index -> (time of its first report, peak mm)
+        flash = self._flash
+        stale_s = self.STALE_S
+        tap_hold = self.TAP_HOLD_S
+        is_down = self.is_key_down
+        last_stale = 0.0
+
+        def _cleared(idx, code, t):
+            first = pressed.pop(idx, None)
+            seen.pop(idx, None)
+            if first is not None and t - first[0] < tap_hold:
+                flash[idx] = (code, first[1], t + tap_hold)
         last_open = 0.0
         dead = 0   # consecutive dead-handle / failed-read cycles (self-teardown)
         while not stop_ev.is_set():
@@ -218,7 +247,14 @@ class LiveReader:
                                     depths.pop(code, None)
                                     depths_idx.pop(idx, None)
                                     lifting.pop(idx, None)
+                                    _cleared(idx, code, now)
                                 else:
+                                    seen[idx] = (now, code)
+                                    first = pressed.get(idx)
+                                    if first is None:
+                                        pressed[idx] = (now, depth)
+                                    elif depth > first[1]:
+                                        pressed[idx] = (first[0], depth)
                                     prev = depths_idx.get(idx)
                                     if prev is not None and depth < prev:
                                         lifting[idx] = (now, code)
@@ -256,11 +292,43 @@ class LiveReader:
                         depths.pop(code, None)
                         depths_idx.pop(idx, None)
                         del lifting[idx]
+                        _cleared(idx, code, t_now)
                         if on_sample is not None:
                             try:
                                 on_sample(idx, 0.0, t_now)
                             except Exception:
                                 pass
+            # Keys silent for STALE_S that the OS does not report as down
+            # (a tap whose release was never reported). Checked ~4x a second.
+            if seen and is_down is not None:
+                t_now = time.monotonic()
+                if t_now - last_stale > 0.25:
+                    last_stale = t_now
+                    for idx, (t_last, code) in list(seen.items()):
+                        if t_now - t_last <= stale_s:
+                            continue
+                        try:
+                            down = is_down(idx)
+                        except Exception:
+                            down = None
+                        if down is False:
+                            depths.pop(code, None)
+                            depths_idx.pop(idx, None)
+                            lifting.pop(idx, None)
+                            pressed.pop(idx, None)
+                            seen.pop(idx, None)
+                            if on_sample is not None:
+                                try:
+                                    on_sample(idx, 0.0, t_now)
+                                except Exception:
+                                    pass
+                        else:
+                            seen[idx] = (t_now, code)   # re-check in STALE_S
+            if flash:
+                t_now = time.monotonic()
+                for idx, (_c, _mm, until) in list(flash.items()):
+                    if t_now > until or idx in depths_idx:
+                        flash.pop(idx, None)
             # This reader drains EVERY report off the shared handle (a probe's
             # heartbeat reply included), so it is the one that must record
             # that the board answered (Api.status liveness).
@@ -285,12 +353,20 @@ class LiveReader:
         # the cache when a fresh report drops below NOISE_MM.
         # dict(d) copies atomically under the GIL — safe against the reader
         # thread mutating it; iterating d.items() from another thread is NOT.
-        return dict(self.depths)
+        out = dict(self.depths)
+        if self._flash:
+            for code, mm, _until in list(self._flash.values()):
+                out.setdefault(code, mm)
+        return out
 
     def snapshot_by_index(self):
         """Same data as snapshot() keyed by DEVICE INDEX — the effect engine's
         native key, so press-reactive effects don't remap every frame."""
-        return dict(self._depths_idx)
+        out = dict(self._depths_idx)
+        if self._flash:
+            for idx, (_code, mm, _until) in list(self._flash.items()):
+                out.setdefault(idx, mm)
+        return out
 
     def stop(self):
         self._stop.set()
@@ -301,10 +377,54 @@ class LiveReader:
                 self._thread = None
         self.depths.clear()
         self._depths_idx.clear()
+        self._flash.clear()
         try:
             self.dev.write(protocol.build_close_trigger_test())
         except Exception:
             pass
+
+
+# HID usage -> Windows virtual-key, for the keys a 60/65/68 % board has.
+_HID_TO_VK = {
+    **{0x04 + i: 0x41 + i for i in range(26)},            # A-Z
+    **{0x1E + i: 0x31 + i for i in range(9)}, 0x27: 0x30,  # 1-9, 0
+    0x28: 0x0D, 0x29: 0x1B, 0x2A: 0x08, 0x2B: 0x09, 0x2C: 0x20,
+    0x2D: 0xBD, 0x2E: 0xBB, 0x2F: 0xDB, 0x30: 0xDD, 0x31: 0xDC,
+    0x33: 0xBA, 0x34: 0xDE, 0x35: 0xC0, 0x36: 0xBC, 0x37: 0xBE,
+    0x38: 0xBF, 0x39: 0x14,
+    **{0x3A + i: 0x70 + i for i in range(12)},            # F1-F12
+    0x49: 0x2D, 0x4A: 0x24, 0x4B: 0x21, 0x4C: 0x2E, 0x4D: 0x23, 0x4E: 0x22,
+    0x4F: 0x27, 0x50: 0x25, 0x51: 0x28, 0x52: 0x26,
+    0xE0: 0xA2, 0xE1: 0xA0, 0xE2: 0xA4, 0xE3: 0x5B,
+    0xE4: 0xA3, 0xE5: 0xA1, 0xE6: 0xA5, 0xE7: 0x5C,
+}
+
+
+def make_os_key_probe(keymap, get_state=None):
+    """`is_key_down(device index)` for LiveReader's stale rule: True/False
+    from the OS key state, None when unknown (no mapping - Fn, a remapped
+    key reads as its default - or not Windows). Reads the current up/down
+    state only; nothing is recorded. Returns None off Windows."""
+    if get_state is None:
+        if sys.platform != "win32":
+            return None
+        import ctypes
+        get_state = ctypes.windll.user32.GetAsyncKeyState
+    vk_of = {}
+    for idx in keymap.indices():
+        try:
+            vk = _HID_TO_VK.get(int(keymap.by_index[idx]["hid"]))
+        except Exception:
+            vk = None
+        if vk:
+            vk_of[idx] = vk
+
+    def is_key_down(idx):
+        vk = vk_of.get(idx)
+        if vk is None:
+            return None
+        return bool(get_state(vk) & 0x8000)
+    return is_key_down
 
 
 class CalibrationReader:

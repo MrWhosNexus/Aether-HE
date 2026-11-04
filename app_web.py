@@ -545,6 +545,11 @@ class Api:
             r = self.driver.make_live_reader(self.km)
         else:
             r = self.driver.make_live_reader(self.km, indices)
+        if hasattr(r, "is_key_down"):
+            try:
+                r.is_key_down = device_state.make_os_key_probe(self.km)
+            except Exception:
+                pass
         tel = getattr(self, "telemetry", None)
         if tel is not None and self._stats_supported():
             try:
