@@ -37,6 +37,7 @@ venv-web/bin/python ui/runtime_src/build_runtime.py
   fg+bg, so multi-color animations are streamed from the host via cmd 9). `FPS = 60`: a
   120 bump was tried and reverted because it saturated the USB pipe. Per-board caps come
   from `lighting.hostEngineMaxFps` in the registry (MINI 60 HE PRO measured at 28).
+  Optional engine sources: `get_depths` and `get_actuation` (set by `Api._ensure_reactive`).
 - `gamepad.py` — Linux uinput virtual gamepad (LINUX ONLY; self-disables elsewhere).
 - `tray.py` — tray residency (pystray, Windows): closing the window HIDES it and the effect
   engine keeps streaming; the Settings "Start minimized" toggle (settings.json `startMinimized`,
@@ -80,11 +81,15 @@ venv-web/bin/python ui/runtime_src/build_runtime.py
   highest interface_number (iface 2). Windows usually reports the usage page correctly.
 
 ## Effects (host engine, all multi-color over a background, time-based motion @60fps)
-Press-reactive (need live travel): **reactive, ripple, speedres, cross, fireworks**.
+Press-reactive (need live travel): **reactive, ripple, speedres, cross, fireworks, pressure**.
 Notable behaviors set during review: **Cross** = press lights that key's exact row+column;
 **Fireworks** = press-triggered explosion; **Frenzy** = the old automatic bursts;
 **Striation** = shooting stars across rows w/ fading trails; **Auto-Ripple** = wavefronts
 from center outward, wide+slow ("rock in pond"); **Speed-Respond** = click-rate fill;
+**Pressure** = each key's colour follows its live depth (background -> palette midpoint at that
+key's actuation point -> full at bottom-out), instant attack, 120 ms fall; per-key actuation
+comes from `Api._act_mm` (read-back + successful writes), unknown keys use the median, else
+1.70 mm.
 **Rain** = Matrix curtain (dense columns, bright heads, long tails). Per-frame spawners
 (rain/twinkle/frenzy) scale by `_SPAWN_NORM` so density is FPS-independent.
 
