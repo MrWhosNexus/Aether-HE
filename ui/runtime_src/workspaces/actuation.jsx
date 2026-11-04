@@ -470,6 +470,7 @@ function ActuationKeyboardWidget(ctx) {
           {n ? <span className="text-[var(--accent)]">{n} selected</span> : "click or drag keys to select"}
           {" · "}actuation mm{" · "}<span className="text-rose-300/90">RT press</span>/<span className="text-emerald-300/90">release</span>
           {" · "}<span className="text-[var(--accent)]/90">live travel</span>{travelTest ? "" : " (Travel Test off)"}
+          {" · "}<span className="text-[var(--text)]/80">line = actuation point</span>
         </span>
         <span className="flex items-center gap-2">
           {!connected ? "offline: values are not from the board"

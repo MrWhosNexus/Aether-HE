@@ -36,6 +36,12 @@ const KB_ROWS = [
 /* Compute a fractional width string given units in 0.25u increments out of 60 cols. */
 const ufrac = (u) => `${(u / 60) * 100}%`;
 
+/* The travel fill and the actuation tick share ONE scale (mm of the key's full
+   height), so the fill crosses the tick exactly when depth >= actuationPoint,
+   i.e. when the key would actuate. */
+const TRAVEL_SCALE_MM = 4;
+const tickPct = (mm) => Math.max(0, Math.min(100, (mm / TRAVEL_SCALE_MM) * 100));
+
 const Key = React.memo(({
   label, units, code, fnLabel,
   layer = "default",     // default | fn
@@ -55,7 +61,7 @@ const Key = React.memo(({
   onContextMenu = () => {},
 }) => {
   const actuated = depth >= actuationPoint && actuationPoint > 0;
-  const progress = Math.min(1, depth / 4);
+  const progress = Math.min(1, depth / TRAVEL_SCALE_MM);
 
   // Background depending on mode. In lighting mode each key shows its real
   // color (effect foreground, or the background color underneath) at FULL
@@ -126,6 +132,18 @@ const Key = React.memo(({
                   : "linear-gradient(to top, rgba(148,163,184,0.18), transparent 90%)",
                 opacity: actuated ? 0.45 : 0.55,
                 transition: "height 120ms linear",
+              }}/>
+      )}
+
+      {/* Actuation point: a thin line at this key's own actuation height. Drawn above
+          the travel fill and below the label (z-10). */}
+      {mode === "actuation" && actuationPoint > 0 && (
+        <span aria-hidden data-act-tick className="absolute inset-x-0 h-[2px] pointer-events-none z-[5]"
+              style={{
+                bottom: tickPct(actuationPoint) + "%",
+                background: actuated ? "#ffffff" : "var(--accent)",
+                opacity: actuated ? 0.95 : 0.75,
+                boxShadow: actuated ? "0 0 6px var(--accent-glow)" : "none",
               }}/>
       )}
 

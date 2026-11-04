@@ -574,7 +574,9 @@
       className: "text-emerald-300/90"
     }, "release"), " · ", /*#__PURE__*/React.createElement("span", {
       className: "text-[var(--accent)]/90"
-    }, "live travel"), travelTest ? "" : " (Travel Test off)"), /*#__PURE__*/React.createElement("span", {
+    }, "live travel"), travelTest ? "" : " (Travel Test off)", " · ", /*#__PURE__*/React.createElement("span", {
+      className: "text-[var(--text)]/80"
+    }, "line = actuation point")), /*#__PURE__*/React.createElement("span", {
       className: "flex items-center gap-2"
     }, !connected ? "offline: values are not from the board" : known ? `${known} keys read from the board` : "not read yet", /*#__PURE__*/React.createElement("button", {
       onClick: reread,
