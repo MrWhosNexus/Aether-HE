@@ -39,6 +39,7 @@ import updater
 import tray
 import single_instance
 import analytics
+import overlays
 from tools import board_submission
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -467,6 +468,12 @@ class Api:
         self._pending_board = None  # game-profile board apply waiting for connect
         self._init_link_state()
         self.telemetry = self._make_telemetry()
+        # Status on keys (overlays.py): the layer rides on the effect engine.
+        self._overlays = None
+        self._ov_profile = None     # active profile id, fed by games_sync
+        self._carrier_on = False    # engine running ONLY to carry overlays
+        self._light_src = None      # last firmware-lighting call, for the carrier
+        self._ov_attach()
         self._games = self._make_games()
 
     # ---- key statistics plumbing ----
@@ -895,6 +902,7 @@ class Api:
                            self.km, self._send_frame,
                            max_fps=_host_engine_max_fps(p))
                        if self.km else None)
+            self._ov_attach()
             # per-board caches must not leak across boards
             self._remaps = {}
             self._trigger_state = {}
@@ -2108,6 +2116,7 @@ class Api:
 
     def games_sync(self, state):
         """app.jsx -> Python: {activeProfile, profiles: [{id, name}], handledSeq}."""
+        self._ov_follow(state)      # overlays are per profile; never raises
         try:
             g = getattr(self, "_games", None)
             if g is None:
@@ -2707,6 +2716,133 @@ class Api:
         except Exception as e:
             return self._fail(e)
 
+    # ---- status on keys: CPU / RAM / GPU bars, Pomodoro, flash (overlays.py) ----
+    #
+    # The layer is composited by the effect engine onto whatever it streams
+    # (`fx.overlay`), so it works over every host effect. When the active
+    # lighting is a FIRMWARE mode (static / Full-RGB / per-key paint / off) the
+    # host engine is switched on as a "carrier" that reproduces it (see
+    # overlays.carrier_plan) and switched off again, restoring the firmware
+    # lighting with one write, when the last overlay goes off.
+    def _ov_attach(self):
+        """(Re)build the overlay manager for the current keymap + engine."""
+        old = getattr(self, "_overlays", None)
+        if old is not None:
+            try:
+                old.close()
+            except Exception:
+                pass
+        self._overlays = None
+        self._carrier_on = False
+        try:
+            if not (getattr(self, "fx", None) and getattr(self, "km", None)):
+                return
+            rows = {oid: self.km.indices_for_codes(codes)
+                    for oid, codes in overlays.ROW_CODES.items()}
+            mgr = overlays.OverlayManager(
+                rows, self.fx.indices, self._settings_path(), _SETTINGS_LOCK,
+                gpu=overlays.GpuProbe(), gate=lambda: self.dev.is_open())
+            self._overlays = mgr
+            self.fx.overlay = mgr.layer
+            mgr.follow_profile(self._ov_profile_id())
+        except Exception as e:
+            log.warning("status-on-keys unavailable: %s", e)
+            self._overlays = None
+
+    def _ov_profile_id(self):
+        pid = getattr(self, "_ov_profile", None)
+        if isinstance(pid, str) and pid:
+            return pid
+        try:
+            with open(self._settings_path(), "r", encoding="utf-8") as f:
+                pid = json.load(f).get("activeProfile")
+        except Exception:
+            pid = None
+        return pid if isinstance(pid, str) and 0 < len(pid) <= overlays.MAX_PROFILE_ID else "p1"
+
+    def _ov_follow(self, state):
+        """games_sync calls this on every profile change (and at start-up)."""
+        try:
+            pid = state.get("activeProfile") if isinstance(state, dict) else None
+            if (not isinstance(pid, str) or not 0 < len(pid) <= overlays.MAX_PROFILE_ID
+                    or pid == getattr(self, "_ov_profile", None)):
+                return
+            self._ov_profile = pid
+            mgr = getattr(self, "_overlays", None)
+            if mgr is not None:
+                mgr.follow_profile(pid)
+                self._overlay_sync()
+        except Exception as e:
+            log.warning("overlay profile follow failed: %s", e)
+
+    def _ov_supported(self):
+        """Overlays need the host engine: a keymap, a driver that streams
+        per-key frames, and a board whose registry does not forbid it."""
+        try:
+            if getattr(self, "_overlays", None) is None or not getattr(self, "fx", None):
+                return False
+            if not self.driver.supports("host_effects"):
+                return False
+            lt = getattr(self.board, "lighting", None) or {}
+            return lt.get("hostEngine") is not False
+        except Exception:
+            return False
+
+    def _stop_overlays(self):
+        """main(): stop the sampler thread on the way out."""
+        mgr = getattr(self, "_overlays", None)
+        if mgr is not None:
+            mgr.close()
+
+    def get_overlays(self):
+        """Dashboard "Status on keys" tile. -> {ok, supported, overlays:[{id,
+        label, row, on, available, reason, value}], pomodoro:{phase,
+        remaining_s}}; unsupported boards answer supported:false."""
+        try:
+            if not self._ov_supported():
+                return {"ok": True, "supported": False, "overlays": [],
+                        "pomodoro": {"phase": None, "remaining_s": None}}
+            return dict(self._overlays.status(), ok=True, supported=True)
+        except Exception as e:
+            return self._fail(e)
+
+    def set_overlay(self, overlay_id, on):
+        """Turn one overlay on/off for the ACTIVE profile (persisted).
+        -> {ok, id, on}."""
+        try:
+            if not self._ov_supported():
+                return {"ok": False, "error": "status on keys needs a board with host effects"}
+            res = self._overlays.set(str(overlay_id), bool(on))
+            if not res.get("ok"):
+                return res
+            self._overlay_sync()
+            return {"ok": True, "id": res["id"], "on": res["on"]}
+        except Exception as e:
+            return self._fail(e)
+
+    def flash(self, color, ms=600):
+        """Flash the whole board `color` ([r, g, b]) fading out over `ms`
+        (50..5000). Needs the host engine to be streaming (a host effect or an
+        overlay); firmware-only lighting answers ok:false."""
+        try:
+            if not (isinstance(color, (list, tuple)) and len(color) >= 3):
+                return {"ok": False, "error": "color must be [r, g, b]"}
+            rgb = tuple(int(c) for c in color[:3])
+            fx = getattr(self, "fx", None)
+            if not (self._ov_supported() and fx is not None and fx.is_running()):
+                return {"ok": False, "error": "flash needs a host effect or a status overlay running"}
+            self._overlays.layer.flash(rgb, int(ms))
+            return {"ok": True}
+        except (TypeError, ValueError) as e:
+            return {"ok": False, "error": f"bad flash arguments: {e}"}
+        except Exception as e:
+            return self._fail(e)
+
+    def _overlay_sync(self):
+        """Reconcile the engine with the toggles (Task 6 makes this real)."""
+        return None
+
+
     # ---- host-driven multi-color effects (per-key, driver stream) ----
     def _send_frame(self, colors_by_index):
         """Stream one per-key RGB frame through the board driver. The driver
@@ -3022,6 +3158,7 @@ def main():
         except Exception:
             pass
         api._stop_games()
+        api._stop_overlays()
         inst.release()
 
 
