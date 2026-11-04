@@ -16,9 +16,12 @@
 > - **Status on keys.** CPU, RAM and GPU load and a Pomodoro timer as bars on the key rows.
 > - **New effects.** Pressure (each key glows with how far it is pressed) and Music
 >   (bars that follow whatever your PC is playing).
-> - **Fixes.** Calibration works again with press-reactive lighting on; the Travel Test no
->   longer leaves keys stuck after a quick tap; the SOCD editor warns when two pairs use the
->   same keys (use Model 4 for whichever-pressed-last-wins).
+> - **Fixes.** The Travel Test no longer leaves keys stuck after a quick tap; the SOCD editor
+>   warns when two pairs use the same keys (use Model 4 for whichever-pressed-last-wins);
+>   the Music effect captures audio.
+>
+> **Known issue:** calibration from Aether is not working in this release. Use the vendor
+> driver to calibrate until a fix ships.
 >
 > ### → [**Download the latest release**](https://github.com/MrWhosNexus/Aether-HE/releases/latest)
 >
