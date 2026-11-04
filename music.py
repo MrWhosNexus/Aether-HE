@@ -123,3 +123,61 @@ class BandAnalyzer:
         self.mean += a * (flux - self.mean)
         self.dev += a * (abs(flux - self.mean) - self.dev)
         return levels, beat
+
+
+# ------------------------------------------------------- keyboard layout ----
+def grid_layout(pos, n_bands=N_BANDS):
+    """{idx: (x_left, y)} -> {idx: (bands, row, n_rows)}.
+
+    Rows are the distinct y values (top first); `row` counts from the BOTTOM
+    (0 = space-bar row). Key widths are not in the keymap, so a key spans from
+    its x to the next key's x in its row; the last key of a row ends at the
+    board's right edge (largest x + the median key pitch). The board width is
+    cut into n_bands equal columns; a key takes every column whose centre lies
+    in its span (wide keys average several), else the column under its own
+    centre."""
+    if not pos:
+        return {}
+    ys = sorted({y for _, y in pos.values()})
+    n_rows = len(ys)
+    rows = {y: sorted((x, i) for i, (x, yy) in pos.items() if yy == y) for y in ys}
+    gaps = sorted(b[0] - a[0] for r in rows.values() for a, b in zip(r, r[1:])
+                  if b[0] > a[0])
+    pitch = gaps[len(gaps) // 2] if gaps else 1.0
+    x0 = min(x for x, _ in pos.values())
+    x1 = max(x for x, _ in pos.values()) + pitch
+    col_w = (x1 - x0) / n_bands
+    centres = [x0 + (b + 0.5) * col_w for b in range(n_bands)]
+    out = {}
+    for rank, y in enumerate(ys):
+        row = n_rows - 1 - rank
+        keys = rows[y]
+        for k, (x, idx) in enumerate(keys):
+            end = keys[k + 1][0] if k + 1 < len(keys) else x1
+            bands = tuple(b for b, c in enumerate(centres) if x <= c < end)
+            if not bands:
+                mid = (x + end) / 2.0
+                bands = (max(0, min(n_bands - 1, int((mid - x0) / col_w))),)
+            out[idx] = (bands, row, n_rows)
+    return out
+
+
+# ----------------------------------------------------------- availability ----
+def availability(platform=None, find_spec=None):
+    """(available, reason|None). Never imports numpy/soundcard (find_spec
+    only), so it is safe on the UI thread."""
+    platform = sys.platform if platform is None else platform
+    find_spec = find_spec or importlib.util.find_spec
+    if platform != "win32":
+        return False, "Music visualizer needs Windows (WASAPI loopback capture)."
+    missing = []
+    for mod in ("numpy", "soundcard"):
+        try:
+            if find_spec(mod) is None:
+                missing.append(mod)
+        except (ImportError, ValueError):
+            missing.append(mod)
+    if missing:
+        return False, ("Music visualizer needs the %s package%s (not installed)."
+                       % (" and ".join(missing), "s" if len(missing) > 1 else ""))
+    return True, None
