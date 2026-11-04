@@ -126,6 +126,17 @@ Entry format:
 - For the user (morning): 10 hardware checks at the end of the plan; veto items queued below.
 - Stopped early? No.
 
+## 2026-11-04 Phase 5 — implementer (Opus)
+- Landed: 632a8f9 KeyboardPanel `showFooter` + compact SuggestionCard/List; fa7c3ce `ctx.setLiveView` (liveWanted = travelTest || liveView, one read_live loop) + `ctx.games`; 1ca24ba workspaces/dashboard.jsx (+ ws_dashboard.js); 1f94105 Dashboard first/landing tab, `globals.dashboardIntro`, fallback to dashboard, icon-only top bar; 486c066 top-bar breakpoint 1580 -> 1600 px; 056a0d2 CLAUDE.md.
+- Suite: 1009 passed, 14 skipped (as planned; the extra skip is the Phase 6 contract test). Green at every commit; `node --check` ok on keyboard.js, ws_analytics.js, app.js, desktop.js, ws_dashboard.js. Only real build diffs committed; line-ending-only build files reverted.
+- Deviation: the plan's `@media (max-width: 1580px)` was slightly low. Browser-measured with the connected cluster: 1581 px overflowed by 3 px, 1600 px fit with zero slack (bar cap 1600), so the breakpoint is now 1600 px (tests updated). All other code copied verbatim from the plan.
+- Browser check (local static server + fake bridge, never the app/keyboard): lands on Dashboard with a pre-Phase-5 settings file and on the remembered tab (Lighting) once `dashboardIntro` is set; 1160x800 no scroll (zoom 0.784, main 736/736), cluster ends at 1140; 1700x1000 all 9 labels, zoom 1.04; all 9 tabs render, no console errors; Live depth -> open_analog_codes + read_live, Heatmap or tab switch -> close_analog; Apply -> set_trigger_codes then verify_actuation ("written and read back"); overlay tile only with the fake Phase 6 bridge (chips, disabled GPU with reason, toggle via set_overlay); MINI-like board hides Heatmap + Analytics links; offline copy as planned.
+- Gotcha: the Browser pane runs hidden as a background page, so geometry read right after load can be stale (zoom 1, scroll 905); force a frame (screenshot) before measuring. Not an app bug.
+- For later phases: reuse `ctx.setLiveView` (never a second read_live loop), `ctx.games`, `window.AetherDashboard.overlayView`, `DASHBOARD_PAGE`, `SuggestionList compact`, `KeyboardPanel showFooter`.
+- Phase 6 contract (unchanged): `Api.get_overlays()` -> {ok, supported, overlays:[{id cpu|ram|gpu|pomodoro, label, row, on, available, reason, value 0..1|None}], pomodoro:{phase, remaining_s}}, `Api.set_overlay(id, on)` -> {ok, id, on}, never raise; tile shows only when ok and supported != false.
+- For the user (morning): the 10 hardware checks at the end of the plan (already queued); the Phase 5 veto bullet now says 1600 px. Nothing new added.
+- Stopped early? No.
+
 ## Waiting on the user
 - [DKS] Run the advanced-keys capture checklist (docs/context/aula-win60-advanced-keys-capture-checklist.md, ~20 min in hed.aulacn.com) to confirm the source-only decode.
 - [DKS] Open: does WIN60 firmware act on DKS/MT/TGL; DKS step codes 2/3; single-slot writes accepted; MT 10 ms unit; per-profile table?
@@ -140,5 +151,5 @@ Entry format:
 - [Phase 4] Veto check: auto-tune thresholds are the spec's first guess (shallow > 5 % -> earlier, toward the 10th-percentile depth minus 0.1 mm, never below 0.30; barely-over > 15 % on letters -> 0.1-0.2 mm later; 200 presses minimum). WASD never gets "later" suggestions. Say if any feel wrong.
 - [Phase 4] Accept or schedule: a game-profile switch (Phase 3) writes one actuation to every key, replacing applied per-key auto-tune values until the revert; the revert writes the profile slider value, not the tuned values.
 - [Phase 5] Run the 10 hardware checks at the end of docs/superpowers/plans/2026-11-04-phase-5-dashboard.md (landing tab + remembered tab, heatmap/today numbers, live depth opens and closes the stream, Apply from the dashboard, game line, lighting quick switch, offline/other board).
-- [Phase 5] Veto check: Aether now opens on the Dashboard (existing installs once after the update, then the remembered tab); below 1580 px window width inactive top-bar tabs show only their icon (tooltip has the name). Before this the top bar already pushed Pair / zoom / gear off screen below ~1480 px.
+- [Phase 5] Veto check: Aether now opens on the Dashboard (existing installs once after the update, then the remembered tab); at or below 1600 px window width inactive top-bar tabs show only their icon (tooltip has the name). Before this the top bar already pushed Pair / zoom / gear off screen below ~1480 px.
 - [Phase 5] Accept: opening the Dashboard resets the Analytics tab's range to "Today".
