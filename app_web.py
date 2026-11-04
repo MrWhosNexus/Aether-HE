@@ -2035,9 +2035,23 @@ class Api:
             return {"ok": False, "errors": [str(e)]}
 
     def open_submission_url(self, url):
-        """Open the pre-filled GitHub issue in the default browser."""
+        """Open the pre-filled GitHub issue in the default browser.
+
+        Only this repo's new-issue page is accepted: on Windows webbrowser.open
+        reaches os.startfile, which would launch any local path or file: URL."""
         try:
+            import urllib.parse
+            import version
             import webbrowser
+            url = str(url)
+            u = urllib.parse.urlsplit(url)
+            # urlsplit silently strips control chars/spaces; the real URL is
+            # fully percent-encoded, so refuse any that are present.
+            if not (not any(ord(c) <= 32 for c in url) and u.scheme == "https" and u.netloc == "github.com"
+                    and u.path == f"/{version.GITHUB_REPO}/issues/new"
+                    and not u.fragment):
+                return {"ok": False,
+                        "error": "refusing to open a URL that is not this repo's new-issue page"}
             webbrowser.open(str(url))
             return {"ok": True}
         except Exception as e:
