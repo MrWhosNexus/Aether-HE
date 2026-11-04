@@ -57,7 +57,7 @@ def test_alias_and_module_getattr_bypasses_are_caught():
 
 
 def test_allowed_code_stays_clean():
-    src = ("import os\nimport os.path\nfrom os import path\nimport struct as st\n"
+    src = ("import os\nimport os.path\nfrom os import path\nimport struct\n"
            "from .base import BoardDriver\nimport protocol_mini60 as pm\nimport boards\n"
            "p = os.path.join('a', 'b')\nn = getattr(profile, 'slug', None)\n")
     assert _hits(src) == []
@@ -121,3 +121,24 @@ def test_allowed_stdlib_attribute_list_is_enforced():
     assert _hits("import struct\nstruct.pack('<H', 1)\nstruct.Struct('<H').pack(1)\n") == []
     assert _hits("import threading\nthreading.Thread(target=f).start()\n") == []
     assert _hits("import time\ntime.tzset()\n")
+
+
+def test_round5_escapes_are_caught():
+    for src in ("import typing\ntyping.sys.modules\n",
+                "from typing import sys\n",
+                "class C:\n    import os\nC.os.system('x')\n",
+                "def f():\n    import os\n",
+                "import struct as st\n",
+                "from os import path as p\n",
+                "from threading import Thread\nThread._bootstrap\n",
+                "from json import loads\nloads.os\n",
+                "import boards\nboards.json.decoder\n",
+                "import math\nmath.sys\n"):
+        assert _hits(src), src
+
+
+def test_round5_normal_code_still_passes():
+    src = ("import time\nimport protocol_mini60 as pm\nfrom threading import Thread\n"
+           "t = time.time()\nn = pm.FRAME_LEN\nThread(target=f).start()\n"
+           "from .base import BoardDriver\nclass D(BoardDriver):\n    pass\n")
+    assert _hits(src) == []
