@@ -30,7 +30,6 @@ import os
 import re
 import sys
 
-ANY_PUBLIC = None
 # module -> attributes board code may use (exact module names).
 ALLOWED_ATTRS = {
     "struct": {"pack", "unpack", "unpack_from", "pack_into", "calcsize", "iter_unpack",
@@ -41,12 +40,17 @@ ALLOWED_ATTRS = {
                   "BoundedSemaphore", "Timer", "current_thread", "get_ident"},
     "time": {"sleep", "time", "monotonic", "perf_counter", "time_ns", "monotonic_ns",
              "perf_counter_ns"},
-    "math": ANY_PUBLIC,
+    "math": {"floor", "ceil", "sqrt", "pow", "log", "log2", "log10", "exp", "sin", "cos",
+             "tan", "atan2", "hypot", "pi", "e", "inf", "isfinite", "isnan", "isinf",
+             "fabs", "fmod", "copysign", "trunc", "gcd", "isclose", "radians", "degrees"},
     "enum": {"Enum", "IntEnum", "Flag", "IntFlag", "auto", "unique"},
-    "typing": ANY_PUBLIC,
+    "typing": {"Any", "Optional", "Union", "List", "Dict", "Tuple", "Set", "FrozenSet",
+               "Iterable", "Iterator", "Sequence", "Mapping", "Callable", "Literal",
+               "NamedTuple", "TypedDict", "ClassVar", "Final", "TYPE_CHECKING"},
     "dataclasses": {"dataclass", "field", "fields", "asdict", "astuple", "replace"},
     "collections": {"namedtuple", "deque", "OrderedDict", "defaultdict", "Counter"},
-    "itertools": ANY_PUBLIC,
+    "itertools": {"chain", "islice", "count", "cycle", "repeat", "product", "zip_longest",
+                  "groupby", "accumulate", "pairwise", "combinations", "permutations"},
     "functools": {"partial", "lru_cache", "cache", "reduce", "wraps", "cached_property",
                   "total_ordering"},
     "re": {"compile", "match", "search", "fullmatch", "sub", "subn", "split", "findall",
@@ -80,6 +84,8 @@ DUNDER_ESCAPES = {"__subclasses__", "__globals__", "__builtins__", "__code__",
 REVIEWED = {
     # reads data/board_registry.json (read-only) for the dongle's frameLen
     ("drivers/mini60.py", "call open()", "c844db07de5e"),
+    # lazy `import hid` in connected_profiles() so tests run without hidapi
+    ("drivers/__init__.py", "import not at module top level", "27416581434e"),
 }
 
 
@@ -92,13 +98,15 @@ def _module_allowed(name):
 
 
 def _attr_ok(module, attr):
-    """May `module.attr` be used? (module: exact dotted module name)"""
+    """May `module.attr` be used? (module: exact dotted module name).
+    stdlib modules: only the names on their explicit list (so typing.sys,
+    json.decoder, os.path.os are out). Local modules: public names that are
+    not FORBIDDEN_SEGMENTS (no route back out to os/sys/the stdlib)."""
     if attr.startswith("_"):
         return False
-    if _is_local(module):
-        return attr not in FORBIDDEN_SEGMENTS
-    allowed = ALLOWED_ATTRS.get(module, set())
-    return allowed is ANY_PUBLIC or attr in allowed
+    if module in ALLOWED_ATTRS:
+        return attr in ALLOWED_ATTRS[module]
+    return _is_local(module) and attr not in FORBIDDEN_SEGMENTS
 
 
 def _chain(node):
@@ -120,12 +128,25 @@ def scan_source(src, path="<src>"):
         return [f"{path}:{e.lineno}: does not parse ({e.msg})"]
     out = []
     mods = {}                 # local name -> exact module it is bound to
+    values = {}               # local name -> "module.attr" a from-import bound
+    top = set(id(n) for n in tree.body)
     for node in ast.walk(tree):
         line = getattr(node, "lineno", 0)
+        if isinstance(node, (ast.Import, ast.ImportFrom)) and id(node) not in top:
+            # inside a class/function/if/try: its binding could escape the
+            # name tracking below (class C: import os -> C.os.system)
+            out.append(f"{path}:{line}: import not at module top level")
+            continue
         if isinstance(node, ast.Import):
             for a in node.names:
                 if not _module_allowed(a.name):
                     out.append(f"{path}:{line}: import {a.name} (not allowed)")
+                    continue
+                if a.asname and not _is_local(a.name):
+                    # a renamed stdlib module could be re-exported under an
+                    # innocent name (protocol_a: import os as h; b: protocol_a.h)
+                    out.append(f"{path}:{line}: import {a.name} as {a.asname} "
+                               "(stdlib modules may not be renamed)")
                     continue
                 if a.asname:
                     mods[a.asname] = a.name
@@ -133,6 +154,8 @@ def scan_source(src, path="<src>"):
                     mods[a.name.split(".")[0]] = a.name.split(".")[0]
         elif isinstance(node, ast.ImportFrom):
             if node.level:                 # relative import inside drivers/
+                for a in node.names:
+                    values[a.asname or a.name] = "drivers"
                 continue
             mod = node.module or ""
             if not _module_allowed(mod):
@@ -144,7 +167,13 @@ def scan_source(src, path="<src>"):
                 elif not _attr_ok(mod, a.name):
                     out.append(f"{path}:{line}: from {mod} import {a.name} (not allowed)")
                 elif f"{mod}.{a.name}" in ALLOWED_ATTRS:     # from os import path
-                    mods[a.asname or a.name] = f"{mod}.{a.name}"
+                    if a.asname and a.asname != a.name:
+                        out.append(f"{path}:{line}: from {mod} import {a.name} as "
+                                   f"{a.asname} (modules may not be renamed)")
+                    else:
+                        mods[a.name] = f"{mod}.{a.name}"
+                else:
+                    values[a.asname or a.name] = f"{mod}.{a.name}"
     parent = {}
     for p in ast.walk(tree):
         for c in ast.iter_child_nodes(p):
@@ -173,6 +202,11 @@ def scan_source(src, path="<src>"):
             if isinstance(parent.get(node), ast.Attribute) and parent[node].value is node:
                 continue                   # check each chain once, from its outermost node
             root, attrs = _chain(node)
+            if root in values and root not in mods:
+                bad = [s for s in attrs if s.startswith("_") or s in FORBIDDEN_SEGMENTS]
+                if bad:
+                    out.append(f"{path}:{line}: {root}.{'.'.join(attrs)} (reaches {bad[0]})")
+                continue
             if root not in mods:
                 continue
             module = mods[root]
