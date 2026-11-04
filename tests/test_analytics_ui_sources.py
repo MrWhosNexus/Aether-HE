@@ -62,3 +62,32 @@ def test_built_workspace_is_current():
 def test_built_workspace_parses():
     built = os.path.join(SRC, "build", "ws_analytics.js")
     subprocess.run(["node", "--check", built], check=True)
+
+
+# ---- Task 6: app.jsx / desktop.jsx wiring --------------------------------
+APP = _read("src", "app.jsx")
+DESK = _read("src", "desktop.jsx")
+
+
+def test_apply_goes_through_the_normal_actuation_path():
+    assert "ctx.applyTuneSuggestion(" in WS
+    body = APP[APP.index("const writeActuation"):APP.index("const applyDeadband")]
+    assert 'apiCall("set_trigger_codes", codes, travel' in body
+    assert 'apiCall("verify_actuation", codes)' in body
+    assert "const applyActuation = () =>\n    writeActuation(" in body
+    assert "writeActuation(s.codes, s.suggested_mm, s.mode || 0" in body
+    assert "writeActuation, applyTuneSuggestion," in APP
+
+
+def test_tab_is_registered_and_gated_on_key_stats():
+    assert 'analytics: wsArr("ANALYTICS_WIDGETS", "Analytics")' in APP
+    assert 'const SECTION_CAPS = { macros: "macros", analytics: "keyStats" };' in APP
+    assert '{ id: "analytics", label: "Analytics", icon: IActivity }' in DESK
+    assert "IActivity = I.IActivity" in DESK
+
+
+def test_built_page_carries_the_gated_tab():
+    with open(os.path.join(HERE, "ui", "index_runtime.html"), encoding="utf-8") as fh:
+        html = fh.read()
+    assert 'analytics: "keyStats"' in html
+    assert "applyTuneSuggestion" in html

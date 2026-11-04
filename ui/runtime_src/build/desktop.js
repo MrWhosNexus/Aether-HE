@@ -23,7 +23,8 @@
     IPower = I.IPower,
     ICheck = I.ICheck,
     IMore = I.IMore,
-    ILayers = I.ILayers;
+    ILayers = I.ILayers,
+    IActivity = I.IActivity;
   const GRID = 8;
   const snap = v => Math.max(0, Math.round(v / GRID) * GRID);
 
@@ -324,8 +325,9 @@
 
   /* ============================================================
      TopBar — horizontal section tabs (Impact) + brand + connect cluster.
-     Sections: keymap, macros, lighting, actuation, socd, gamepad, settings.
-     (app.jsx filters this list per board — "macros" is capability-gated.)
+     Sections: keymap, macros, lighting, actuation, analytics, socd, gamepad,
+     settings. (app.jsx filters this list per board — "macros" and
+     "analytics" are capability-gated.)
      ============================================================ */
   const SECTION_DEFS = [{
     id: "keymap",
@@ -343,6 +345,10 @@
     id: "actuation",
     label: "Actuation",
     icon: IGauge
+  }, {
+    id: "analytics",
+    label: "Analytics",
+    icon: IActivity
   }, {
     id: "socd",
     label: "SOCD",

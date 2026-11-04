@@ -11,7 +11,7 @@ const I = window.AetherIcons || {};
 const IKeyboard = I.IKeyboard, IBulb = I.IBulb, IGauge = I.IGauge,
       ICrosshair = I.ICrosshair, IZap = I.IZap, ISettings = I.ISettings,
       IPlug = I.IPlug, IPower = I.IPower, ICheck = I.ICheck, IMore = I.IMore,
-      ILayers = I.ILayers;
+      ILayers = I.ILayers, IActivity = I.IActivity;
 
 const GRID = 8;
 const snap = (v) => Math.max(0, Math.round(v / GRID) * GRID);
@@ -218,14 +218,16 @@ function Workspace({ section, widgets, ctx }) {
 
 /* ============================================================
    TopBar — horizontal section tabs (Impact) + brand + connect cluster.
-   Sections: keymap, macros, lighting, actuation, socd, gamepad, settings.
-   (app.jsx filters this list per board — "macros" is capability-gated.)
+   Sections: keymap, macros, lighting, actuation, analytics, socd, gamepad,
+   settings. (app.jsx filters this list per board — "macros" and
+   "analytics" are capability-gated.)
    ============================================================ */
 const SECTION_DEFS = [
   { id: "keymap",    label: "Keymap",    icon: IKeyboard },
   { id: "macros",    label: "Macros",    icon: ILayers },
   { id: "lighting",  label: "Lighting",  icon: IBulb },
   { id: "actuation", label: "Actuation", icon: IGauge },
+  { id: "analytics", label: "Analytics", icon: IActivity },
   { id: "socd",      label: "SOCD",      icon: ICrosshair },
   { id: "gamepad",   label: "Gamepad",   icon: IZap },
   { id: "settings",  label: "Settings",  icon: ISettings },

@@ -103,6 +103,7 @@
     actuation: wsArr("ACTUATION_WIDGETS", "Actuation"),
     keymap: wsArr("KEYMAP_WIDGETS", "Keymap"),
     macros: wsArr("MACROS_WIDGETS", "Macros"),
+    analytics: wsArr("ANALYTICS_WIDGETS", "Analytics"),
     lighting: wsArr("LIGHTING_WIDGETS", "Lighting"),
     socd: wsArr("SOCD_WIDGETS", "SOCD"),
     gamepad: wsArr("GAMEPAD_WIDGETS", "Gamepad"),
@@ -113,9 +114,11 @@
   // (registry flag === true). With NO board data at all (bridge down, plain
   // browser) the gate fails open like every other capability gate; a "wip"
   // (source-only) or false flag hides the tab, so other boards never see a
-  // Macros section they cannot drive.
+  // Macros section they cannot drive. Analytics needs the host-side key
+  // statistics (keyStats: a board with a live travel stream).
   const SECTION_CAPS = {
-    macros: "macros"
+    macros: "macros",
+    analytics: "keyStats"
   };
   const sectionAllowed = (id, board) => {
     const cap = SECTION_CAPS[id];
@@ -2053,18 +2056,21 @@
     // (the whole-board sweep is ~0.12 s on the WIN 60 HE), never from the
     // values we asked for: an "ok" from a write that went nowhere used to
     // paint numbers the keyboard never stored.
-    const applyActuation = async () => {
+    //
+    // writeActuation is that one path (write, then firmware read-back) for
+    // every caller: the Actuation Apply button and Analytics' "Apply
+    // suggestion" (roadmap Phase 4), which passes the key's own trigger mode
+    // and RT pair so a rapid-trigger key stays rapid-trigger.
+    const writeActuation = async (codes, travel, mode, rtP, rtR) => {
       if (!connected) return {
         ok: false,
         error: "not connected"
       };
-      const codes = Array.from(selectedKeys);
-      if (codes.length === 0) return {
+      if (!codes || codes.length === 0) return {
         ok: false,
         error: "no keys selected"
       };
-      const mode = rtEnabled ? 13 : 0;
-      const r = await apiCall("set_trigger_codes", codes, actuation, rtEnabled ? rtPress : 0, rtEnabled ? rtRelease : 0, mode);
+      const r = await apiCall("set_trigger_codes", codes, travel, mode ? rtP : 0, mode ? rtR : 0, mode);
       if (!(r && r.ok)) {
         if (!(r && r.unsupported)) pushNotice(`Actuation not written: ${r && r.error || "no reply"}`);
         return r || {
@@ -2083,7 +2089,7 @@
           ...v.trigger
         }));
         const missing = codes.filter(c => v.actuation_mm[c] == null);
-        const off = codes.filter(c => v.actuation_mm[c] != null && Math.abs(v.actuation_mm[c] - actuation) > 0.006);
+        const off = codes.filter(c => v.actuation_mm[c] != null && Math.abs(v.actuation_mm[c] - travel) > 0.006);
         if (missing.length || off.length) pushNotice(`Read-back differs from what was written on ${missing.length + off.length} key(s)` + (off.length ? ` (e.g. ${off[0]}: ${v.actuation_mm[off[0]].toFixed(2)} mm)` : ""), {
           label: "Check"
         });
@@ -2099,6 +2105,15 @@
         ...r,
         readback: null
       };
+    };
+    const applyActuation = () => writeActuation(Array.from(selectedKeys), actuation, rtEnabled ? 13 : 0, rtPress, rtRelease);
+    // Analytics auto-tune: an explicit click only, never automatic.
+    const applyTuneSuggestion = s => {
+      if (!s || !Array.isArray(s.codes) || typeof s.suggested_mm !== "number") return Promise.resolve({
+        ok: false,
+        error: "no suggestion"
+      });
+      return writeActuation(s.codes, s.suggested_mm, s.mode || 0, s.rt_press_mm || 0, s.rt_release_mm || 0);
     };
     const applyDeadband = async () => {
       if (!connected) return {
@@ -2387,6 +2402,8 @@
       refreshPerKeyActuation,
       perKeyActuation,
       perKeyTrigger,
+      writeActuation,
+      applyTuneSuggestion,
       deadTop,
       setDeadTop,
       deadBottom,
