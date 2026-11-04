@@ -3025,14 +3025,17 @@ class Api:
             # bakes brightness into the per-key colors it streams). Boards whose
             # high-rate channel is unproven refuse here (UnsupportedFeature)
             # instead of pretending an animation is running.
-            self.driver.begin_host_stream()
-            self._ensure_reactive([str(pattern)])
             pal = [tuple(int(c) for c in p[:3]) for p in (colors or []) if p]
-            self.fx.start(str(pattern), pal or [(255, 255, 255)],
-                          tuple(int(c) for c in (bg or (0, 0, 0))[:3]),
-                          float(speed) / 100.0, float(brightness) / 100.0,
-                          int(direction), str(orient))
-            self._carrier_on = False
+            bg_rgb = tuple(int(c) for c in (bg or (0, 0, 0))[:3])
+            # One engine, several threads (pywebview calls, games_sync's overlay
+            # follow): the carrier lock serialises every start/stop of it.
+            with _CARRIER_LOCK:
+                self.driver.begin_host_stream()
+                self._ensure_reactive([str(pattern)])
+                self.fx.start(str(pattern), pal or [(255, 255, 255)], bg_rgb,
+                              float(speed) / 100.0, float(brightness) / 100.0,
+                              int(direction), str(orient))
+                self._carrier_on = False
             return {"ok": True, "keys": len(self.fx.indices)}
         except Exception as e:
             return self._fail(e)
@@ -3062,29 +3065,31 @@ class Api:
                 })
             if not norm:
                 return {"ok": False, "error": "no zones"}
-            self.driver.begin_host_stream()
-            self._ensure_reactive([z["mode"] for z in norm])
             gbg = norm and norm[0].get("bg") or (0, 0, 0)
-            self.fx.start_zones(norm, global_bg=gbg)
-            self._carrier_on = False
+            with _CARRIER_LOCK:         # see start_multicolor
+                self.driver.begin_host_stream()
+                self._ensure_reactive([z["mode"] for z in norm])
+                self.fx.start_zones(norm, global_bg=gbg)
+                self._carrier_on = False
             return {"ok": True, "zones": len(norm)}
         except Exception as e:
             return self._fail(e)
 
     def stop_multicolor(self):
-        self._carrier_on = False      # the engine (carrier or not) goes down
-        if self.fx and self.fx.is_running():
-            self.fx.stop()
-            # Hand the LEDs back to the board once the engine is down. The
-            # Win60's end_host_stream is the base no-op (it has no stop
-            # command — the board keeps the last frame in Custom mode,
-            # exactly as before); the MINI 60 PRO sends CLEAR_LED_DATA
-            # (0x36) to stop/clear its live 0x32 stream. Failures are
-            # swallowed: stop must always succeed from teardown paths.
-            try:
-                self.driver.end_host_stream()
-            except Exception:
-                pass
+        with _CARRIER_LOCK:           # serialised with the carrier and the starters
+            self._carrier_on = False  # the engine (carrier or not) goes down
+            if self.fx and self.fx.is_running():
+                self.fx.stop()
+                # Hand the LEDs back to the board once the engine is down. The
+                # Win60's end_host_stream is the base no-op (it has no stop
+                # command — the board keeps the last frame in Custom mode,
+                # exactly as before); the MINI 60 PRO sends CLEAR_LED_DATA
+                # (0x36) to stop/clear its live 0x32 stream. Failures are
+                # swallowed: stop must always succeed from teardown paths.
+                try:
+                    self.driver.end_host_stream()
+                except Exception:
+                    pass
         return {"ok": True}
 
     # back-compat no-ops (the old global-effect API was removed)
