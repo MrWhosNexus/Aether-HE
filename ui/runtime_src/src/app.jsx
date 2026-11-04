@@ -162,10 +162,21 @@ const LABEL_TO_CODE = (() => {
 })();
 
 // SOCD tab rows ({k1, k2, mode} with key LABELS) -> set_socd pairs (design
-// codes). Rows missing a key are skipped; [] clears the board's pairs.
-const socdPairsFrom = (rows) => (rows || [])
-  .filter(p => p && p.k1 && p.k2)
-  .map(p => ({ model: p.mode || 1, key1: LABEL_TO_CODE[p.k1] || p.k1, key2: LABEL_TO_CODE[p.k2] || p.k2 }));
+// codes). Rows missing a key are skipped; [] clears the board's pairs. A later
+// row over the SAME two keys (either order) is dropped: the firmware only
+// honours the first pair for a key pair (A=D M2 + D=A M2 acted as A=D M2).
+const socdPairsFrom = (rows) => {
+  const seen = new Set();
+  return (rows || [])
+    .filter(p => p && p.k1 && p.k2)
+    .map(p => ({ model: p.mode || 1, key1: LABEL_TO_CODE[p.k1] || p.k1, key2: LABEL_TO_CODE[p.k2] || p.k2 }))
+    .filter(p => {
+      const k = [p.key1, p.key2].sort().join("+");
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+};
 
 // A saved profile's board-side settings for Api.apply_profile_to_board (game
 // auto-switch). A field the profile never stored is null, so the board keeps

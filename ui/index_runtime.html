@@ -43659,7 +43659,17 @@
         });
         setEditTarget(null);
       }
-    })), /*#__PURE__*/React.createElement("div", {
+    })), (() => {
+      const same = cur && cur.k1 && cur.k2 && socdProfiles.find(p => p.id !== cur.id && p.k1 && p.k2 && (p.k1 === cur.k1 && p.k2 === cur.k2 || p.k1 === cur.k2 && p.k2 === cur.k1));
+      if (!same) return null;
+      const first = socdProfiles.indexOf(same) < socdProfiles.indexOf(cur);
+      return /*#__PURE__*/React.createElement("div", {
+        "data-testid": "socd-duplicate",
+        className: "rounded-md border border-amber-400/40 bg-amber-400/[0.06] p-3 text-[11.5px] text-amber-200/90 leading-relaxed"
+      }, cur.k1, " + ", cur.k2, " is also ", same.id, ". The keyboard uses only the first pair for two keys", first ? `, so this one (${cur.id}) is not written.` : `, so ${same.id} is not written.`, " ", "For whichever-pressed-last-wins in both directions, use one pair on ", /*#__PURE__*/React.createElement("span", {
+        className: "text-[var(--accent)]"
+      }, "Model 4"), ".");
+    })(), /*#__PURE__*/React.createElement("div", {
       className: "rounded-md border border-[var(--line)] bg-[rgba(5,11,14,0.5)] p-3 text-[11.5px] text-[var(--text-dim)] leading-relaxed"
     }, /*#__PURE__*/React.createElement("div", {
       className: "text-[var(--text)] font-display uppercase tracking-[0.18em] text-[10.5px] mb-2"
@@ -43700,7 +43710,16 @@
     } = ctx;
     const [busy, setBusy] = useState(false);
     const [done, setDone] = useState(null);
-    const complete = (socdProfiles || []).filter(p => p.k1 && p.k2).length;
+    const complete = (() => {
+      const seen = new Set();
+      return (socdProfiles || []).filter(p => {
+        if (!p.k1 || !p.k2) return false;
+        const k = [p.k1, p.k2].sort().join("+");
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      }).length;
+    })();
     const apply = async () => {
       if (!handleSocdApply || busy) return;
       setBusy(true);
@@ -46075,12 +46094,22 @@
   })();
 
   // SOCD tab rows ({k1, k2, mode} with key LABELS) -> set_socd pairs (design
-  // codes). Rows missing a key are skipped; [] clears the board's pairs.
-  const socdPairsFrom = rows => (rows || []).filter(p => p && p.k1 && p.k2).map(p => ({
-    model: p.mode || 1,
-    key1: LABEL_TO_CODE[p.k1] || p.k1,
-    key2: LABEL_TO_CODE[p.k2] || p.k2
-  }));
+  // codes). Rows missing a key are skipped; [] clears the board's pairs. A later
+  // row over the SAME two keys (either order) is dropped: the firmware only
+  // honours the first pair for a key pair (A=D M2 + D=A M2 acted as A=D M2).
+  const socdPairsFrom = rows => {
+    const seen = new Set();
+    return (rows || []).filter(p => p && p.k1 && p.k2).map(p => ({
+      model: p.mode || 1,
+      key1: LABEL_TO_CODE[p.k1] || p.k1,
+      key2: LABEL_TO_CODE[p.k2] || p.k2
+    })).filter(p => {
+      const k = [p.key1, p.key2].sort().join("+");
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  };
 
   // A saved profile's board-side settings for Api.apply_profile_to_board (game
   // auto-switch). A field the profile never stored is null, so the board keeps

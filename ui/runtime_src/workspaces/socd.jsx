@@ -133,6 +133,21 @@ const PairEditorWidget = (ctx) => {
         </div>
       )}
 
+      {/* Same two keys in another pair: the board only honours the first. */}
+      {(() => {
+        const same = cur && cur.k1 && cur.k2 && socdProfiles.find(p => p.id !== cur.id && p.k1 && p.k2 &&
+          ((p.k1 === cur.k1 && p.k2 === cur.k2) || (p.k1 === cur.k2 && p.k2 === cur.k1)));
+        if (!same) return null;
+        const first = socdProfiles.indexOf(same) < socdProfiles.indexOf(cur);
+        return (
+          <div data-testid="socd-duplicate" className="rounded-md border border-amber-400/40 bg-amber-400/[0.06] p-3 text-[11.5px] text-amber-200/90 leading-relaxed">
+            {cur.k1} + {cur.k2} is also {same.id}. The keyboard uses only the first pair for two keys
+            {first ? `, so this one (${cur.id}) is not written.` : `, so ${same.id} is not written.`}
+            {" "}For whichever-pressed-last-wins in both directions, use one pair on <span className="text-[var(--accent)]">Model 4</span>.
+          </div>
+        );
+      })()}
+
       {/* Mode descriptions */}
       <div className="rounded-md border border-[var(--line)] bg-[rgba(5,11,14,0.5)] p-3 text-[11.5px] text-[var(--text-dim)] leading-relaxed">
         <div className="text-[var(--text)] font-display uppercase tracking-[0.18em] text-[10.5px] mb-2">When both Key1 and Key2 fire:</div>
@@ -165,7 +180,16 @@ const ApplyWidget = (ctx) => {
   const { handleSocdApply, socdProfiles, connected } = ctx;
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(null);
-  const complete = (socdProfiles || []).filter(p => p.k1 && p.k2).length;
+  const complete = (() => {
+    const seen = new Set();
+    return (socdProfiles || []).filter(p => {
+      if (!p.k1 || !p.k2) return false;
+      const k = [p.k1, p.k2].sort().join("+");
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    }).length;
+  })();
   const apply = async () => {
     if (!handleSocdApply || busy) return;
     setBusy(true);
