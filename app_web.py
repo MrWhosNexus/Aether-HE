@@ -55,6 +55,13 @@ def _stats_default_enabled(settings, platform=None):
     return (platform or sys.platform).startswith("win")
 
 
+def _clamp_stats_days(days):
+    """Bridge `days` argument -> int in 1..telemetry.KEEP_DAYS (non-int -> 1)."""
+    if isinstance(days, bool) or not isinstance(days, int):
+        return 1
+    return max(1, min(telemetry.KEEP_DAYS, days))
+
+
 # When frozen by PyInstaller, ui/ ships next to the exe (or inside _MEIPASS for
 # --onefile). sys._MEIPASS is the extraction dir at runtime in onefile mode.
 if getattr(sys, "frozen", False):
@@ -508,6 +515,68 @@ class Api:
             except Exception:
                 pass
             return False
+
+    def _stats_actuation(self, mm_by_idx):
+        """Hand the firmware read-back ({device index: mm}) to telemetry."""
+        tel = getattr(self, "telemetry", None)
+        if tel is not None and mm_by_idx and self._stats_supported():
+            tel.set_actuation(mm_by_idx)
+
+    def _stats_forget_actuation(self, idxs):
+        """An actuation write makes the stored read-back stale: forget it."""
+        tel = getattr(self, "telemetry", None)
+        if tel is not None and idxs and self._stats_supported():
+            tel.forget_actuation(idxs)
+
+    _STATS_UNAVAILABLE = {"ok": False, "error": "key statistics are unavailable"}
+
+    def get_stats(self, days=1):
+        """Per-key aggregates for the last `days` days, keyed by design code.
+        Aggregates only (see telemetry.py): never sequences or timestamps."""
+        try:
+            tel = getattr(self, "telemetry", None)
+            if tel is None:
+                return dict(self._STATS_UNAVAILABLE)
+            days = _clamp_stats_days(days)
+            keys, totals = {}, {"presses": 0, "shallow": 0, "barely": 0, "bottom": 0}
+            for idx, agg in tel.aggregate(days).items():
+                code = self.km.code_of(idx) if self.km else None
+                keys[code or f"idx{idx}"] = agg
+                for f in totals:
+                    totals[f] += agg[f]
+            return {"ok": True, "enabled": tel.enabled,
+                    "supported": self._stats_supported(), "board": tel.board,
+                    "days": days, "keys": keys, "totals": totals}
+        except Exception as e:
+            return self._fail(e)
+
+    def clear_stats(self):
+        try:
+            tel = getattr(self, "telemetry", None)
+            if tel is None:
+                return dict(self._STATS_UNAVAILABLE)
+            return {"ok": True, "deleted": tel.clear()}
+        except Exception as e:
+            return self._fail(e)
+
+    def set_stats_enabled(self, on):
+        try:
+            tel = getattr(self, "telemetry", None)
+            if tel is None:
+                return dict(self._STATS_UNAVAILABLE)
+            on = bool(on)
+            r = self.save_settings({STATS_SETTING: on})
+            if not r.get("ok"):
+                return r
+            tel.set_enabled(on)
+            if on:
+                self._start_stats_reader()
+            else:
+                self._release_reader("telemetry")
+                tel.flush()
+            return {"ok": True, "enabled": on}
+        except Exception as e:
+            return self._fail(e)
 
     # ---- connection ----
     @staticmethod
@@ -1088,6 +1157,7 @@ class Api:
                 return {"ok": False, "error": f"invalid trigger mode {mode}"}
             km = getattr(self, "km", None)
             idxs = list(km.indices()) if km else list(range(int(key_count)))
+            self._stats_forget_actuation(idxs)
             if mode == 0:
                 # Mode 0 reads each key's stored RT pair back first.
                 with self._reader_paused():
@@ -1274,6 +1344,7 @@ class Api:
             cfg = (0, _mm_to_raw(travel_mm), None, None)
         for i in idxs:
             self._trigger_state[i] = cfg
+        self._stats_forget_actuation(idxs)
         try:
             if mode == 0:
                 # The driver reads each key's stored RT pair back before the
@@ -1315,14 +1386,16 @@ class Api:
                 else:
                     vals_by_name = self.driver.read_actuation(self.km)
             # Build {design_code: mm} for every key we have a mapping for.
-            all_by_code, trig_by_code = {}, {}
+            all_by_code, trig_by_code, act_by_idx = {}, {}, {}
             for design_code, idx in self.km.index_of_code.items():
                 name = self.km.by_index[idx]["name"]
                 mm = vals_by_name.get(name)
                 if mm is not None:
                     all_by_code[design_code] = mm
+                    act_by_idx[idx] = mm
                 if detail is not None and name in detail:
                     trig_by_code[design_code] = dict(detail[name])
+            self._stats_actuation(act_by_idx)
             wanted = (lambda c: c in codes) if codes else (lambda c: True)
             out = {c: v for c, v in all_by_code.items() if wanted(c)}
             res = {"ok": True, "actuation_mm": out}

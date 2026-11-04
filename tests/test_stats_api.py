@@ -182,3 +182,75 @@ def test_disconnect_flushes_and_drops_the_owner(tmp_path):
     assert a.disconnect()["ok"]
     assert (tmp_path / "stats" / f"{TODAY}.json").exists()
     assert a._reader_users == set() and first.stopped
+
+
+def test_actuation_read_back_classifies_shallow_presses(tmp_path):
+    a = _api(tmp_path)
+    w = a.km.index_of_code["W"]
+    a.driver.detail = {a.km.by_index[w]["name"]: {"travel_mm": 0.80, "mode": 0}}
+    assert a.verify_actuation([])["ok"]
+    _press(a.telemetry, w, [0.20, 0.50])
+    agg = a.telemetry.aggregate(1)[w]
+    assert agg["shallow"] == 1 and agg["presses"] == 0
+
+
+def test_writing_actuation_forgets_the_read_back(tmp_path):
+    a = _api(tmp_path)
+    w = a.km.index_of_code["W"]
+    a.driver.detail = {a.km.by_index[w]["name"]: {"travel_mm": 0.80, "mode": 0}}
+    a.verify_actuation([])
+    assert a.set_trigger_codes(["W"], 1.2)["ok"]
+    _press(a.telemetry, w, [0.50])
+    agg = a.telemetry.aggregate(1)[w]
+    assert agg["presses"] == 1 and agg["unrated"] == 1
+
+
+def test_get_stats_returns_per_code_aggregates_and_totals(tmp_path):
+    a = _api(tmp_path)
+    _press(a.telemetry, a.km.index_of_code["W"], [1.0, 3.35])
+    r = a.get_stats(1)
+    assert r["ok"] and r["enabled"] and r["supported"] and r["days"] == 1
+    assert r["board"] == "aula-win60-he"
+    assert r["keys"]["W"]["presses"] == 1 and r["keys"]["W"]["bottom"] == 1
+    assert r["totals"] == {"presses": 1, "shallow": 0, "barely": 0, "bottom": 1}
+    for rec in r["keys"].values():                  # privacy: aggregates only
+        assert set(rec) == set(telemetry.FIELDS) | {"hist"}
+
+
+def test_get_stats_clamps_days(tmp_path):
+    a = _api(tmp_path)
+    assert a.get_stats(0)["days"] == 1
+    assert a.get_stats(1000)["days"] == 90
+    assert a.get_stats("x")["days"] == 1
+    assert a.get_stats(None)["days"] == 1
+
+
+def test_set_stats_enabled_persists_and_releases_the_reader(tmp_path):
+    (tmp_path / "settings.json").write_text(json.dumps({"theme": "neon"}))
+    a = _api(tmp_path)
+    a._start_stats_reader()
+    first = a.reader
+    assert a.set_stats_enabled(False) == {"ok": True, "enabled": False}
+    saved = json.loads((tmp_path / "settings.json").read_text())
+    assert saved == {"theme": "neon", "collectKeyStats": False}
+    assert "telemetry" not in a._reader_users and first.stopped
+    assert a.telemetry.enabled is False
+    assert a.set_stats_enabled(True) == {"ok": True, "enabled": True}
+    assert "telemetry" in a._reader_users and a.reader is not None
+
+
+def test_clear_stats_deletes_everything(tmp_path):
+    a = _api(tmp_path)
+    w = a.km.index_of_code["W"]
+    _press(a.telemetry, w, [2.0])
+    a.telemetry.flush()
+    _press(a.telemetry, w, [2.0])
+    assert a.clear_stats() == {"ok": True, "deleted": 1}
+    assert a.get_stats(1)["keys"] == {}
+
+
+def test_bridge_methods_without_telemetry_fail_softly(tmp_path):
+    a = _api(tmp_path)
+    a.telemetry = None
+    for r in (a.get_stats(1), a.clear_stats(), a.set_stats_enabled(True)):
+        assert r["ok"] is False and r["error"]
