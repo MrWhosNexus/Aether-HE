@@ -34,6 +34,9 @@ import version
 log = logging.getLogger("aether.update")
 
 _API = "https://api.github.com/repos/{repo}/releases/latest"
+# The ONLY place apply_update() will download an installer from. Derived from
+# version.GITHUB_REPO so the repo identity lives in one spot.
+RELEASE_DOWNLOAD_PREFIX = f"https://github.com/{version.GITHUB_REPO}/releases/download/"
 _UA = {"User-Agent": "AetherHE-Updater", "Accept": "application/vnd.github+json"}
 
 
@@ -293,37 +296,43 @@ def apply_update(asset_url, asset_name=None, asset_size=None, asset_sha256=None)
     the caller to quit; on Flatpak it installs on the host and asks the user to
     relaunch.
 
-    `asset_size`/`asset_sha256` are the values from check_for_update(); when the
-    caller omits them (an older UI) they are re-fetched here rather than
-    skipped, so the integrity check cannot be bypassed by calling this directly.
+    The downloaded file is EXECUTED, and the arguments arrive over the JS
+    bridge / loopback service, so they are untrusted:
+
+      - `asset_url` must sit under RELEASE_DOWNLOAD_PREFIX (this repo's release
+        downloads), with no `..`, query, fragment or backslash;
+      - `asset_size`/`asset_sha256` are IGNORED (kept only so older callers
+        still work). The expected size and digest are always taken from a fresh
+        check_for_update() call to GitHub, and only if that release's asset URL
+        equals `asset_url`. A caller can therefore never verify its own file
+        against its own hash.
     """
-    if not asset_url:
-        return {"ok": False, "error": "no installable asset for this platform"}
+    if (not asset_url or not isinstance(asset_url, str)
+            or not asset_url.startswith(RELEASE_DOWNLOAD_PREFIX)
+            or any(bad in asset_url for bad in ("..", "?", "#", "\\"))):
+        return {"ok": False,
+                "error": "refusing update from outside " + RELEASE_DOWNLOAD_PREFIX}
     kind = platform_kind()
     # basename() on BOTH sources: the asset name comes over the JS bridge, and
     # a name with a path separator would otherwise let the download land
     # outside the download dir.
-    name = os.path.basename(asset_name or "") or os.path.basename(asset_url.split("?")[0])
+    name = os.path.basename(asset_name or "") or os.path.basename(asset_url)
     if not name:
         return {"ok": False, "error": "asset has no usable filename"}
 
-    if asset_sha256 is None:
-        # Re-derive from the release rather than trusting an unverified download.
-        try:
-            chk = check_for_update()
-            if chk.get("ok") and chk.get("asset_url") == asset_url:
-                asset_size = asset_size if asset_size is not None else chk.get("asset_size")
-                asset_sha256 = chk.get("asset_sha256")
-        except Exception as e:
-            log.warning("update: could not re-fetch asset digest: %s", e)
+    asset_size = asset_sha256 = None   # never trust caller-supplied metadata
+    try:
+        chk = check_for_update()
+        if chk.get("ok") and chk.get("asset_url") == asset_url:
+            asset_size = chk.get("asset_size")
+            asset_sha256 = chk.get("asset_sha256")
+    except Exception as e:
+        log.warning("update: could not fetch asset digest: %s", e)
 
     if asset_sha256 is None and asset_size is None:
-        # Neither a checksum nor a size to verify the bytes against — refuse
-        # rather than execute an unverified installer. This closes the fall-open
-        # where the caller omits metadata AND the re-fetch fails to repopulate it
-        # (API host rate-limited/offline, or a release cut between check and
-        # apply), honouring the docstring's "cannot be bypassed" invariant.
-        # (A size-only check remains available when GitHub published no digest.)
+        # Nothing from GitHub to verify the bytes against — refuse rather than
+        # execute an unverified installer. (A size-only check remains available
+        # when GitHub published no digest.)
         _set_progress(phase="idle", done=0, total=0)
         return {"ok": False,
                 "error": "could not verify the update (no checksum or size "

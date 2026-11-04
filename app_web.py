@@ -2075,8 +2075,9 @@ class Api:
         """Download + install the update for this OS. On success the caller
         should quit (Windows) or prompt a restart (Flatpak).
 
-        asset_size/asset_sha256 come from check_update(); updater re-fetches them
-        if omitted, so the download is verified either way."""
+        Only this repo's release downloads are accepted. asset_size/asset_sha256
+        are ignored: updater always takes them from GitHub itself, so a caller
+        cannot supply its own file and hash."""
         res = updater.apply_update(asset_url, asset_name, asset_size, asset_sha256)
         if res.get("ok") and res.get("quit"):
             # Let the bridge return first, then exit so the installer can replace

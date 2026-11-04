@@ -15,6 +15,14 @@ import pytest
 
 import updater
 
+URL = updater.RELEASE_DOWNLOAD_PREFIX + "v9.9.9/AetherHE-Setup.exe"
+
+
+def _verified(url, size, sha):
+    """check_for_update() stub: GitHub's own view of the asset."""
+    return lambda *a, **k: {"ok": True, "asset_url": url,
+                            "asset_size": size, "asset_sha256": sha}
+
 
 class _FakeResp:
     """Minimal stand-in for the urlopen context manager."""
@@ -111,12 +119,13 @@ def test_apply_update_refuses_on_integrity_failure(tmp_path, monkeypatch, payloa
     _patch(monkeypatch, b"TAMPERED" + data[8:])
     monkeypatch.setattr(updater, "_download_dir", lambda kind: str(tmp_path))
     monkeypatch.setattr(updater, "platform_kind", lambda: "windows")
+    monkeypatch.setattr(updater, "check_for_update", _verified(URL, len(data), sha))
 
     launched = []
     monkeypatch.setattr(updater.subprocess, "Popen",
                         lambda *a, **k: launched.append(a) or object())
 
-    res = updater.apply_update("https://x/AetherHE-Setup.exe", "AetherHE-Setup.exe",
+    res = updater.apply_update(URL, "AetherHE-Setup.exe",
                                asset_size=len(data), asset_sha256=sha)
     assert res["ok"] is False
     assert "integrity" in res["error"].lower()
@@ -163,7 +172,7 @@ def test_apply_update_refuses_when_no_checksum_or_size(monkeypatch):
     between check and apply so the URL differs), apply_update must REFUSE — never
     fall through to executing an unverified installer."""
     import subprocess
-    # Re-fetch succeeds but for a DIFFERENT asset_url -> metadata stays None.
+    # GitHub's check succeeds but names a DIFFERENT asset_url -> refuse.
     monkeypatch.setattr(updater, "check_for_update",
                         lambda *a, **k: {"ok": True,
                                          "asset_url": "https://other/x.exe",
@@ -174,7 +183,7 @@ def test_apply_update_refuses_when_no_checksum_or_size(monkeypatch):
                         lambda *a, **k: seen.__setitem__("download", True))
     monkeypatch.setattr(subprocess, "Popen",
                         lambda *a, **k: seen.__setitem__("popen", True))
-    r = updater.apply_update("https://example.com/AetherHE-Setup.exe")
+    r = updater.apply_update(URL)
     assert r["ok"] is False and "unverified" in r["error"]
     assert seen["download"] is False, "must not download without verification data"
     assert seen["popen"] is False, "must not execute an unverified installer"
@@ -189,8 +198,59 @@ def test_apply_update_still_installs_with_valid_metadata(monkeypatch):
                         lambda *a, **k: ran.__setitem__("download", True))
     monkeypatch.setattr(updater, "_download_dir", lambda kind: ".")
     monkeypatch.setattr(updater, "platform_kind", lambda: "windows")
+    monkeypatch.setattr(updater, "check_for_update", _verified(URL, 999, "abc123"))
     monkeypatch.setattr(subprocess, "Popen",
                         lambda *a, **k: ran.__setitem__("popen", True))
-    r = updater.apply_update("https://example.com/AetherHE-Setup.exe",
-                             asset_size=999, asset_sha256="abc123")
+    r = updater.apply_update(URL, asset_size=999, asset_sha256="abc123")
     assert r["ok"] is True and ran["download"] and ran["popen"]
+
+
+# ---- URL pinning / caller metadata is untrusted ----
+def _spy(monkeypatch):
+    seen = {"check": 0, "download": 0, "popen": 0}
+    monkeypatch.setattr(updater, "check_for_update",
+                        lambda *a, **k: seen.__setitem__("check", seen["check"] + 1) or {"ok": False})
+    monkeypatch.setattr(updater, "_download",
+                        lambda *a, **k: seen.__setitem__("download", seen["download"] + 1))
+    monkeypatch.setattr(updater.subprocess, "Popen",
+                        lambda *a, **k: seen.__setitem__("popen", seen["popen"] + 1))
+    monkeypatch.setattr(updater, "platform_kind", lambda: "windows")
+    return seen
+
+
+def test_apply_update_rejects_url_outside_repo_releases(monkeypatch):
+    seen = _spy(monkeypatch)
+    r = updater.apply_update("https://example.com/AetherHE-Setup.exe",
+                             asset_size=1, asset_sha256="ab")
+    assert r["ok"] is False and "outside" in r["error"]
+    assert seen == {"check": 0, "download": 0, "popen": 0}
+
+
+@pytest.mark.parametrize("bad", [
+    "https://github.com.evil.example/MrWhosNexus/Aether-HE/releases/download/v1/a.exe",
+    "http://github.com/MrWhosNexus/Aether-HE/releases/download/v1/a.exe",
+    URL.replace("v9.9.9/", "v9.9.9/../../x/"),
+    URL + "?x=1",
+])
+def test_apply_update_rejects_lookalike_urls(monkeypatch, bad):
+    seen = _spy(monkeypatch)
+    r = updater.apply_update(bad, asset_size=1, asset_sha256="ab")
+    assert r["ok"] is False
+    assert seen == {"check": 0, "download": 0, "popen": 0}
+
+
+def test_apply_update_ignores_caller_supplied_hash(tmp_path, monkeypatch):
+    evil = b"EVIL" * 100
+    real = b"REAL-INSTALLER" * 100
+    _patch(monkeypatch, evil)
+    monkeypatch.setattr(updater, "_download_dir", lambda kind: str(tmp_path))
+    monkeypatch.setattr(updater, "platform_kind", lambda: "windows")
+    monkeypatch.setattr(updater, "check_for_update",
+                        _verified(URL, len(real), hashlib.sha256(real).hexdigest()))
+    launched = []
+    monkeypatch.setattr(updater.subprocess, "Popen",
+                        lambda *a, **k: launched.append(a) or object())
+    r = updater.apply_update(URL, "AetherHE-Setup.exe", asset_size=len(evil),
+                             asset_sha256=hashlib.sha256(evil).hexdigest())
+    assert r["ok"] is False and "integrity" in r["error"].lower()
+    assert not launched
