@@ -146,6 +146,15 @@ Entry format:
 - For the user (morning): 12 hardware checks at the end of the plan; veto/accept items queued below.
 - Stopped early? No.
 
+## 2026-11-04 Phase 6 — implementer (Sonnet)
+- Landed: bb43e38 overlays.py layout/colours/bar painting; ab4da88 Pomodoro + OverlayLayer + flash + `PerKeyEffectEngine.overlay` hook; 8b3631a CPU/RAM/GPU samplers; 2065981 per-profile prefs + OverlayManager; 2cec967 get_overlays/set_overlay/flash bridges + profile follow + Flatpak cp list; 36b34cd carrier (overlays over static/Full-RGB/per-key paint/off); b1b1a61 dashboard chip `overlayText` (+ rebuilt ws_dashboard.js/index_runtime.html); 10b6fd5 CLAUDE.md.
+- Suite: 1103 passed, 14 skipped (the plan's counts; the Phase 5 contract test now runs). Green at every commit; `node --check` ok on ws_dashboard.js. Carrier + API tests re-run 3x, no flakes.
+- Decisions later phases must respect: `engine.overlay.apply(frame, now)` contract (called inside try/except in `_run`, no frame-rate change); `Api._light_src` records the UI's last firmware-lighting call and `_overlay_sync`/`_carrier_start`/`_carrier_stop` own the carrier; `settings.json` top-level `overlays` key is Aether-owned (per-profile flags, optional `pomodoro.workMin/breakMin`); `Api.flash(color, ms)`; bridge contract unchanged plus additive `phase`/`remaining_s` on the pomodoro row.
+- Gotchas: Phase 7's `music` effect also streams through the engine, so overlays draw over it automatically (and must update HOST_FX_IDS/HOST_FX_FAST per Phase 2). Tests never run nvidia-smi or touch HID.
+- Deviations: none. Code/tests copied from the plan (extracted by script); CRLF-preserving script for app_web.py/effects.py/dashboard.jsx edits; only ws_dashboard.js had a real build diff.
+- For the user (morning): the 12 hardware checks and veto/accept bullets are already queued below (nothing new added).
+- Stopped early? No.
+
 ## Waiting on the user
 - [DKS] Run the advanced-keys capture checklist (docs/context/aula-win60-advanced-keys-capture-checklist.md, ~20 min in hed.aulacn.com) to confirm the source-only decode.
 - [DKS] Open: does WIN60 firmware act on DKS/MT/TGL; DKS step codes 2/3; single-slot writes accepted; MT 10 ms unit; per-profile table?
