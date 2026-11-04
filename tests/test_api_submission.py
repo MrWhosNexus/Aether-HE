@@ -220,3 +220,17 @@ def test_rejects_lookalike_issue_urls(monkeypatch, bad):
     opened = _spy_browser(monkeypatch)
     r = _api().open_submission_url(bad)
     assert r["ok"] is False and not opened
+
+
+@pytest.mark.parametrize("bad", [
+    " https://github.com/MrWhosNexus/Aether-HE/issues/new",
+    "https://github.com/MrWhosNexus/Aether-HE/issues/new\t",
+    "https://github.com/MrWhosNexus/Aether-HE/is\nsues/new",
+    "https://github.com/MrWhosNexus/Aether-HE/issues/new\x7f",
+])
+def test_rejects_urls_with_control_characters_or_spaces(monkeypatch, bad):
+    """urlsplit silently strips some of these, so a padded URL must be refused
+    before parsing (security review 2026-11-04 test gap)."""
+    opened = _spy_browser(monkeypatch)
+    r = _api().open_submission_url(bad)
+    assert r["ok"] is False and not opened

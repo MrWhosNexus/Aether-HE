@@ -300,7 +300,8 @@ def apply_update(asset_url, asset_name=None, asset_size=None, asset_sha256=None)
     bridge / loopback service, so they are untrusted:
 
       - `asset_url` must sit under RELEASE_DOWNLOAD_PREFIX (this repo's release
-        downloads), with no `..`, query, fragment or backslash;
+        downloads), with no `..`, query, fragment, backslash or percent-escape
+        (`%2e%2e` would otherwise reach GitHub before the URL-equality check);
       - `asset_size`/`asset_sha256` are IGNORED (kept only so older callers
         still work). The expected size and digest are always taken from a fresh
         check_for_update() call to GitHub, and only if that release's asset URL
@@ -309,7 +310,7 @@ def apply_update(asset_url, asset_name=None, asset_size=None, asset_sha256=None)
     """
     if (not asset_url or not isinstance(asset_url, str)
             or not asset_url.startswith(RELEASE_DOWNLOAD_PREFIX)
-            or any(bad in asset_url for bad in ("..", "?", "#", "\\"))):
+            or any(bad in asset_url for bad in ("..", "?", "#", "\\", "%"))):
         return {"ok": False,
                 "error": "refusing update from outside " + RELEASE_DOWNLOAD_PREFIX}
     kind = platform_kind()

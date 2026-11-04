@@ -91,3 +91,57 @@ def test_server_refuses_cross_origin_post_without_calling_api(monkeypatch):
         srv.shutdown()
         srv.server_close()
         sys.modules.pop("service.server", None)
+
+
+def test_refused_request_cannot_smuggle_a_second_request_in_its_body(monkeypatch):
+    """Security review 2026-11-04: the 403 path did not read the POST body and
+    left the HTTP/1.1 connection open, so the body was parsed as a NEXT request
+    with no Origin and a loopback Host, which passed the guard. A page could
+    send that with fetch(..., {mode: "no-cors", body: inner})."""
+    import socket
+    calls = []
+
+    class StubApi:
+        def __getattr__(self, name):
+            def rec(*a, **k):
+                calls.append(name)
+                return {"ok": True}
+            return rec
+
+    monkeypatch.setitem(sys.modules, "app_web", types.SimpleNamespace(Api=StubApi))
+    monkeypatch.delitem(sys.modules, "service.server", raising=False)
+    from http.server import ThreadingHTTPServer
+    from service import server
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+    srv.daemon_threads = True
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    port = srv.server_address[1]
+    inner_body = b'{"codes": ["KeyA"], "travel_mm": 0.1}'
+    inner = (b"POST /aether/trigger HTTP/1.1\r\nHost: 127.0.0.1:%d\r\n"
+             b"Content-Length: %d\r\n\r\n" % (port, len(inner_body))) + inner_body
+    outer = (b"POST /aether/light/stop HTTP/1.1\r\nHost: 127.0.0.1:%d\r\n"
+             b"Origin: https://evil.example\r\nContent-Type: text/plain;charset=UTF-8\r\n"
+             b"Content-Length: %d\r\n\r\n" % (port, len(inner))) + inner
+    try:
+        s = socket.create_connection(("127.0.0.1", port), timeout=5)
+        s.sendall(outer)
+        got = b""
+        s.settimeout(1.5)
+        try:
+            while True:
+                chunk = s.recv(65536)
+                if not chunk:
+                    break
+                got += chunk
+        except socket.timeout:
+            pass
+        s.close()
+        assert b" 403 " in got.split(b"\r\n", 1)[0]
+        assert b" 200 " not in got, "a smuggled request was answered"
+        assert "set_trigger_codes" not in calls
+        assert "stop_multicolor" not in calls
+    finally:
+        srv.shutdown()
+        srv.server_close()
+        sys.modules.pop("service.server", None)

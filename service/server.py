@@ -160,11 +160,13 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):  # route access logs through logging
         log.debug("%s " + fmt, self.address_string(), *args)
 
-    def _json(self, status, obj):
+    def _json(self, status, obj, close=False):
         payload = json.dumps(obj).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
+        if close:
+            self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(payload)
 
@@ -174,7 +176,13 @@ class Handler(BaseHTTPRequestHandler):
         if reason:
             log.warning("refused %s %s from %s: %s", method, self.path,
                         self.address_string(), reason)
-            return self._json(403, {"ok": False, "error": f"forbidden: {reason}"})
+            # Close the connection: the refused request's body is never read,
+            # and on a kept-alive HTTP/1.1 connection those unread bytes would
+            # be parsed as the NEXT request (no Origin, loopback Host), which
+            # the guard would let through (request smuggling).
+            self.close_connection = True
+            return self._json(403, {"ok": False, "error": f"forbidden: {reason}"},
+                              close=True)
         url = urlparse(self.path)
         if url.path == "/aether/stream" and method == "GET":
             return self._sse()

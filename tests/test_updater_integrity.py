@@ -254,3 +254,38 @@ def test_apply_update_ignores_caller_supplied_hash(tmp_path, monkeypatch):
                              asset_sha256=hashlib.sha256(evil).hexdigest())
     assert r["ok"] is False and "integrity" in r["error"].lower()
     assert not launched
+
+
+@pytest.mark.parametrize("chk", ["fails", "raises"])
+def test_apply_update_fails_closed_when_github_cannot_vouch(tmp_path, monkeypatch, chk):
+    """Security review 2026-11-04: with GitHub unreachable or rate-limited the
+    caller-supplied size/sha256 must still be ignored. Pins the line that
+    discards them (a mutant without it downloaded the served bytes, verified
+    them against the caller's own hash and launched them)."""
+    evil = b"EVIL" * 100
+    _patch(monkeypatch, evil)
+    monkeypatch.setattr(updater, "_download_dir", lambda kind: str(tmp_path))
+    monkeypatch.setattr(updater, "platform_kind", lambda: "windows")
+
+    def check(*a, **k):
+        if chk == "raises":
+            raise OSError("offline")
+        return {"ok": False, "error": "GitHub rate limit reached"}
+
+    monkeypatch.setattr(updater, "check_for_update", check)
+    launched = []
+    monkeypatch.setattr(updater.subprocess, "Popen",
+                        lambda *a, **k: launched.append(a) or object())
+    r = updater.apply_update(URL, "AetherHE-Setup.exe", asset_size=len(evil),
+                             asset_sha256=hashlib.sha256(evil).hexdigest())
+    assert r["ok"] is False
+    assert not launched
+
+
+def test_apply_update_refuses_percent_encoded_paths_before_any_network(monkeypatch):
+    seen = {"check": 0}
+    monkeypatch.setattr(updater, "check_for_update",
+                        lambda *a, **k: seen.__setitem__("check", seen["check"] + 1) or {})
+    r = updater.apply_update(URL.replace("v9.9.9/", "v9.9.9/%2e%2e/%2e%2e/%2e%2e/evil/"))
+    assert r["ok"] is False and "outside" in r["error"]
+    assert seen["check"] == 0
