@@ -18,6 +18,8 @@ import statistics
 import threading
 import time
 
+import music
+
 FPS = 60   # 120 saturated the USB pipe (8 cmd-9 pages/frame × 120 = 960 HID
            # writes/sec) and the board fell behind, making animations stutter.
            # 60fps is visually smooth and halves the write traffic — the engine
@@ -115,6 +117,25 @@ def pressure_level(mm, act, max_mm=PRESSURE_MAX_MM):
     return 0.5 + 0.5 * (mm - act) / (max_mm - act)
 
 
+# ---- "music" effect constants (Phase 7) ----
+MUSIC_RELEASE_SLOW_S = 0.30      # bar fall time constant at speed 0
+MUSIC_RELEASE_FAST_S = 0.08      # ... at speed 1 (attack is instant)
+MUSIC_PULSE_S = 0.15             # beat pulse decay time constant
+MUSIC_PULSE_MAX = 0.45           # background -> palette[0] blend at a beat
+MUSIC_IDLE_PERIOD_S = 3.0        # no audio: bottom row breathes this slowly
+MUSIC_IDLE_MAX = 0.15            # ... up to this much palette[0]
+
+
+def _gradient(pal, u):
+    """Non-looping palette gradient: first colour at u=0, last at u=1."""
+    n = len(pal)
+    if n == 1:
+        return pal[0]
+    p = min(max(u, 0.0), 1.0) * (n - 1)
+    i = min(int(p), n - 2)
+    return _lerp(pal[i], pal[i + 1], p - i)
+
+
 class Zone:
     def __init__(self, indices, mode, palette, bg, speed, bright, direction, orient="v"):
         self.indices = list(indices)
@@ -180,6 +201,10 @@ class PerKeyEffectEngine:
         self.get_calibrated = None  # optional () -> iterable of design codes (calibration)
         self.overlay = None       # optional object with apply(frame, now): status-on-keys layer
         self.last_frame = {}      # most recent frame (for the in-app keyboard mirror)
+        # optional music.MusicSource: started while any zone runs "music",
+        # stopped with the engine (the capture never runs otherwise)
+        self.music = None
+        self._music_lay = None    # {idx: (bands, row, n_rows)}, built on first use
 
         self.indices = sorted(km.by_index.keys())
         xs = [km.by_index[i]["x"] for i in self.indices]
@@ -219,7 +244,7 @@ class PerKeyEffectEngine:
         }], global_bg=bg, base={})
 
     def start_zones(self, zones, global_bg=(0, 0, 0), base=None):
-        self.stop()
+        self._halt()
         self.global_bg = tuple(int(c) for c in (global_bg or (0, 0, 0))[:3])
         self.base = {int(i): tuple(int(c) for c in rgb[:3]) for i, rgb in (base or {}).items()}
         self.zones = [Zone(
@@ -231,6 +256,9 @@ class PerKeyEffectEngine:
         ) for z in zones if z.get("indices")]
         self._base_frame = {i: self.global_bg for i in self.indices}
         self._base_frame.update(self.base)
+        # Audio capture follows the zones: kept running across a restart that
+        # still has a music zone (palette/speed edits), stopped otherwise.
+        self._music_power(any(z.mode == "music" for z in self.zones))
         stop_ev = threading.Event()
         self._stop = stop_ev
         self._thread = threading.Thread(target=self._run, args=(stop_ev, self.zones),
@@ -241,12 +269,29 @@ class PerKeyEffectEngine:
         return self._thread is not None and self._thread.is_alive()
 
     def stop(self):
+        self._halt()
+        self._music_power(False)
+
+    def _halt(self):
+        """Stop the frame thread only (start_zones decides about the music capture)."""
         self._stop.set()
         th = self._thread
         if th is not None and th is not threading.current_thread():
             th.join(timeout=0.5)
         self._thread = None
         self.last_frame = {}
+
+    def _music_power(self, on):
+        src = self.music
+        if src is None:
+            return
+        try:
+            if on:
+                src.start()
+            else:
+                src.stop()
+        except Exception:
+            pass                  # audio trouble must never break the lighting
 
     def _run(self, stop_ev=None, zones=None):
         # `stop_ev`/`zones` are bound to THIS run so a late-exiting old thread
@@ -283,6 +328,8 @@ class PerKeyEffectEngine:
             try:
                 send(frame)            # palette already gamma-corrected; bg left linear
             except Exception:
+                if self._stop is stop_ev:          # still the current run
+                    self._music_power(False)       # the stream died: release the audio too
                 break
             # Merge of two independent fixes, both needed:
             #   main  — subtract the time the frame actually took, so generator
@@ -812,6 +859,71 @@ class PerKeyEffectEngine:
             cur = target if target >= cur else max(target, cur - fall)
             lvl[idx] = cur
             frame[idx] = ramp[int(cur * top + 0.5)]
+
+    def _music_map(self):
+        lay = self._music_lay
+        if lay is None:
+            lay = self._music_lay = music.grid_layout(
+                {i: (self.km.by_index[i]["x"], self.km.by_index[i]["y"]) for i in self.indices})
+        return lay
+
+    def _g_music(self, z, t, frame):
+        # 14 audio bands -> 14 columns, bar height across the rows (row 0 =
+        # bottom), palette as a bottom->top gradient, background pulsing toward
+        # palette[0] on beats. Instant attack, speed-controlled release (time
+        # based). No audio (no source / no device / deps missing): the bottom
+        # row breathes faintly so the effect visibly waits.
+        st = z.state
+        lay = self._music_map()
+        n_rows = max((m[2] for m in lay.values()), default=1)
+        rowcol = st.get("rowcol")
+        if rowcol is None:
+            rowcol = st["rowcol"] = [_gradient(z.palette, r / (n_rows - 1) if n_rows > 1 else 0.0)
+                                     for r in range(n_rows)]
+        snap = None
+        src = self.music
+        if src is not None:
+            try:
+                snap = src.snapshot()
+            except Exception:
+                snap = None
+        live = bool(snap is not None and snap.live)
+        last_t = st.get("t")
+        dt = 0.0 if last_t is None else max(0.0, t - last_t)
+        st["t"] = t
+        rel_s = MUSIC_RELEASE_SLOW_S - (MUSIC_RELEASE_SLOW_S - MUSIC_RELEASE_FAST_S) * z.speed
+        k_rel = 1.0 - math.exp(-dt / rel_s) if dt > 0 else 0.0
+        lv = st.get("lv")
+        if lv is None:
+            lv = st["lv"] = [0.0] * music.N_BANDS
+        tg = snap.levels if live else music.ZERO_LEVELS
+        for b in range(music.N_BANDS):
+            v = tg[b] if b < len(tg) else 0.0
+            cur = lv[b]
+            cur = v if v >= cur else cur + (v - cur) * k_rel
+            lv[b] = cur if cur >= 0.004 else 0.0      # exponential tail ends
+        pulse = st.get("pulse", 0.0) * (math.exp(-dt / MUSIC_PULSE_S) if dt > 0 else 1.0)
+        if snap is not None:
+            seq = st.get("seq")
+            if seq is not None and snap.beat_seq != seq:
+                pulse = 1.0
+            st["seq"] = snap.beat_seq
+        st["pulse"] = pulse
+        bgc = _lerp(z.bg, z.palette[0], MUSIC_PULSE_MAX * pulse) if pulse > 0.004 else z.bg
+        idle = 0.0 if live else MUSIC_IDLE_MAX * (0.5 - 0.5 * math.cos(2 * math.pi * t / MUSIC_IDLE_PERIOD_S))
+        bright = z.bright
+        for idx in z.indices:
+            m = lay.get(idx)
+            if m is None:
+                frame[idx] = _scale(bgc, bright)
+                continue
+            bands, row, rows = m
+            if live:
+                v = sum(lv[b] for b in bands) / len(bands)
+                f = min(1.0, max(0.0, v * rows - row))
+            else:
+                f = idle if row == 0 else 0.0
+            frame[idx] = _scale(_lerp(bgc, rowcol[min(row, n_rows - 1)], f), bright)
 
 
 # Back-compat alias for stale imports.
