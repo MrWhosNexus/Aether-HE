@@ -18,6 +18,11 @@ datas = [
 # build can talk to the bus driver without an external install of the package.
 datas += collect_data_files("vgamepad")
 binaries = collect_dynamic_libs("vgamepad")
+# Music visualizer: soundcard loads its WASAPI cffi declarations
+# (mediafoundation.py.h) from package data at import time. numpy is found by
+# PyInstaller's own hook (it must NOT be in `excludes`). Both are imported
+# lazily on the capture thread, so name them as hidden imports too.
+datas += collect_data_files("soundcard")
 
 hidden = [
     "webview.platforms.edgechromium",
@@ -30,6 +35,8 @@ hidden = [
     # pystray picks its backend by name at import time; PyInstaller can't see it.
     "pystray._win32",
     "PIL.Image", "PIL.PngImagePlugin", "PIL.IcoImagePlugin",
+    # music.py imports these inside the capture thread only.
+    "numpy", "soundcard", "soundcard.mediafoundation", "_cffi_backend",
 ]
 
 a = Analysis(

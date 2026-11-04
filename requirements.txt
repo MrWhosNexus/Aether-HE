@@ -19,6 +19,11 @@ vgamepad>=0.1; sys_platform == "win32"
 pystray>=0.19; sys_platform == "win32"
 Pillow>=10;    sys_platform == "win32"
 
+# Music visualizer (music.py): WASAPI loopback capture + FFT. Windows only;
+# without them the "music" effect reports itself unavailable.
+numpy>=1.26;      sys_platform == "win32"
+soundcard>=0.4.3; sys_platform == "win32"
+
 # Optional helpers:
 #   pyusb        — USB reset for a stuck interface (cycle_modes.py); needs a libusb backend.
 #   customtkinter — only for the legacy Tkinter UI (main.py); not needed for app_web.py.

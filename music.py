@@ -181,3 +181,236 @@ def availability(platform=None, find_spec=None):
         return False, ("Music visualizer needs the %s package%s (not installed)."
                        % (" and ".join(missing), "s" if len(missing) > 1 else ""))
     return True, None
+
+
+# ------------------------------------------------- numpy / soundcard adapters ----
+class NumpySpectrum:
+    """Block -> band powers. Keeps the newest n_fft mono samples, Hann window,
+    rfft, |X|^2 scaled so a full-scale sine's peak bin is 1 (0 dBFS), summed
+    per band via a cumulative sum (vectorised band_powers)."""
+
+    def __init__(self, n_fft, bins):
+        import numpy as np          # lazy: only on the capture thread
+        self._np = np
+        self._n = n_fft
+        win = np.hanning(n_fft)
+        self._win = win
+        self._k = (2.0 / float(win.sum())) ** 2
+        self._buf = np.zeros(n_fft)
+        self._lo = np.array([lo for lo, _, _ in bins])
+        self._hi = np.array([hi for _, hi, _ in bins])
+        self._w = np.array([w for _, _, w in bins])
+
+    def __call__(self, block):
+        np = self._np
+        x = np.asarray(block, dtype=float).ravel()
+        k = x.size
+        if k >= self._n:
+            self._buf[:] = x[-self._n:]
+        elif k:
+            self._buf[:-k] = self._buf[k:]
+            self._buf[-k:] = x
+        spec = np.fft.rfft(self._buf * self._win)
+        p = (spec.real * spec.real + spec.imag * spec.imag) * self._k
+        c = np.concatenate(([0.0], np.cumsum(p)))
+        return ((c[self._hi] - c[self._lo]) * self._w).tolist()
+
+
+class SoundcardBackend:
+    """WASAPI loopback of the default output through `soundcard`. Every call
+    happens on the capture thread: COM is initialised per thread (MTA) here,
+    and soundcard is imported here, never on the UI thread."""
+
+    def __init__(self):
+        self._sc = None
+        self._com = False
+
+    def enter(self):
+        if sys.platform == "win32":
+            import ctypes
+            hr = ctypes.windll.ole32.CoInitializeEx(None, 0)   # COINIT_MULTITHREADED
+            self._com = hr in (0, 1)                           # S_OK / S_FALSE
+        import soundcard
+        self._sc = soundcard
+
+    def leave(self):
+        if self._com:
+            import ctypes
+            ctypes.windll.ole32.CoUninitialize()
+            self._com = False
+
+    def default_device(self):
+        spk = self._sc.default_speaker()
+        return (str(spk.id), str(spk.name)) if spk is not None else None
+
+    def open(self, dev_id, rate, frames):
+        mic = self._sc.get_microphone(dev_id, include_loopback=True)
+        rec = mic.recorder(samplerate=rate, blocksize=frames)
+        rec.__enter__()
+        return _SoundcardStream(rec, frames)
+
+
+class _SoundcardStream:
+    def __init__(self, rec, frames):
+        self._rec = rec
+        self._frames = frames
+
+    def read(self):
+        data = self._rec.record(numframes=self._frames)
+        return data.mean(axis=1) if getattr(data, "ndim", 1) == 2 else data
+
+    def close(self):
+        self._rec.__exit__(None, None, None)
+
+
+# ----------------------------------------------------------- the source ----
+MusicSnapshot = namedtuple("MusicSnapshot", "levels beat_seq live")
+ZERO_LEVELS = (0.0,) * N_BANDS
+
+
+class MusicSource:
+    """Owns the capture thread. start()/stop() are idempotent and thread-safe;
+    snapshot() is lock-free (one tuple read) for the engine; status() feeds
+    the music_status bridge. The thread runs only between start() and stop()."""
+
+    def __init__(self, backend_factory=None, spectrum_factory=None,
+                 clock=time.monotonic, available=None):
+        self._backend_factory = backend_factory or SoundcardBackend
+        self._spectrum_factory = spectrum_factory or NumpySpectrum
+        self._clock = clock
+        self._avail = available
+        self._life = threading.Lock()
+        self._thread = None
+        self._ev = threading.Event()
+        self._ev.set()
+        self._pub = (ZERO_LEVELS, 0, -1e9)    # (levels, beat_seq, published at)
+        self._beats = 0
+        self._state = "off"
+        self._device = None
+        self._error = None
+
+    def availability(self):
+        return self._avail if self._avail is not None else availability()
+
+    def running(self):
+        th = self._thread
+        return th is not None and th.is_alive()
+
+    def start(self):
+        with self._life:
+            if self.running() and not self._ev.is_set():
+                return
+            ok, _ = self.availability()
+            if not ok:
+                self._state = "unavailable"
+                return
+            ev = threading.Event()
+            self._ev = ev
+            self._state, self._device, self._error = "starting", None, None
+            th = threading.Thread(target=self._loop, args=(ev,),
+                                  name="aether-music", daemon=True)
+            self._thread = th
+            th.start()
+
+    def stop(self):
+        with self._life:
+            self._ev.set()
+            th, self._thread = self._thread, None
+            self._state, self._device = "off", None
+            self._pub = (ZERO_LEVELS, self._beats, -1e9)
+        if th is not None and th is not threading.current_thread():
+            th.join(timeout=0.5)
+
+    def snapshot(self):
+        levels, seq, at = self._pub
+        live = self._state == "listening"
+        if not live or self._clock() - at > STALE_S:
+            levels = ZERO_LEVELS
+        return MusicSnapshot(levels, seq, live)
+
+    def status(self):
+        ok, reason = self.availability()
+        state = self._state if ok else "unavailable"
+        if state == "no_device":
+            reason = MSG_NO_DEVICE
+        elif state == "error":
+            reason = "Audio capture failed: %s" % (self._error or "unknown error")
+        return {"available": bool(ok), "reason": reason, "state": state,
+                "device": self._device if state == "listening" else None}
+
+    # -- capture thread --
+    def _set(self, ev, state, device=None, error=None):
+        with self._life:
+            if ev is self._ev and not ev.is_set():
+                self._state, self._device, self._error = state, device, error
+
+    def _default(self, backend):
+        try:
+            return backend.default_device()
+        except Exception:
+            return None
+
+    def _loop(self, ev):
+        try:
+            backend = self._backend_factory()
+            backend.enter()
+        except Exception as e:
+            log.warning("music capture unavailable: %s", e)
+            self._set(ev, "error", error=str(e))
+            return
+        try:
+            bins = band_bins(N_FFT, RATE, band_edges())
+            while not ev.is_set():
+                dev = self._default(backend)
+                if dev is None:
+                    self._set(ev, "no_device")
+                    ev.wait(RETRY_S)
+                    continue
+                dev_id, dev_name = dev
+                try:
+                    stream = backend.open(dev_id, RATE, HOP)
+                except Exception as e:
+                    log.warning("audio loopback open failed (%s): %s", dev_name, e)
+                    self._set(ev, "no_device")
+                    ev.wait(RETRY_S)
+                    continue
+                try:
+                    self._capture(ev, backend, stream, dev, bins)
+                except Exception as e:
+                    log.warning("music capture stopped: %s", e)
+                    self._set(ev, "no_device")
+                    ev.wait(RETRY_S)
+                finally:
+                    try:
+                        stream.close()
+                    except Exception:
+                        pass
+        finally:
+            try:
+                backend.leave()
+            except Exception:
+                pass
+
+    def _capture(self, ev, backend, stream, dev, bins):
+        spectrum = self._spectrum_factory(N_FFT, bins)
+        an = BandAnalyzer(len(bins))
+        self._set(ev, "listening", dev[1])
+        next_check = self._clock() + DEVICE_CHECK_S
+        while not ev.is_set():
+            block = stream.read()
+            n = len(block)
+            if n:
+                levels, beat = an.feed(spectrum(block), n / float(RATE))
+                if beat:
+                    self._beats += 1
+                if not ev.is_set():
+                    self._pub = (tuple(levels), self._beats, self._clock())
+            else:
+                ev.wait(0.005)          # nothing captured: do not spin
+            now = self._clock()
+            if now >= next_check:
+                next_check = now + DEVICE_CHECK_S
+                cur = self._default(backend)
+                if cur is None or cur[0] != dev[0]:
+                    log.info("default audio output changed; re-acquiring")
+                    return
