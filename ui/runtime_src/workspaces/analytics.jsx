@@ -37,6 +37,7 @@ const POLL_MS = 5000;
 /* ===== shared store (widget frames are separate components) ===== */
 const store = {
   days: 1,
+  game: null,          // per-game view (a name from analytics.games) or null = all
   analytics: null,     // get_analytics result
   tune: null,          // get_tune_suggestions result
   sel: new Set(),      // selected design codes on the heatmap
@@ -63,7 +64,7 @@ const refreshAnalytics = async (apiCall) => {
   if (store.inflight) { store.again = true; return; }
   store.inflight = true;
   try {
-    const [a, t] = await Promise.all([call("get_analytics", store.days), call("get_tune_suggestions")]);
+    const [a, t] = await Promise.all([call("get_analytics", store.days, store.game), call("get_tune_suggestions")]);
     if (a && a.ok) store.analytics = a;
     if (t && t.ok) store.tune = t;
     emit();
@@ -79,6 +80,7 @@ const refreshTune = async (apiCall) => {
   if (t && t.ok) { store.tune = t; emit(); }
 };
 const setDays = (days) => { store.days = days; emit(); refreshAnalytics(); };
+const setGame = (game) => { store.game = game || null; emit(); refreshAnalytics(); };
 
 /* Subscribe a component to the store. While at least one subscriber is
    mounted the store refreshes every POLL_MS (day files are live: pending
@@ -226,6 +228,21 @@ function HeatmapWidget(ctx) {
           {a ? `${fmtInt(a.totals && a.totals.presses)} presses` : "loading…"}
         </span>
       </div>
+      {a && Array.isArray(a.games) && a.games.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap" data-testid="heatmap-games">
+          <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-faint)]">Game</span>
+          {[{ name: null, presses: null }, ...a.games.slice(0, 8)].map(g => (
+            <button key={g.name || "__all"} onClick={() => setGame(g.name)}
+              className={`px-2.5 h-6 rounded-md font-mono text-[10.5px] transition-all
+                          ${(s.game || null) === g.name
+                            ? "bg-[var(--accent)] text-[var(--accent-fg)]"
+                            : "text-[var(--text-dim)] hover:text-[var(--text)] border border-[var(--line)]"}`}>
+              {g.name || "All"}{g.presses != null ? ` · ${fmtInt(g.presses)}` : ""}
+            </button>
+          ))}
+          {a.currentGame && <span className="font-mono text-[10px] text-[var(--accent)]">● now: {a.currentGame}</span>}
+        </div>
+      )}
       <DataGate>
         <HeatmapBoard keys={a && a.keys}/>
         <Note>Click a key to see its numbers in Overview; Ctrl-click to add keys. Colour = share of presses against the busiest key.</Note>
@@ -462,7 +479,7 @@ const ANALYTICS_WIDGETS = [
 window.AetherWorkspaces = window.AetherWorkspaces || {};
 window.AetherWorkspaces.ANALYTICS_WIDGETS = ANALYTICS_WIDGETS;
 window.AetherAnalytics = {
-  store, useAnalytics, refreshAnalytics, refreshTune, setDays,
+  store, useAnalytics, refreshAnalytics, refreshTune, setDays, setGame,
   heatColor, heatLedMap, topSuggestions,
   HeatmapBoard, DailyBars, SuggestionCard, SuggestionList, applySuggestion,
 };

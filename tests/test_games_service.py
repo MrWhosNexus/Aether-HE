@@ -236,3 +236,15 @@ def test_nothing_about_other_processes_is_kept(tmp_path):
     blob = json.dumps(s.data) + json.dumps(svc.status())
     assert "chrome" not in blob and "explorer" not in blob
     assert not hasattr(svc, "processes")
+
+
+def test_foreground_game_feeds_the_stats_hook_on_change_only(tmp_path):
+    svc, _, scan, clock = _svc(tmp_path)
+    fg = []
+    svc.on_foreground = fg.append
+    scan.running, scan.fg = {STARFALL}, STARFALL
+    _polls(svc, clock, 3)
+    assert fg == ["Starfall Arena"]
+    scan.fg = None                                        # alt-tab out, still running
+    _polls(svc, clock, 2)
+    assert fg == ["Starfall Arena", None]

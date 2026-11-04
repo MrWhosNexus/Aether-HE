@@ -32,6 +32,11 @@ rest; in memory a bucket is ``idx`` or ``(idx, act)``. ``load_day`` and
 and ``recent_buckets`` keep them apart so auto-tune can use only the presses
 recorded at a key's CURRENT actuation. Files written before the split hold
 only ``"<idx>"`` keys and load as the unknown-actuation bucket.
+
+Per-game view: while a detected game is in the foreground (``set_game``),
+each run is ALSO folded into ``"games": {name: {board: {bucket: agg}}}`` of
+the day file - the same counters, nothing more (no times, no order). At most
+MAX_GAMES names per day; names are trimmed to GAME_NAME_MAX printable chars.
 """
 import datetime
 import json
@@ -53,6 +58,16 @@ FIELDS = ("presses", "shallow", "barely", "bottom", "unrated", "ttp_ms")
 FILE_VERSION = 1
 KEEP_DAYS = 90
 FLUSH_INTERVAL_S = 60.0
+MAX_GAMES = 40
+GAME_NAME_MAX = 64
+
+
+def clean_game(name):
+    """A game label safe to store, or None."""
+    if not isinstance(name, str):
+        return None
+    s = "".join(ch for ch in name if ch.isprintable()).strip()[:GAME_NAME_MAX]
+    return s or None
 
 
 def empty_agg():
@@ -123,7 +138,8 @@ class Telemetry:
         self._io_lock = threading.Lock()
         self._open = {}      # idx -> [t_start, peak_raw, t_peak, trough_raw]
         self._act = {}       # idx -> actuation in hundredths of a mm
-        self._pending = {}   # (date, board) -> {bucket: agg}
+        self._pending = {}   # (date, board, game|None) -> {bucket: agg}
+        self._game = None    # foreground game label (per-game view) or None
         self._flusher = None
         self._stop = threading.Event()
 
@@ -147,6 +163,16 @@ class Telemetry:
             self._board = slug
             self._open.clear()
             self._act.clear()
+
+    @property
+    def game(self):
+        return self._game
+
+    def set_game(self, name):
+        """The foreground game (None = none): later runs are also counted
+        under it. A press in flight is filed under the game at its end."""
+        with self._lock:
+            self._game = clean_game(name)
 
     def set_actuation(self, mm_by_idx):
         with self._lock:
@@ -204,8 +230,15 @@ class Telemetry:
             return
         act = self._act.get(idx)
         bucket = idx if act is None else (idx, act)
-        agg = self._pending.setdefault((self._today(), self._board), {}) \
-            .setdefault(bucket, empty_agg())
+        date = self._today()
+        for game in ((None, self._game) if self._game else (None,)):
+            agg = self._pending.setdefault((date, self._board, game), {}) \
+                .setdefault(bucket, empty_agg())
+            self._fold(agg, peak, act, t_start, t_peak)
+        self._ensure_flusher()
+
+    @staticmethod
+    def _fold(agg, peak, act, t_start, t_peak):
         agg["hist"][min(HIST_BINS - 1, peak // 10)] += 1
         if peak >= BOTTOM_RAW:
             agg["bottom"] += 1
@@ -218,7 +251,6 @@ class Telemetry:
             elif peak <= act + BARELY_RAW:
                 agg["barely"] += 1
             agg["ttp_ms"] += min(TTP_CAP_MS, int(round((t_peak - t_start) * 1000)))
-        self._ensure_flusher()
 
     def _ensure_flusher(self):
         """Start the daemon flusher on the first recorded run (lock held)."""
@@ -259,16 +291,31 @@ class Telemetry:
 
     def _read_day(self, date):
         """board -> {bucket: agg} from the day file; {} when missing/corrupt."""
+        return self._read_doc(date)[0]
+
+    def _read_doc(self, date):
+        """(boards, games) of the day file: board -> {bucket: agg} and
+        game -> board -> {bucket: agg}; empty when missing/corrupt."""
         try:
             with open(self._path(date), "r", encoding="utf-8") as fh:
                 doc = json.load(fh)
         except (OSError, ValueError):
-            return {}
+            return {}, {}
         if not isinstance(doc, dict) or doc.get("version") != FILE_VERSION:
-            return {}
+            return {}, {}
+        games = {}
+        raw_games = doc.get("games")
+        if isinstance(raw_games, dict):
+            for name, gboards in list(raw_games.items())[:MAX_GAMES]:
+                g = clean_game(name)
+                if g and isinstance(gboards, dict):
+                    games[g] = self._parse_boards(gboards)
         boards = doc.get("boards")
         if not isinstance(boards, dict):
-            return {}
+            return {}, games
+        return self._parse_boards(boards), games
+
+    def _parse_boards(self, boards):
         out = {}
         for slug, keys in boards.items():
             if not isinstance(slug, str) or not isinstance(keys, dict):
@@ -283,13 +330,16 @@ class Telemetry:
                 part[bucket] = self._sanitise(rec)
         return out
 
-    def load_day_buckets(self, date):
+    def load_day_buckets(self, date, game=None):
         """bucket -> aggregate for one day (file + pending) on the current
-        board. A bucket is ``idx`` (actuation unknown) or ``(idx, act)``."""
+        board. A bucket is ``idx`` (actuation unknown) or ``(idx, act)``.
+        `game`: only the runs counted while that game was in front."""
         with self._io_lock:
-            out = dict(self._read_day(date).get(self._board, {}))
+            boards, games = self._read_doc(date)
+            src = boards if game is None else games.get(game, {})
+            out = dict(src.get(self._board, {}))
             with self._lock:
-                for b, a in self._pending.get((date, self._board), {}).items():
+                for b, a in self._pending.get((date, self._board, game), {}).items():
                     merge_agg(out.setdefault(b, empty_agg()), a)
             return out
 
@@ -308,8 +358,8 @@ class Telemetry:
             with self._lock:
                 snap, self._pending = self._pending, {}
             by_date = {}
-            for (date, slug), keys in snap.items():
-                by_date.setdefault(date, {})[slug] = keys
+            for (date, slug, game), keys in snap.items():
+                by_date.setdefault(date, {})[(slug, game)] = keys
             ok = True
             failed = []
             todo = by_date
@@ -323,15 +373,24 @@ class Telemetry:
                 todo = {}
             for date, boards in todo.items():
                 try:
-                    cur = self._read_day(date)
-                    for slug, keys in boards.items():
-                        part = cur.setdefault(slug, {})
+                    cur, cur_games = self._read_doc(date)
+                    for (slug, game), keys in boards.items():
+                        if game is None:
+                            part = cur.setdefault(slug, {})
+                        elif game in cur_games or len(cur_games) < MAX_GAMES:
+                            part = cur_games.setdefault(game, {}).setdefault(slug, {})
+                        else:
+                            continue                   # per-day game cap
                         for b, a in keys.items():
                             merge_agg(part.setdefault(b, empty_agg()), a)
+
+                    def ser(bs):
+                        return {slug: {_bucket_str(b): a for b, a in keys.items()}
+                                for slug, keys in bs.items()}
                     doc = {"version": FILE_VERSION, "date": date,
-                           "boards": {slug: {_bucket_str(b): a
-                                             for b, a in keys.items()}
-                                      for slug, keys in cur.items()}}
+                           "boards": ser(cur)}
+                    if cur_games:
+                        doc["games"] = {g: ser(bs) for g, bs in cur_games.items()}
                     path = self._path(date)
                     tmp = path + ".tmp"
                     with open(tmp, "w", encoding="utf-8") as fh:
@@ -345,8 +404,8 @@ class Telemetry:
             if failed:
                 with self._lock:
                     for date in failed:
-                        for slug, keys in by_date[date].items():
-                            dst = self._pending.setdefault((date, slug), {})
+                        for (slug, game), keys in by_date[date].items():
+                            dst = self._pending.setdefault((date, slug, game), {})
                             for b, a in keys.items():
                                 merge_agg(dst.setdefault(b, empty_agg()), a)
             self._prune()
@@ -407,15 +466,36 @@ class Telemetry:
 
     # ---- reading -------------------------------------------------------
 
-    def recent_buckets(self, days):
-        """[(date, load_day_buckets(date)), ...] for the last `days` days
-        (at least 1), newest first, today included."""
+    def recent_buckets(self, days, game=None):
+        """[(date, load_day_buckets(date, game)), ...] for the last `days`
+        days (at least 1), newest first, today included."""
         today = datetime.date.fromisoformat(self._today())
         out = []
         for k in range(max(1, int(days))):
             d = (today - datetime.timedelta(days=k)).isoformat()
-            out.append((d, self.load_day_buckets(d)))
+            out.append((d, self.load_day_buckets(d, game)))
         return out
+
+    def games_seen(self, days):
+        """[{"name", "presses"}] of the games with counted presses on the
+        current board in the last `days` days, busiest first."""
+        today = datetime.date.fromisoformat(self._today())
+        tot = {}
+        for k in range(max(1, int(days))):
+            d = (today - datetime.timedelta(days=k)).isoformat()
+            with self._io_lock:
+                games = self._read_doc(d)[1]
+                with self._lock:
+                    pend = {g: keys for (dd, slug, g), keys in self._pending.items()
+                            if dd == d and slug == self._board and g is not None}
+            for g, bs in games.items():
+                for a in bs.get(self._board, {}).values():
+                    tot[g] = tot.get(g, 0) + a["presses"]
+            for g, keys in pend.items():
+                for a in keys.values():
+                    tot[g] = tot.get(g, 0) + a["presses"]
+        return [{"name": g, "presses": n}
+                for g, n in sorted(tot.items(), key=lambda kv: (-kv[1], kv[0].lower()))]
 
     def aggregate(self, days=1):
         today = datetime.date.fromisoformat(self._today())

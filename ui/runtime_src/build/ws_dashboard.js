@@ -289,7 +289,7 @@
     const An = AN();
     const today = todayFrom(a);
     const panelMode = mode === "heatmap" ? "lighting" : mode === "actuation" ? "actuation" : "keymap";
-    const meta = mode === "heatmap" ? a && a.supported === false ? "" : today ? `today · ${fmtInt(today.presses)} presses` : "loading…" : mode === "live" ? ctx.connected ? `live · deepest ${(deepest < 0.05 ? 0 : deepest).toFixed(2)} mm` : "offline" : mode === "actuation" ? ctx.connected ? Object.keys(override).length ? `read back · ${Object.keys(override).length} keys` : "reading…" : "offline · not from the board" : "";
+    const meta = mode === "heatmap" ? a && a.supported === false ? "" : today ? `${a.game ? a.game + " · " : ""}today · ${fmtInt(today.presses)} presses` : "loading…" : mode === "live" ? ctx.connected ? `live · deepest ${(deepest < 0.05 ? 0 : deepest).toFixed(2)} mm` : "offline" : mode === "actuation" ? ctx.connected ? Object.keys(override).length ? `read back · ${Object.keys(override).length} keys` : "reading…" : "offline · not from the board" : "";
     const codes = Array.from(focus);
     const c = codes.length === 1 ? codes[0] : null;
     let caption;

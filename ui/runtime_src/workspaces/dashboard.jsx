@@ -207,7 +207,7 @@ function Hero({ ctx, store, modes, mode, setMode }) {
 
   const panelMode = mode === "heatmap" ? "lighting" : mode === "actuation" ? "actuation" : "keymap";
   const meta = mode === "heatmap"
-      ? (a && a.supported === false ? "" : today ? `today · ${fmtInt(today.presses)} presses` : "loading…")
+      ? (a && a.supported === false ? "" : today ? `${a.game ? a.game + " · " : ""}today · ${fmtInt(today.presses)} presses` : "loading…")
     : mode === "live"
       ? (ctx.connected ? `live · deepest ${(deepest < 0.05 ? 0 : deepest).toFixed(2)} mm` : "offline")
     : mode === "actuation"

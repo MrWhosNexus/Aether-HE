@@ -518,12 +518,20 @@ class Api:
         if g is None:
             return False
         g.on_detected = on_detected
+        g.on_foreground = self._stats_game
         return g.start()
+
+    def _stats_game(self, name):
+        """Foreground game for the per-game key statistics (None = none)."""
+        tel = getattr(self, "telemetry", None)
+        if tel is not None:
+            tel.set_game(name)
 
     def _stop_games(self):
         g = getattr(self, "_games", None)
         if g is not None:
             g.stop()
+        self._stats_game(None)
 
 
     def _stats_supported(self):
@@ -691,7 +699,7 @@ class Api:
             return self._fail(e)
 
     # ---- typing analytics + auto-tune (Phase 4; aggregates only) ----
-    def get_analytics(self, days=14):
+    def get_analytics(self, days=14, game=None):
         """Analytics views over the last `days` days (1..90): per design code
         presses / shallow / barely / bottom-out counts and percentages,
         average peak depth, heat 0..1; board totals; and presses per day for
@@ -703,11 +711,13 @@ class Api:
             days = _clamp_stats_days(days)
             km = getattr(self, "km", None)
             code_of = km.code_of if km else (lambda i: None)
+            game = telemetry.clean_game(game) if game else None
             out = analytics.summarize(
-                tel.recent_buckets(max(days, analytics.DAILY_DAYS)), code_of, days)
+                tel.recent_buckets(max(days, analytics.DAILY_DAYS), game), code_of, days)
             out.update(ok=True, enabled=tel.enabled,
                        supported=self._stats_supported(), board=tel.board,
-                       days=days)
+                       days=days, game=game, games=tel.games_seen(days),
+                       currentGame=tel.game)
             return out
         except Exception as e:
             return self._fail(e)

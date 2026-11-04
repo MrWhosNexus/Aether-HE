@@ -676,6 +676,8 @@ class GameService:
         self._clock = clock
         self.switcher = GameSwitcher()
         self.on_detected = None            # callback(name or None): tray tooltip
+        self.on_foreground = None          # callback(name or None): per-game key stats
+        self._fg_label = None
         self.profiles = []                 # [{"id", "name"}] from games_sync
         self.active_profile = None
         self.detected = []
@@ -818,6 +820,9 @@ class GameService:
             changed = shown != self.shown
             self.shown = shown
             label = self.index.name_of(shown) if shown else None
+            fg_label = (self.index.name_of(self.foreground) or self.foreground)                 if self.foreground else None
+            fg_changed = fg_label != self._fg_label
+            self._fg_label = fg_label
         if sw:
             # No game name here: aether.log is timestamped and rotated, so a
             # name would be a play history. The profile id and reason suffice.
@@ -825,6 +830,11 @@ class GameService:
         if changed and self.on_detected is not None:
             try:
                 self.on_detected(label)
+            except Exception:
+                pass
+        if fg_changed and self.on_foreground is not None:
+            try:
+                self.on_foreground(fg_label)
             except Exception:
                 pass
         return sw

@@ -67,7 +67,9 @@ def test_get_analytics_output_is_aggregates_only(tmp_path):
     _type(a, "W", 2, [1.0, 2.0])
     r = a.get_analytics(1)
     assert set(r) == {"ok", "enabled", "supported", "board", "days", "keys",
-                      "totals", "daily"}
+                      "totals", "daily", "game", "games", "currentGame"}
+    for g in r["games"]:
+        assert set(g) == {"name", "presses"}
     for rec in r["keys"].values():
         assert set(rec) == {"presses", "shallow", "barely", "bottom",
                             "unrated", "attempts", "bottom_pct", "shallow_pct",
@@ -180,3 +182,19 @@ def test_get_tune_suggestions_never_writes(tmp_path):
     _type(a, "Space", 30, [0.30, 0.55], t0=t)
     assert a.get_tune_suggestions()["suggestions"]
     assert calls == []
+
+
+def test_get_analytics_filters_by_game_and_lists_games(tmp_path):
+    a = _api(tmp_path)
+    _type(a, "A", 3, [1.0, 2.0])
+    a._stats_game("Valorant")
+    _type(a, "D", 5, [1.0, 2.0], t0=50.0)
+    all_ = a.get_analytics(1)
+    assert all_["keys"]["A"]["presses"] == 3 and all_["keys"]["D"]["presses"] == 5
+    assert all_["games"] == [{"name": "Valorant", "presses": 5}]
+    assert all_["currentGame"] == "Valorant" and all_["game"] is None
+    v = a.get_analytics(1, "Valorant")
+    assert v["game"] == "Valorant"
+    assert "A" not in v["keys"] and v["keys"]["D"]["presses"] == 5
+    a._stats_game(None)
+    assert a.get_analytics(1)["currentGame"] is None
