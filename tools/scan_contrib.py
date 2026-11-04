@@ -19,6 +19,12 @@ This is an ALLOWLIST scan of the AST (nothing is imported or run):
   * no eval/exec/compile/__import__/open/... builtins; no getattr & co. with
     a computed name or on a module; no dunder escape hatches.
 
+This is a FILTER in front of human review, not a sandbox: Python is too
+dynamic for a static check to prove code harmless. The controls that matter
+are that contributed code is never run before a maintainer has read it
+(CI here only parses it), CODEOWNERS review on main, and testers getting
+builds from our CI only. The scan's job is to make anything unusual loud.
+
     python tools/scan_contrib.py            # scan the repo's protocol/driver files
     python tools/scan_contrib.py a.py b.py  # scan given files
 Exit 1 with one line per finding.
@@ -79,7 +85,15 @@ GLOBAL_FORBIDDEN_ATTRS = {"os", "sys", "subprocess", "socket", "builtins", "impo
                           "ctypes", "shutil", "pickle", "marshal", "pty", "system",
                           "popen", "spawn", "spawnv", "spawnl", "exec", "execv", "execl",
                           "modules", "loader", "f_back", "cr_frame", "ag_frame",
-                          "startfile", "check_output", "check_call", "Popen"}
+                          "startfile", "check_output", "check_call", "Popen",
+                          # builtins reached through some object (X.eval). `open`
+                          # is NOT here: device.open() is the drivers' job, and
+                          # the builtins module itself is unreachable (every
+                          # dunder and `.builtins` are refused).
+                          "eval", "compile", "input", "breakpoint", "globals",
+                          "vars", "locals"}
+# Every dunder attribute is refused except these (super().__init__(...)).
+ALLOWED_DUNDERS = {"__init__", "__name__", "__qualname__", "__doc__"}
 FORBIDDEN_CALLS = {"eval", "exec", "compile", "__import__", "open", "input",
                    "breakpoint", "globals", "vars", "locals"}
 ATTR_CALLS = {"getattr", "setattr", "hasattr", "delattr"}
@@ -199,6 +213,14 @@ def scan_source(src, path="<src>"):
                     out.append(f"{path}:{line}: {fn}() with a computed attribute name")
                 elif name.value.startswith("__") or name.value in GLOBAL_FORBIDDEN_ATTRS:
                     out.append(f"{path}:{line}: {fn}() of {name.value}")
+        elif (isinstance(node, ast.Name) and node.id in (ATTR_CALLS | FORBIDDEN_CALLS)
+              and not (isinstance(parent.get(node), ast.Call) and parent[node].func is node)):
+            out.append(f"{path}:{line}: builtin {node.id} used as a value")
+        elif (isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Constant)
+              and isinstance(node.slice.value, str)
+              and ((node.slice.value.startswith("__") and node.slice.value not in ALLOWED_DUNDERS)
+                   or node.slice.value in GLOBAL_FORBIDDEN_ATTRS)):
+            out.append(f"{path}:{line}: [{node.slice.value!r}]")
         elif isinstance(node, ast.Name) and node.id in mods:
             up = parent.get(node)
             if not (isinstance(up, ast.Attribute) and up.value is node):
@@ -206,7 +228,8 @@ def scan_source(src, path="<src>"):
                 out.append(f"{path}:{line}: module {node.id} used as a value "
                            f"(only {node.id}.<attribute> is allowed)")
         elif isinstance(node, ast.Attribute):
-            if node.attr in DUNDER_ESCAPES:
+            if node.attr in DUNDER_ESCAPES or (node.attr.startswith("__")
+                                               and node.attr not in ALLOWED_DUNDERS):
                 out.append(f"{path}:{line}: .{node.attr}")
             if node.attr in GLOBAL_FORBIDDEN_ATTRS:
                 out.append(f"{path}:{line}: .{node.attr} (never allowed as an attribute)")

@@ -153,3 +153,21 @@ def test_round6_untracked_aliases_cannot_walk_to_modules():
                 "getattr(thing, 'modules')\n",
                 "a = b\na.popen('x')\n"):
         assert _hits(src), src
+
+
+def test_round7_builtin_self_and_value_builtins_are_caught():
+    for src in ("len.__self__.open('f')\n",
+                "f.__func__\n", "f.__wrapped__\n", "f.__closure__[0].cell_contents\n",
+                "x.__getattr__('a')\n",
+                "g = getattr\ng(thing, name)\n",
+                "fns = [eval]\n",
+                "call(exec, 'x')\n",
+                "obj.eval('1')\n", "obj.compile('x')\n", "obj.globals()\n",
+                "d['__builtins__']\n", "d['sys']\n"):
+        assert _hits(src), src
+
+
+def test_round7_normal_code_passes():
+    assert _hits("class D(Base):\n    def __init__(self):\n        super().__init__()\n"
+                 "        self.dev.open()\n        n = type(self).__name__\n"
+                 "        v = cfg['_note'] if False else cfg['frameLen']\n") == []
