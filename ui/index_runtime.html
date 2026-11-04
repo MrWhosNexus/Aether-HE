@@ -41538,25 +41538,30 @@
     }, err));
   }
 
-  /* ===== Backup/Import widget =====
+  /* ===== Backup/Import widget ===== */
   function BackupWidget(ctx) {
-    const { applyState, collectState, profiles } = ctx;
+    const {
+      applyState,
+      collectState,
+      profiles
+    } = ctx;
     const [message, setMessage] = useState("");
-  
     const handleExport = () => {
       try {
         // Capture the REAL current configuration. collectState() is the exact
         // flat shape applyState() consumes on import, so export->import round-
         // trips; profiles is included so the whole saved set travels with it.
-        const live = (typeof collectState === "function" && collectState()) || {};
+        const live = typeof collectState === "function" && collectState() || {};
         const state = {
           timestamp: new Date().toISOString(),
           app: "AetherHE",
           profiles: Array.isArray(profiles) ? profiles : [],
-          ...live,
+          ...live
         };
         const json = JSON.stringify(state, null, 2);
-        const blob = new Blob([json], { type: "application/json" });
+        const blob = new Blob([json], {
+          type: "application/json"
+        });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
@@ -41570,12 +41575,11 @@
         setTimeout(() => setMessage(""), 2400);
       }
     };
-  
     const handleImport = async () => {
       const input = document.createElement("input");
       input.type = "file";
       input.accept = "application/json";
-      input.onchange = async (e) => {
+      input.onchange = async e => {
         const file = e.target.files?.[0];
         if (!file) return;
         try {
@@ -41593,37 +41597,23 @@
       };
       input.click();
     };
-  
-    return (
-      <div>
-        <div className="font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)] mb-3">
-          Settings
-        </div>
-  
-        <p className="text-[11.5px] text-[var(--text-faint)] leading-relaxed mb-4">
-          Export or import your configuration. Backups include profiles, keymaps, lighting effects, and all settings.
-        </p>
-  
-        <div className="flex flex-col gap-2">
-          <button onClick={handleExport}
-            className="h-9 rounded-md border border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] font-display text-[11px] uppercase tracking-[0.16em] hover:bg-[var(--accent)]/25 transition-all">
-            {IDownload ? "↓" : "Export"} Export
-          </button>
-          <button onClick={handleImport}
-            className="h-9 rounded-md border border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] font-display text-[11px] uppercase tracking-[0.16em] hover:bg-[var(--accent)]/25 transition-all">
-            {IDownload ? "↑" : "Import"} Import
-          </button>
-        </div>
-  
-        {message && (
-          <div className="mt-3 text-[11px] font-mono uppercase tracking-[0.16em] text-[var(--accent)]">
-            ✓ {message}
-          </div>
-        )}
-      </div>
-    );
+    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "font-display text-[11px] uppercase tracking-[0.18em] text-[var(--text-dim)] mb-3"
+    }, "Settings"), /*#__PURE__*/React.createElement("p", {
+      className: "text-[11.5px] text-[var(--text-faint)] leading-relaxed mb-4"
+    }, "Export or import your configuration. Backups include profiles, keymaps, lighting effects, and all settings."), /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-col gap-2"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: handleExport,
+      className: "h-9 rounded-md border border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] font-display text-[11px] uppercase tracking-[0.16em] hover:bg-[var(--accent)]/25 transition-all"
+    }, IDownload ? "↓" : "Export", " Export"), /*#__PURE__*/React.createElement("button", {
+      onClick: handleImport,
+      className: "h-9 rounded-md border border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)] font-display text-[11px] uppercase tracking-[0.16em] hover:bg-[var(--accent)]/25 transition-all"
+    }, IDownload ? "↑" : "Import", " Import")), message && /*#__PURE__*/React.createElement("div", {
+      className: "mt-3 text-[11px] font-mono uppercase tracking-[0.16em] text-[var(--accent)]"
+    }, "\u2713 ", message));
   }
-  
+
   /* ===== About/Update widget ===== */
   function AboutWidget(ctx) {
     const {

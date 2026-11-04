@@ -403,7 +403,7 @@ function StatsWidget() {
   );
 }
 
-/* ===== Backup/Import widget =====
+/* ===== Backup/Import widget ===== */
 function BackupWidget(ctx) {
   const { applyState, collectState, profiles } = ctx;
   const [message, setMessage] = useState("");
