@@ -40,6 +40,7 @@ venv-web/bin/python ui/runtime_src/build_runtime.py
   120 bump was tried and reverted because it saturated the USB pipe. Per-board caps come
   from `lighting.hostEngineMaxFps` in the registry (MINI 60 HE PRO measured at 28).
   Optional engine sources: `get_depths` and `get_actuation` (set by `Api._ensure_reactive`).
+- `music.py` — Phase 7 music visualizer: WASAPI loopback of the default output (soundcard) -> 1024-pt FFT (numpy) -> 14 log bands 40 Hz-16 kHz -> auto-gain levels + energy-flux beats. Windows only; numpy/soundcard are imported lazily on the capture thread; without them `music_status()` says why and the effect idles. The engine starts/stops `MusicSource` with the zones (capture runs only while a `music` zone runs). Audio is processed in memory only, never recorded.
 - `overlays.py` — "status on keys" (roadmap Phase 6): CPU bar (number row 1-0), RAM bar (Q-P), GPU bar (home row, `nvidia-smi` only), Pomodoro 25/5 progress (shift row, whole-board pulse at each phase change) and `flash(color, ms)`, composited by `effects.PerKeyEffectEngine.overlay` onto whatever the engine streams (fixed colours, opaque bars, no extra frame rate). 1 s sampler thread (ctypes `GetSystemTimes` / `GlobalMemoryStatusEx`, no psutil), only while a sensor overlay is on and the keyboard handle is open. Per-profile flags live in `settings.json` top-level `overlays` (Aether-owned; optional `pomodoro.workMin/breakMin`). Over firmware lighting (static / Full-RGB / per-key paint / off) `Api.set_light` / `set_custom_colors` record the UI's call and a host-engine "carrier" reproduces it; the last overlay going off re-sends the firmware lighting once. Bridges: `get_overlays` / `set_overlay` (the dashboard tile's contract), `flash`. Tests inject sensors and the `nvidia-smi` runner; nothing here touches HID.
 - `gamepad.py` — Linux uinput virtual gamepad (LINUX ONLY; self-disables elsewhere).
 - `tray.py` — tray residency (pystray, Windows): closing the window HIDES it and the effect
@@ -101,6 +102,7 @@ from center outward, wide+slow ("rock in pond"); **Speed-Respond** = click-rate 
 key's actuation point -> full at bottom-out), instant attack, 120 ms fall; per-key actuation
 comes from `Api._act_mm` (read-back + successful writes), unknown keys use the median, else
 1.70 mm.
+**Music** = 14 band columns, height over the rows, palette bottom->top, background pulse on beats (not press-reactive: not in `PRESS_REACTIVE`/`HOST_FX_FAST`).
 **Rain** = Matrix curtain (dense columns, bright heads, long tails). Per-frame spawners
 (rain/twinkle/frenzy) scale by `_SPAWN_NORM` so density is FPS-independent.
 
