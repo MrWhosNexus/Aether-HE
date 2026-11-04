@@ -106,9 +106,18 @@ class LiveReader:
         # A key held at constant depth produces no further reports, so any
         # time-based "haven't heard from this key in N ms → released" rule
         # makes held keys vanish from the UI. Instead we trust the firmware's
-        # next report: cache the last reported depth and only clear an entry
-        # when a fresh report arrives at or below the firmware's noise floor.
+        # next report: cache the last reported depth and clear an entry when a
+        # fresh report arrives at or below the firmware's noise floor.
         self.NOISE_MM = 0.05
+        # ...but on release the firmware usually stops reporting MID-TRAVEL
+        # (last frame 0.07-0.98 mm in a WIN 60 HE capture, 2026-11-03) and
+        # never sends the ~0 frame, so the rule above alone left released
+        # keys stuck partway down. A held key's last report moved DOWN (or was
+        # its only one); a released key's last report moved UP. So a key whose
+        # last report was upward motion is cleared after this much silence.
+        # The firmware's own gap between frames of one moving key reaches
+        # ~140 ms, so a shorter window would flicker mid-release.
+        self.RELEASE_SILENCE_S = 0.15
         self._stop = threading.Event()
         self._thread = None
 
@@ -152,6 +161,9 @@ class LiveReader:
         depths = self.depths
         depths_idx = self._depths_idx
         noise = self.NOISE_MM
+        release_silence = self.RELEASE_SILENCE_S
+        lifting = {}   # device index -> (monotonic time of its last report, code)
+                       # for keys whose last report moved UP (see __init__)
         last_open = 0.0
         dead = 0   # consecutive dead-handle / failed-read cycles (self-teardown)
         while not stop_ev.is_set():
@@ -199,7 +211,13 @@ class LiveReader:
                                 if depth < noise:
                                     depths.pop(code, None)
                                     depths_idx.pop(idx, None)
+                                    lifting.pop(idx, None)
                                 else:
+                                    prev = depths_idx.get(idx)
+                                    if prev is not None and depth < prev:
+                                        lifting[idx] = (now, code)
+                                    else:
+                                        lifting.pop(idx, None)
                                     depths[code] = depth
                                     depths_idx[idx] = depth
                                 got = True
@@ -218,6 +236,15 @@ class LiveReader:
                             pass
                     break
                 time.sleep(0.05); continue
+            # Released keys whose last report was mid-travel: clear once the
+            # stream has stayed silent for them (see RELEASE_SILENCE_S).
+            if lifting:
+                t_now = time.monotonic()
+                for idx, (t_last, code) in list(lifting.items()):
+                    if t_now - t_last > release_silence:
+                        depths.pop(code, None)
+                        depths_idx.pop(idx, None)
+                        del lifting[idx]
             # This reader drains EVERY report off the shared handle (a probe's
             # heartbeat reply included), so it is the one that must record
             # that the board answered (Api.status liveness).
