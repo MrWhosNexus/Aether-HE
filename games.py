@@ -357,3 +357,162 @@ class DetectableStore:
     def info(self):
         return {"count": len(self.games), "fetched": self.fetched,
                 "stale": self.is_stale(), "error": self.last_error}
+
+
+def processes_supported(platform=None):
+    """Process enumeration exists on Windows only."""
+    return (platform or sys.platform).startswith("win")
+
+
+_W = None
+_INVALID_HANDLE = ctypes.c_void_p(-1).value
+
+
+def _win():
+    """kernel32/user32 entry points with explicit argtypes (64-bit handles)."""
+    global _W
+    if _W is None:
+        from ctypes import wintypes as wt
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        u32 = ctypes.WinDLL("user32", use_last_error=True)
+
+        class PROCESSENTRY32W(ctypes.Structure):
+            _fields_ = [("dwSize", wt.DWORD), ("cntUsage", wt.DWORD),
+                        ("th32ProcessID", wt.DWORD), ("th32DefaultHeapID", ctypes.c_size_t),
+                        ("th32ModuleID", wt.DWORD), ("cntThreads", wt.DWORD),
+                        ("th32ParentProcessID", wt.DWORD), ("pcPriClassBase", ctypes.c_long),
+                        ("dwFlags", wt.DWORD), ("szExeFile", ctypes.c_wchar * 260)]
+
+        pe_p = ctypes.POINTER(PROCESSENTRY32W)
+        k32.CreateToolhelp32Snapshot.argtypes = [wt.DWORD, wt.DWORD]
+        k32.CreateToolhelp32Snapshot.restype = wt.HANDLE
+        k32.Process32FirstW.argtypes = [wt.HANDLE, pe_p]
+        k32.Process32FirstW.restype = wt.BOOL
+        k32.Process32NextW.argtypes = [wt.HANDLE, pe_p]
+        k32.Process32NextW.restype = wt.BOOL
+        k32.OpenProcess.argtypes = [wt.DWORD, wt.BOOL, wt.DWORD]
+        k32.OpenProcess.restype = wt.HANDLE
+        k32.QueryFullProcessImageNameW.argtypes = [wt.HANDLE, wt.DWORD, wt.LPWSTR,
+                                                   ctypes.POINTER(wt.DWORD)]
+        k32.QueryFullProcessImageNameW.restype = wt.BOOL
+        k32.CloseHandle.argtypes = [wt.HANDLE]
+        k32.CloseHandle.restype = wt.BOOL
+        u32.GetForegroundWindow.argtypes = []
+        u32.GetForegroundWindow.restype = wt.HWND
+        u32.GetWindowThreadProcessId.argtypes = [wt.HWND, ctypes.POINTER(wt.DWORD)]
+        u32.GetWindowThreadProcessId.restype = wt.DWORD
+        _W = types.SimpleNamespace(k32=k32, u32=u32, PE=PROCESSENTRY32W, wt=wt)
+    return _W
+
+
+def list_processes():
+    """[(pid, file name)] of every process (Toolhelp32). [] off Windows or
+    on any failure. Transient: callers must not keep it."""
+    if not processes_supported():
+        return []
+    try:
+        w = _win()
+        snap = w.k32.CreateToolhelp32Snapshot(0x2, 0)       # TH32CS_SNAPPROCESS
+        if not snap or snap == _INVALID_HANDLE:
+            return []
+        try:
+            e = w.PE()
+            e.dwSize = ctypes.sizeof(w.PE)
+            out = []
+            ok = w.k32.Process32FirstW(snap, ctypes.byref(e))
+            while ok:
+                out.append((int(e.th32ProcessID), e.szExeFile))
+                ok = w.k32.Process32NextW(snap, ctypes.byref(e))
+            return out
+        finally:
+            w.k32.CloseHandle(snap)
+    except Exception as ex:
+        log.debug("process list unavailable: %s", ex)
+        return []
+
+
+def process_path(pid):
+    """Full image path of `pid` (QueryFullProcessImageNameW with
+    PROCESS_QUERY_LIMITED_INFORMATION), or None (gone / access denied)."""
+    if not processes_supported():
+        return None
+    try:
+        w = _win()
+        h = w.k32.OpenProcess(0x1000, False, int(pid))
+        if not h:
+            return None
+        try:
+            size = w.wt.DWORD(1024)
+            buf = ctypes.create_unicode_buffer(1024)
+            if w.k32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size)):
+                return buf.value
+            return None
+        finally:
+            w.k32.CloseHandle(h)
+    except Exception:
+        return None
+
+
+def foreground_pid():
+    """PID owning the foreground window, or None."""
+    if not processes_supported():
+        return None
+    try:
+        w = _win()
+        hwnd = w.u32.GetForegroundWindow()
+        if not hwnd:
+            return None
+        pid = w.wt.DWORD(0)
+        w.u32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        return int(pid.value) or None
+    except Exception:
+        return None
+
+
+def scan(index, procs=None, path_of=None, fg=None):
+    """One detection pass -> (set of running game ids, id of the game that
+    owns the foreground window or None). Only processes whose file name ends
+    some pattern are opened; nothing about any other process is kept."""
+    procs = procs or list_processes
+    path_of = path_of or process_path
+    fg = fg or foreground_pid
+    fg_pid = fg()
+    running, fg_game = set(), None
+    for pid, base in procs():
+        if not index.could_match(base):
+            continue
+        gid = index.match(path_of(pid) or base)
+        if gid is None:
+            continue
+        running.add(gid)
+        if pid == fg_pid:
+            fg_game = gid
+    return running, fg_game
+
+
+def running_programs(index, procs=None, path_of=None, limit=200, own_pid=None):
+    """For the Settings "add a running program" picker, built on demand and
+    never stored: [{"exe": "folder/name.exe", "name", "gameId"}] for user
+    programs (the Windows folder and Aether itself skipped), one row per
+    exe, known games first, then by name."""
+    procs = procs or list_processes
+    path_of = path_of or process_path
+    own = os.getpid() if own_pid is None else own_pid
+    windir = norm_exe(os.environ.get("SystemRoot") or "C:\\Windows") or "windows"
+    rows, seen = [], set()
+    for pid, _base in procs():
+        if pid == own:
+            continue
+        n = norm_exe(path_of(pid) or "")
+        if not n or not n.endswith(".exe") or n.startswith(windir + "/"):
+            continue
+        suffix = "/".join(n.split("/")[-2:])
+        if suffix in seen:
+            continue
+        seen.add(suffix)
+        gid = index.match(n)
+        rows.append({"exe": suffix,
+                     "name": (index.name_of(gid) if gid else None) or n.rsplit("/", 1)[-1],
+                     "gameId": gid})
+    rows.sort(key=lambda r: (r["gameId"] is None, r["name"].lower()))
+    return rows[:limit]
