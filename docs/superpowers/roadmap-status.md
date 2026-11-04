@@ -117,6 +117,15 @@ Entry format:
 - For the user (morning): the 10 hardware checks and the veto/accept items for Phase 4 are already in "Waiting on the user" below (nothing new added).
 - Stopped early? No.
 
+## 2026-11-04 Phase 5 plan — planner (Opus)
+- Landed: b972eb4 docs/superpowers/plans/2026-11-04-phase-5-dashboard.md (5 tasks, 24 new tests + 1 skipped Phase 6 contract test; expect 1009 passed, 14 skipped). Code prototyped against the real tree (suite green; built page checked in a browser with a fake bridge at 1160x800 and 1700x1000), then reverted.
+- Decisions: Dashboard = ONE page (`workspaces/dashboard.jsx` -> `window.AetherWorkspaces.DASHBOARD_PAGE`, rendered by app.jsx in the zoomed 1480x900 canvas, no widget frames). Row 1: hero keyboard (Heatmap / Live depth / Actuation) + rail (connection + poll, profile + game, actuation read-back). Row 2: Today | Auto-tune top 3 (`SuggestionList compact`) | Lighting quick switch (+ Status on keys).
+- Decisions: no new bridge and no second loop. Live depth = new `ctx.setLiveView` holding app.jsx's Travel Test stream (one "analog" owner, released on mode/tab change); games = `ctx.games` from the existing 2 s games_status poll; analytics = `useAnalytics` with days forced to 1; lighting = `ctx.setPattern` (tray path).
+- Decisions: Dashboard first + landing; remembered tab wins after one intro launch (`globals.dashboardIntro`); unavailable tab falls back to dashboard. Top bar: tabs padding 11 px, inactive tabs icon-only below 1580 px (the bar already overflowed at <= ~1480 px before this phase).
+- For Phase 6 (contract): `Api.get_overlays()` -> {ok, supported, overlays: [{id: cpu|ram|gpu|pomodoro, label, row, on, available, reason, value 0..1|None}], pomodoro: {phase, remaining_s}}; `Api.set_overlay(id, on)` -> {ok, id, on}; never raise; `on` = active profile's toggle. The tile appears only when get_overlays answers ok with supported != false (polled 2 s while shown); `test_phase6_overlay_bridge_matches_the_dashboard_contract` un-skips when get_overlays exists.
+- For the user (morning): 10 hardware checks at the end of the plan; veto items queued below.
+- Stopped early? No.
+
 ## Waiting on the user
 - [DKS] Run the advanced-keys capture checklist (docs/context/aula-win60-advanced-keys-capture-checklist.md, ~20 min in hed.aulacn.com) to confirm the source-only decode.
 - [DKS] Open: does WIN60 firmware act on DKS/MT/TGL; DKS step codes 2/3; single-slot writes accepted; MT 10 ms unit; per-profile table?
@@ -130,3 +139,6 @@ Entry format:
 - [Phase 4] Run the 10 hardware checks at the end of docs/superpowers/plans/2026-11-04-phase-4-analytics.md (heatmap, shallow/barely counts, Apply + read-back, Undo, RT keys keep RT).
 - [Phase 4] Veto check: auto-tune thresholds are the spec's first guess (shallow > 5 % -> earlier, toward the 10th-percentile depth minus 0.1 mm, never below 0.30; barely-over > 15 % on letters -> 0.1-0.2 mm later; 200 presses minimum). WASD never gets "later" suggestions. Say if any feel wrong.
 - [Phase 4] Accept or schedule: a game-profile switch (Phase 3) writes one actuation to every key, replacing applied per-key auto-tune values until the revert; the revert writes the profile slider value, not the tuned values.
+- [Phase 5] Run the 10 hardware checks at the end of docs/superpowers/plans/2026-11-04-phase-5-dashboard.md (landing tab + remembered tab, heatmap/today numbers, live depth opens and closes the stream, Apply from the dashboard, game line, lighting quick switch, offline/other board).
+- [Phase 5] Veto check: Aether now opens on the Dashboard (existing installs once after the update, then the remembered tab); below 1580 px window width inactive top-bar tabs show only their icon (tooltip has the name). Before this the top bar already pushed Pair / zoom / gear off screen below ~1480 px.
+- [Phase 5] Accept: opening the Dashboard resets the Analytics tab's range to "Today".
