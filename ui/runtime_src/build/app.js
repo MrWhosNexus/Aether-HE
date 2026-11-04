@@ -182,7 +182,9 @@
     const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || "");
     return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : [0, 0, 0];
   };
-  const rgbToHex = rgb => "#" + (rgb || [0, 0, 0]).map(c => Math.max(0, Math.min(255, c | 0)).toString(16).padStart(2, "0")).join("");
+  // Non-array input (a malformed bridge reply) renders black instead of throwing:
+  // an exception here unmounted the whole app.
+  const rgbToHex = rgb => "#" + (Array.isArray(rgb) ? rgb : [0, 0, 0]).map(c => Math.max(0, Math.min(255, c | 0)).toString(16).padStart(2, "0")).join("");
   // Lighting %→firmware steps. `max` comes from the active board's registry
   // (lighting.brightnessMax/speedMax); the default 4 is the Win60 scale and
   // makes these exactly the legacy functions (0% = off). Boards with a

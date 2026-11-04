@@ -102,7 +102,7 @@ When your session ends, produce a handoff note via `agents/orchestration/05_HAND
 **Data / vendor / build:**
 - `data/boards.json`, `data/board_registry.json` — board metadata.
 - `vendor/ViGEmBus_Setup.exe` — Windows gamepad driver.
-- `driver_src/dec_agreement/deobfuscated.js` — reference deobfuscated Aula driver (read-only).
+- `research/vendor-reference/driver_src/dec_agreement/deobfuscated.js` — reference deobfuscated Aula driver (read-only, LOCAL ONLY: git-ignored, never published).
 - `design_handoff/` — upstream React prototype (reference only).
 - `flatpak/`, `installer.iss`, `AetherHE.spec`, `build_installer.bat`, `run.bat`, `run.sh` — packaging.
 

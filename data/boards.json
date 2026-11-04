@@ -31,7 +31,7 @@
       "switches": "Hall-effect",
       "lighting": "wip",
       "actuation": "wip",
-      "status": "Bring-up — auto-detected, shares the Win60 protocol; not yet verified on hardware"
+      "status": "Bring-up — auto-detected, shares the Win60 protocol; full 68-key layout and live travel confirmed from an owner's capture (#20), settings not yet round-tripped on hardware"
     }
   ],
   "recognized": [

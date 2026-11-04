@@ -134,6 +134,10 @@ function BoardSubmit({ open, onClose }) {
               We’ll record what the board <b>sends</b> (read-only — we never write to it).
               Press every key once, then a few keys slowly.
             </p>
+            <p className="font-mono text-[11px] text-amber-300/90 mb-2">
+              Don’t type passwords or anything private while capturing: the file records which
+              keys you press and when, and it is posted publicly on GitHub with your submission.
+            </p>
             <div className="glass p-4 mb-3">
               <div className="font-title text-[28px] text-[var(--accent)]">{keysSeen}</div>
               <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--text-faint)]">distinct reports · {reports.length} total</div>

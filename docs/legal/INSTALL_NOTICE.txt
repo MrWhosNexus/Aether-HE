@@ -1,0 +1,29 @@
+AETHER HE - BEFORE YOU INSTALL
+
+Aether HE is free, open-source software (GPL-3.0-or-later) made by an
+independent community. It is NOT made, endorsed or supported by Aula or any
+keyboard manufacturer. Product names are used only to say which hardware it
+works with.
+
+NO WARRANTY. Aether writes settings (lighting, actuation, Rapid Trigger, SOCD,
+key remaps, macros, calibration) to your keyboard. It is provided "as is",
+without any warranty, and the authors are not liable for damage to your
+keyboard, lost settings, lost warranty or any other loss (GPL-3.0 sections 15
+and 16). Boards marked "bring-up" or "experimental" have not been verified on
+real hardware. Aether never flashes firmware.
+
+GAMES AND COMPETITIONS. SOCD / Snap Tap behaviour, Rapid Trigger, macros, key
+remaps and the virtual gamepad are banned or restricted in some games,
+leagues and tournaments. Checking and following those rules is your
+responsibility.
+
+PRIVACY. Aether runs locally. No account, telemetry, analytics or AI service.
+Key statistics are per-key counts only, never what you type, and can be turned
+off. The app only goes online to check GitHub for updates and, for game
+detection, to fetch Discord's public list of game names. Details: PRIVACY.md.
+
+AI. Much of Aether was written with AI assistance and reviewed by a human
+maintainer. No AI runs inside the app. Details: AI_DISCLOSURE.md.
+
+These documents are installed in the "legal" folder next to the app and are
+published at https://github.com/MrWhosNexus/Aether-HE

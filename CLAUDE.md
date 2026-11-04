@@ -27,7 +27,7 @@ venv-web/bin/python ui/runtime_src/build_runtime.py
 - `app_web.py` — pywebview shell + `Api` HID bridge (connect, set_light, set_trigger_codes,
   set_socd, calibrate, open_analog/read_live, start_multicolor, set_custom_colors, gamepad…).
 - `protocol.py` — HID packet builders, reverse-engineered from the official driver
-  (`driver_src/dec_agreement/deobfuscated.js`). Report ID 1; 64-byte reports.
+  (`research/vendor-reference/driver_src/dec_agreement/deobfuscated.js`, LOCAL ONLY: vendor code is never committed, see NOTICE.md). Report ID 1; 64-byte reports.
 - `device_state.py` — `KeyMap` (key index↔design-code↔xy), `LiveReader` (travel-test stream),
   `CalibrationReader`. The LiveReader drains and DISCARDS every non-travel report, so any driver
   read-back (remap/switch/mode-0 actuation/macros) must run inside `Api._reader_paused()`.

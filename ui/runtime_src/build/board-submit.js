@@ -210,7 +210,9 @@
       onClick: () => setStep(2)
     }, "Next"))), step === 2 && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
       className: "font-mono text-[11px] text-[var(--text-dim)] mb-2"
-    }, "We\u2019ll record what the board ", /*#__PURE__*/React.createElement("b", null, "sends"), " (read-only \u2014 we never write to it). Press every key once, then a few keys slowly."), /*#__PURE__*/React.createElement("div", {
+    }, "We\u2019ll record what the board ", /*#__PURE__*/React.createElement("b", null, "sends"), " (read-only \u2014 we never write to it). Press every key once, then a few keys slowly."), /*#__PURE__*/React.createElement("p", {
+      className: "font-mono text-[11px] text-amber-300/90 mb-2"
+    }, "Don\u2019t type passwords or anything private while capturing: the file records which keys you press and when, and it is posted publicly on GitHub with your submission."), /*#__PURE__*/React.createElement("div", {
       className: "glass p-4 mb-3"
     }, /*#__PURE__*/React.createElement("div", {
       className: "font-title text-[28px] text-[var(--accent)]"
