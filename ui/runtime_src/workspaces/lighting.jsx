@@ -29,6 +29,7 @@ const LIGHT_MODES = [
   { id: "frenzy",   label: "Frenzy",        icon: "✺" },
   { id: "autorip",  label: "Auto Ripple",   icon: "◈" },
   { id: "speedres", label: "Speed Respond", icon: "⦿" },
+  { id: "pressure", label: "Pressure",      icon: "▮" },
   { id: "rain",     label: "Rain",          icon: "☂" },
   { id: "comet",    label: "Comet",         icon: "☄" },
   { id: "tide",     label: "Tide",          icon: "≈" },
@@ -40,6 +41,7 @@ const ZONE_MODES = [
   { id: "striation", label: "Striation" }, { id: "radar", label: "Radar" },
   { id: "ripple", label: "Ripple" }, { id: "cross", label: "Cross" },
   { id: "fireworks", label: "Fireworks" }, { id: "aurora", label: "Aurora" },
+  { id: "pressure", label: "Pressure" },
   { id: "breath", label: "Breath" }, { id: "static", label: "Static" },
   { id: "rain", label: "Rain" }, { id: "comet", label: "Comet" },
   { id: "tide", label: "Tide" },
@@ -129,7 +131,7 @@ const modeGridFor = (bl) => {
    it). Press-reactive effects need live key travel and fast response, so
    they read as choppy on a low-fps board; the ambient/slow set looks right
    even at ~28 fps. From CLAUDE.md + effects.py:
-     press-reactive: reactive, ripple, speedres, cross, fireworks
+     press-reactive: reactive, ripple, speedres, cross, fireworks, pressure
      ambient/slow:   rain, aurora, autorip, striation, twinkle, breath,
                      frenzy, comet, tide
    wave / neon / radar are classified ambient here as well (slow sweeps /
@@ -137,7 +139,7 @@ const modeGridFor = (bl) => {
    container (its zone modes carry the same ≈ marker in the Effect Preview
    widget — the fps fact itself is stated ONCE, under the mode grid). */
 const HOST_ENGINE_TARGET_FPS = 60;
-const HOST_FX_FAST = new Set(["reactive", "ripple", "speedres", "cross", "fireworks"]);
+const HOST_FX_FAST = new Set(["reactive", "ripple", "speedres", "cross", "fireworks", "pressure"]);
 /* Declared cap in fps, or null when the board declares none (= full speed). */
 const hostFpsCapOf = (bl) =>
   (bl && bl.hostEngine !== false && typeof bl.hostEngineMaxFps === "number" && bl.hostEngineMaxFps > 0)
@@ -190,7 +192,7 @@ const hostFpsLimited = (bl) => {
 const HOST_FX_IDS = new Set([
   "wave", "neon", "radar", "cross", "breath", "aurora", "ripple", "twinkle",
   "reactive", "striation", "fireworks", "frenzy", "autorip", "speedres",
-  "rain", "comet", "tide",
+  "pressure", "rain", "comet", "tide",
 ]);
 
 /* Local copies of app.jsx's color/step helpers (this file loads first, so it
@@ -341,7 +343,7 @@ const PatternPreview = ({ kind, color }) => (
 const previewKindFor = (pattern) => {
   if (pattern === "static") return "static";
   if (pattern === "wave" || pattern === "aurora" || pattern === "tide" || pattern === "comet") return "wave";
-  if (pattern === "reactive" || pattern === "cross" || pattern === "speedres") return "react";
+  if (pattern === "reactive" || pattern === "cross" || pattern === "speedres" || pattern === "pressure") return "react";
   if (pattern === "ripple" || pattern === "autorip" || pattern === "radar") return "ripple";
   if (pattern === "breath" || pattern === "neon") return "breathe";
   if (pattern === "rain" || pattern === "twinkle" || pattern === "fireworks" || pattern === "frenzy" || pattern === "striation") return "rain";

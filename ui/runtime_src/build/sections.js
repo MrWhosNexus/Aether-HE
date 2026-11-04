@@ -900,6 +900,10 @@
     label: "Speed Respond",
     icon: "⦿"
   }, {
+    id: "pressure",
+    label: "Pressure",
+    icon: "▮"
+  }, {
     id: "rain",
     label: "Rain",
     icon: "☂"
@@ -942,6 +946,9 @@
   }, {
     id: "aurora",
     label: "Aurora"
+  }, {
+    id: "pressure",
+    label: "Pressure"
   }, {
     id: "breath",
     label: "Breath"
