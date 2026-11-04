@@ -154,6 +154,7 @@ Entry format:
 - Deviations: none. Code/tests copied from the plan (extracted by script); CRLF-preserving script for app_web.py/effects.py/dashboard.jsx edits; only ws_dashboard.js had a real build diff.
 - For the user (morning): the 12 hardware checks and veto/accept bullets are already queued below (nothing new added).
 - Stopped early? No.
+- Review fixes: d364777 locks around Sampler start/stop, OverlayManager._apply/set and the carrier (module _CARRIER_LOCK, outermost; + concurrency tests); 247de91 a repeated pomodoro enable keeps _last_phase so a poll cannot swallow the phase pulse (suite 1107 passed, 14 skipped).
 
 ## Waiting on the user
 - [DKS] Run the advanced-keys capture checklist (docs/context/aula-win60-advanced-keys-capture-checklist.md, ~20 min in hed.aulacn.com) to confirm the source-only decode.
