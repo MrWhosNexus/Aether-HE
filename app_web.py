@@ -1266,12 +1266,21 @@ class Api:
     def set_light(self, mode, r, g, b, brightness=4, speed=4,
                   bg_r=0, bg_g=0, bg_b=0, direction=0, power_on=True, full_color=0):
         try:
+            p = {"mode": int(mode), "fg": (int(r), int(g), int(b)),
+                 "bg": (int(bg_r), int(bg_g), int(bg_b)),
+                 "brightness": int(brightness), "speed": int(speed),
+                 "direction": int(direction), "full_color": int(full_color),
+                 "power_on": bool(power_on)}
+            self._light_src = ("light", p)
+            if self._overlay_active():
+                # Status overlays are on: the host engine carries this lighting
+                # (the firmware gets it back when the overlays go off).
+                self._carrier_start()
+                return {"ok": True}
             self.driver.set_lighting(
-                int(mode), (int(r), int(g), int(b)),
-                bg=(int(bg_r), int(bg_g), int(bg_b)),
-                brightness=int(brightness), speed=int(speed),
-                direction=int(direction), full_color=int(full_color),
-                power_on=bool(power_on))
+                p["mode"], p["fg"], bg=p["bg"], brightness=p["brightness"],
+                speed=p["speed"], direction=p["direction"],
+                full_color=p["full_color"], power_on=p["power_on"])
             return {"ok": True}
         except Exception as e:
             return self._fail(e)
@@ -1589,6 +1598,10 @@ class Api:
         if not colors_by_index:
             return {"ok": False, "error": "no colors"}
         try:
+            self._light_src = ("custom", dict(colors_by_index), int(brightness), int(speed))
+            if self._overlay_active():
+                self._carrier_start()
+                return {"ok": True, "keys": len(colors_by_index)}
             self.driver.set_per_key_rgb(colors_by_index,
                                         brightness=int(brightness),
                                         speed=int(speed))
@@ -2838,9 +2851,61 @@ class Api:
         except Exception as e:
             return self._fail(e)
 
+    def _overlay_active(self):
+        """Overlays on AND drawable (supported board, at least one toggle on)."""
+        mgr = getattr(self, "_overlays", None)
+        return bool(mgr is not None and mgr.any_on() and self._ov_supported())
+
+    def _bright_max(self):
+        lt = getattr(self.board, "lighting", None) or {}
+        return int(lt.get("brightnessMax", 4) or 4)
+
     def _overlay_sync(self):
-        """Reconcile the engine with the toggles (Task 6 makes this real)."""
-        return None
+        """Reconcile the engine with the toggles. Overlays on and nothing
+        streaming -> start the carrier; every overlay off while the carrier
+        runs -> stop it and give the firmware lighting back. A host effect the
+        UI started is never touched: the layer simply stops drawing."""
+        try:
+            fx = getattr(self, "fx", None)
+            if fx is None or getattr(self, "_overlays", None) is None:
+                return
+            if self._overlay_active():
+                if not fx.is_running() and self.dev.is_open():
+                    self._carrier_start()
+            elif getattr(self, "_carrier_on", False):
+                self._carrier_stop()
+        except Exception as e:
+            log.warning("overlay carrier sync failed: %s", e)
+
+    def _carrier_start(self):
+        """Stream a host rendering of the last firmware lighting (black when
+        none is known) with the overlay layer on top."""
+        plan = overlays.carrier_plan(getattr(self, "_light_src", None), self.fx.indices,
+                                     self._bright_max())
+        self.driver.begin_host_stream()
+        self.fx.start_zones(plan["zones"], global_bg=plan["bg"], base=plan["base"])
+        self._carrier_on = True
+
+    def _carrier_stop(self):
+        """Stop the carrier and re-send the firmware lighting the UI last asked
+        for: one set_lighting (or per-key table) write, the same bytes the UI
+        itself would have sent."""
+        self._carrier_on = False
+        self.fx.stop()
+        try:
+            self.driver.end_host_stream()
+        except Exception:
+            pass
+        src = getattr(self, "_light_src", None)
+        if not src or not self.dev.is_open():
+            return
+        if src[0] == "light":
+            p = src[1]
+            self.driver.set_lighting(p["mode"], p["fg"], bg=p["bg"], brightness=p["brightness"],
+                                     speed=p["speed"], direction=p["direction"],
+                                     full_color=p["full_color"], power_on=p["power_on"])
+        elif src[0] == "custom":
+            self.driver.set_per_key_rgb(dict(src[1]), brightness=src[2], speed=src[3])
 
 
     # ---- host-driven multi-color effects (per-key, driver stream) ----
@@ -2932,6 +2997,7 @@ class Api:
                           tuple(int(c) for c in (bg or (0, 0, 0))[:3]),
                           float(speed) / 100.0, float(brightness) / 100.0,
                           int(direction), str(orient))
+            self._carrier_on = False
             return {"ok": True, "keys": len(self.fx.indices)}
         except Exception as e:
             return self._fail(e)
@@ -2965,11 +3031,13 @@ class Api:
             self._ensure_reactive([z["mode"] for z in norm])
             gbg = norm and norm[0].get("bg") or (0, 0, 0)
             self.fx.start_zones(norm, global_bg=gbg)
+            self._carrier_on = False
             return {"ok": True, "zones": len(norm)}
         except Exception as e:
             return self._fail(e)
 
     def stop_multicolor(self):
+        self._carrier_on = False      # the engine (carrier or not) goes down
         if self.fx and self.fx.is_running():
             self.fx.stop()
             # Hand the LEDs back to the board once the engine is down. The

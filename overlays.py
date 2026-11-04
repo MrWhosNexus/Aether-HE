@@ -209,6 +209,35 @@ class OverlayLayer:
             for idx in self.all:
                 frame[idx] = mix(frame.get(idx, (0, 0, 0)), rgb, a)
 
+# ---- carrier: a host rendering of the firmware lighting the overlays sit on ----
+def carrier_plan(src, indices, bright_max=4):
+    """What the host engine should stream while overlays are on but the UI's
+    lighting is a firmware mode (static / Full-RGB / per-key paint / off).
+    `src` is what Api.set_light / set_custom_colors last saw:
+      ("light", {fg, bg, brightness, speed, power_on, full_color, ...}),
+      ("custom", {device index: rgb}, brightness) or None.
+    Returns {"zones": [...], "bg": rgb, "base": {index: rgb}}."""
+    black = {"zones": [], "bg": (0, 0, 0), "base": {}}
+    if not src:
+        return black
+    scale = lambda v: min(1.0, max(0.0, float(v) / float(bright_max or 1)))
+    if src[0] == "custom":
+        s = scale(src[2])
+        return {"zones": [], "bg": (0, 0, 0),
+                "base": {int(i): mix((0, 0, 0), tuple(c[:3]), s) for i, c in src[1].items()}}
+    p = src[1]
+    if not p.get("power_on", True):
+        return black
+    s = scale(p.get("brightness", bright_max))
+    if p.get("full_color"):
+        zone = {"indices": list(indices), "mode": "wave", "palette": list(RAINBOW),
+                "bg": (0, 0, 0), "speed": 0.5, "bright": s, "direction": 0}
+        return {"zones": [zone], "bg": (0, 0, 0), "base": {}}
+    fg = mix((0, 0, 0), tuple(p["fg"][:3]), s)
+    return {"zones": [], "bg": mix((0, 0, 0), tuple(p.get("bg", (0, 0, 0))[:3]), s),
+            "base": {int(i): fg for i in indices}}
+
+
 # ---- samplers ----------------------------------------------------------------
 class _FILETIME(ctypes.Structure):
     _fields_ = [("lo", ctypes.c_uint32), ("hi", ctypes.c_uint32)]
