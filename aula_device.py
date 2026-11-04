@@ -291,6 +291,24 @@ class AulaDevice:
             self.note_rx()
         return r
 
+    def read_soft(self, length, timeout_ms=100):
+        """Like read(), but one failed read raises WITHOUT closing the handle.
+        The board throws a transient read error as it enters calibration
+        (WIN 60 HE on Windows, 2026-11-04): read() closed the handle, the
+        reconnect dropped the CalibrationReader and calibration never saw a
+        key. The caller decides when repeated failures mean the link is gone
+        (and then calls mark_dead)."""
+        with self._lock:
+            if self._dev is None:
+                raise IOError("device not open")
+            try:
+                r = self._dev.read(length, timeout_ms=timeout_ms)
+            except (IOError, OSError, ValueError) as e:
+                raise IOError(f"HID read failed: {e}") from e
+        if r:
+            self.note_rx()
+        return r
+
     def set_nonblocking(self, flag):
         """Set the handle's blocking mode under the handle lock. Callers must
         never poke self._dev.set_nonblocking directly — that bypasses the lock

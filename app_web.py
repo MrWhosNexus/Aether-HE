@@ -1151,6 +1151,7 @@ class Api:
             except Exception:
                 pass
             self._calibrating = False
+            self._calib_aborted = "the keyboard connection was lost"
         self._park_readers()
         try:
             self.dev.close()
@@ -1859,6 +1860,7 @@ class Api:
 
     def calibrate(self, start, any_key=False):
         try:
+            self._calib_aborted = None
             if start:
                 # Lighting keeps running during calibration (user's choice). The
                 # calibration reader uses a short blocking read so it shares the
@@ -1890,11 +1892,20 @@ class Api:
             return self._fail(e)
 
     def read_calibrated(self):
-        """Design codes confirmed calibrated so far (for the on-screen highlight)."""
-        if not self.calib_reader:
-            return {"ok": True, "codes": [], "done": False}
-        return {"ok": True, "codes": self.calib_reader.snapshot(),
-                "done": bool(self.calib_reader.done)}
+        """Design codes confirmed calibrated so far (for the on-screen highlight).
+        `aborted` (a reason) = the session ended without the firmware's done
+        signal (link lost, reads failing): the UI stops waiting."""
+        r = self.calib_reader
+        aborted = getattr(self, "_calib_aborted", None)
+        if r is not None and getattr(r, "failed", False):
+            aborted = aborted or "the keyboard stopped answering"
+        if not r:
+            out = {"ok": True, "codes": [], "done": False}
+        else:
+            out = {"ok": True, "codes": r.snapshot(), "done": bool(getattr(r, "done", False))}
+        if aborted:
+            out["aborted"] = aborted
+        return out
 
     # ---- gamepad mode / win-lock ----
     def gamepad_mode(self, on):

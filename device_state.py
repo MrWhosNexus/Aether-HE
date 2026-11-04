@@ -440,6 +440,7 @@ class CalibrationReader:
         self.km = keymap
         self.calibrated = set()    # design codes confirmed calibrated
         self.done = False          # firmware signalled calibration complete
+        self.failed = False        # reads kept failing: the session is over
         self.on_change = on_change # called(calibrated_set) when it grows (render LEDs)
         self._stop = threading.Event()
         self._thread = None
@@ -467,14 +468,26 @@ class CalibrationReader:
             except Exception:
                 pass
         dead = 0   # consecutive failed reads (dead-handle self-teardown)
+        # read_soft: a transient read error (the board throws one as it
+        # enters calibration) must not close the handle under us.
+        read = getattr(self.dev, "read_soft", None) or self.dev.read
         while not stop_ev.is_set():
             try:
-                r = self.dev.read(64, timeout_ms=40)
+                r = read(64, timeout_ms=40)
             except Exception:
                 # Handle closed/unplugged (read raises "device not open") — stop
-                # instead of spinning forever with done stuck False.
+                # instead of spinning forever with done stuck False. ~2.5 s of
+                # failures = the link is really gone: tell the device so
+                # Api.status() reports it (and the UI ends calibration).
                 dead += 1
                 if dead > 50:
+                    self.failed = True
+                    mark = getattr(self.dev, "mark_dead", None)
+                    if mark is not None:
+                        try:
+                            mark("calibration reader: reads keep failing")
+                        except Exception:
+                            pass
                     break
                 time.sleep(0.05); continue
             dead = 0

@@ -2231,6 +2231,10 @@
           }
           // Auto-finish: firmware "done" signal, OR no new key calibrated for 3s
           // after at least one was (so you're never stuck waiting on the button).
+          if (r.aborted) {
+            pushNotice(`Calibration stopped: ${r.aborted}. Start it again.`);
+            return finish();
+          }
           if (r.done) return finish();
           if (lastCount > 0 && Date.now() - lastChange > 3000) return finish();
         });
