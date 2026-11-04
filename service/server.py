@@ -1,4 +1,4 @@
-"""AETHER `/aether/*` loopback service.
+r"""AETHER `/aether/*` loopback service.
 
 Wraps the existing `app_web.Api` (the pywebview HID bridge) in a plain HTTP
 server so the nexus workspace panel can drive the real keyboard. Spec:
@@ -11,7 +11,13 @@ Design constraints honoured here:
     polled GET routes the renderer already uses (analog/live, light/frame,
     calibrate/state) and as one SSE channel (GET /aether/stream) that pushes
     travel (33ms), light_frame (50ms) and calibration (80ms) events.
-  * Binds 127.0.0.1 only. Loopback callers only; the nexus Electron backend
+  * Binds 127.0.0.1 only, and every request is checked by service/guard.py
+    before routing (SSE included): the Host header must be a loopback name on
+    our port (DNS rebinding); any request carrying an Origin header is refused
+    unless that origin is listed in AETHER_SERVICE_ORIGINS (comma-separated;
+    browser cross-site requests always send one, the nexus backend's
+    server-side fetch sends none); and if AETHER_SERVICE_TOKEN is set the
+    caller must send it as X-Aether-Token. The nexus Electron backend also
     fronts this with its own x-nexus-token gate.
   * Graceful with no keyboard attached: board detect falls back to the
     registry default (driver behaviour), /aether/board always answers with
@@ -36,11 +42,14 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 
 from app_web import Api  # noqa: E402  (driver reused verbatim)
+from service import guard  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("aether.service")
 
 DEFAULT_PORT = int(os.environ.get("AETHER_SERVICE_PORT", "8672"))
+
+_ALLOWED_ORIGINS, _TOKEN = guard.config_from_env()
 
 api = Api()
 _start_ts = time.time()
@@ -160,6 +169,12 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(payload)
 
     def _dispatch(self, method):
+        reason = guard.check_request(self.headers, self.server.server_address[1],
+                                     allowed_origins=_ALLOWED_ORIGINS, token=_TOKEN)
+        if reason:
+            log.warning("refused %s %s from %s: %s", method, self.path,
+                        self.address_string(), reason)
+            return self._json(403, {"ok": False, "error": f"forbidden: {reason}"})
         url = urlparse(self.path)
         if url.path == "/aether/stream" and method == "GET":
             return self._sse()
