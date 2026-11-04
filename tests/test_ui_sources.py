@@ -35,7 +35,7 @@ def test_unterminated_comment_detector_catches_the_swallow_bug():
     src = "/* a */\n/* open\nfunction F() {}\n/* b */\nx"
     assert _unterminated_comments(src) == [2]
     assert _unterminated_comments("/* a */ code /* b */") == []
-    assert _unterminated_comments("s.replace(/\s*/g, ' ') /* ok */") == []
+    assert _unterminated_comments(r"s.replace(/\s*/g, ' ') /* ok */") == []
 
 
 @pytest.mark.parametrize("path", FILES, ids=[os.path.basename(p) for p in FILES])
