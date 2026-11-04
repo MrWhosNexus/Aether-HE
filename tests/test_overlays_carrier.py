@@ -262,3 +262,36 @@ def test_carrier_start_and_stop_never_overlap_across_threads(tmp_path):
         t.join()
     assert state["max"] == 1                                    # serialised: one at a time
     _teardown(a)
+
+
+def _stub_disconnect_deps(a):
+    """disconnect() also tears down gamepad/readers/telemetry: stub those, keep the rest real."""
+    a.set_gamepad_capture = lambda on: None
+    a._resume_gamepad = False
+    a._calibrating = False
+    a.telemetry = None
+    a._stop_readers = lambda: None
+
+
+def test_disconnect_while_the_carrier_runs_gives_the_firmware_lighting_back_once(tmp_path):
+    a = _api(tmp_path)
+    _stub_disconnect_deps(a)
+    a.set_light(*LIGHT)
+    a.set_overlay("cpu", True)
+    assert a._carrier_on is True and a.fx.is_running()
+    a.driver.calls.clear()
+    assert a.disconnect() == {"ok": True}
+    assert not a.fx.is_running() and a._carrier_on is False
+    assert a.driver.named("light") == [("light", 0, (200, 100, 0), (0, 0, 20), 4, 4, 0, 0, True)]
+    assert a.dev.is_open() is False
+    _teardown(a)
+
+
+def test_disconnect_with_no_carrier_resends_nothing(tmp_path):
+    a = _api(tmp_path)
+    _stub_disconnect_deps(a)
+    a.set_light(*LIGHT)
+    a.driver.calls.clear()
+    a.disconnect()
+    assert a.driver.named("light") == []
+    _teardown(a)

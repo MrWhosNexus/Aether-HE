@@ -1249,7 +1249,16 @@ class Api:
                 pass
 
     def disconnect(self):
-        self.stop_multicolor()
+        with _CARRIER_LOCK:
+            if getattr(self, "_carrier_on", False):
+                # The engine is only carrying overlays: put the firmware
+                # lighting back (while the handle is still open) so the board
+                # is not left frozen on the last overlay frame.
+                try:
+                    self._carrier_stop()
+                except Exception as e:
+                    log.warning("carrier release on disconnect failed: %s", e)
+            self.stop_multicolor()
         self.set_gamepad_capture(False)
         self._resume_gamepad = False      # the user's choice: restore nothing
         # Disarm calibration BEFORE closing the handle — otherwise the board is

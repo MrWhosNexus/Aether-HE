@@ -277,11 +277,13 @@ class TrayController:
                 return
             self._exiting = True
         try:
-            self.api.stop_multicolor()
+            # disconnect() stops the engine itself and, when the engine was only
+            # carrying overlays, hands the firmware lighting back first.
+            self.api.disconnect()
         except Exception:
             pass
         try:
-            self.api.disconnect()
+            self.api.stop_multicolor()      # no-op after a clean disconnect
         except Exception:
             pass
         if self.icon is not None:

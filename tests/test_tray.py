@@ -120,12 +120,12 @@ def test_exit_tears_down_in_order_and_is_idempotent():
     c.icon = StubIcon()
     c.panel = StubWindow()
     c.exit()
-    assert api.calls == ["stop", "disconnect"]      # engine first, then handle
+    assert api.calls == ["disconnect", "stop"]      # disconnect restores lighting + stops the engine
     assert c.icon.stopped and c.icon.visible is False
     assert c.panel.destroyed and c.main_window.destroyed
     # A second exit (menu + panel button racing) does nothing more.
     c.exit()
-    assert api.calls == ["stop", "disconnect"]
+    assert api.calls == ["disconnect", "stop"]
     # And the close handler now lets the window go.
     assert c.on_main_closing() is True
 
