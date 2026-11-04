@@ -88,6 +88,15 @@ Entry format:
 - For the user (morning): 12 hardware checks at the end of the plan; vetoable defaults queued below.
 - Stopped early? No.
 
+## 2026-11-04 Phase 3 — implementer (Sonnet)
+- Landed: bc1e175 games.py list parser + trailing-segment matcher; 3ffc6d6 cached 5 MB capped TLS downloader; 68b5405 Toolhelp32 scan (candidate processes only); 6b5935f GameSwitcher (5 s debounce, manual override); f6594b1 GameService + 3 s poll thread; bff84ab games_* bridge + `_SETTINGS_LOCK` + Flatpak cp list; 3a21c69 `apply_profile_to_board` (+ `_trig_mode`/`_socd_last`/`_pending_board`); 574e100 tray tooltip + main() lifetime wiring; 5734c5b app.jsx game poll/switch + Settings Games widget (+ rebuilt app.js/ws_settings.js/index_runtime.html); 4f1616a CLAUDE.md.
+- Suite: 916 passed, 13 skipped (the plan's expected count); green at every commit. `node --check` ok on the rebuilt app.js and ws_settings.js.
+- Decisions later phases must respect: `Api._games` is PRIVATE (pywebview walks public attributes); `games_status()` shape incl. `active {id,name,profileId}` is the source for Phase 5's dashboard tile; `apply_profile_to_board` + `_trig_mode` is the reusable "apply a profile's board settings" path; `save_settings` is serialised by `_SETTINGS_LOCK`.
+- Deviations: none in behaviour. Code/tests were copied verbatim from the plan; working-tree sources are CRLF (core.autocrlf) so app_web.py/tray.py/JSX edits were applied through a CRLF-preserving script, not the Edit tool. Only app.js and ws_settings.js build files had real diffs; the other 13 were line-ending noise and were reverted.
+- Gotchas: tests never touch the network, the HID, or persist/print process names (the one Windows smoke test only reads this process's own pid).
+- For the user (morning): the 12 hardware checks and the veto/limitation items are already in "Waiting on the user" below (nothing new added).
+- Stopped early? No.
+
 ## Waiting on the user
 - [DKS] Run the advanced-keys capture checklist (docs/context/aula-win60-advanced-keys-capture-checklist.md, ~20 min in hed.aulacn.com) to confirm the source-only decode.
 - [DKS] Open: does WIN60 firmware act on DKS/MT/TGL; DKS step codes 2/3; single-slot writes accepted; MT 10 ms unit; per-profile table?
