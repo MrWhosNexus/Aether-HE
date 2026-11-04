@@ -118,6 +118,11 @@ class LiveReader:
         # The firmware's own gap between frames of one moving key reaches
         # ~140 ms, so a shorter window would flicker mid-release.
         self.RELEASE_SILENCE_S = 0.15
+        # Optional per-sample consumer (Api attaches telemetry.Telemetry.feed):
+        # called (device index, mm, t) for every mapped travel report and
+        # (device index, 0.0, t) when the release-silence rule clears a key.
+        # Set it before start(); it runs on this thread, so it must be cheap.
+        self.on_sample = None
         self._stop = threading.Event()
         self._thread = None
 
@@ -162,6 +167,7 @@ class LiveReader:
         depths_idx = self._depths_idx
         noise = self.NOISE_MM
         release_silence = self.RELEASE_SILENCE_S
+        on_sample = self.on_sample
         lifting = {}   # device index -> (monotonic time of its last report, code)
                        # for keys whose last report moved UP (see __init__)
         last_open = 0.0
@@ -220,6 +226,11 @@ class LiveReader:
                                         lifting.pop(idx, None)
                                     depths[code] = depth
                                     depths_idx[idx] = depth
+                                if on_sample is not None:
+                                    try:
+                                        on_sample(idx, depth, now)
+                                    except Exception:
+                                        pass
                                 got = True
                 dead = 0   # a clean drain -> the handle is alive
             except Exception:
@@ -245,6 +256,11 @@ class LiveReader:
                         depths.pop(code, None)
                         depths_idx.pop(idx, None)
                         del lifting[idx]
+                        if on_sample is not None:
+                            try:
+                                on_sample(idx, 0.0, t_now)
+                            except Exception:
+                                pass
             # This reader drains EVERY report off the shared handle (a probe's
             # heartbeat reply included), so it is the one that must record
             # that the board answered (Api.status liveness).

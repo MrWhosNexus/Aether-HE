@@ -84,3 +84,46 @@ def test_partial_press_held_still_stays_visible():
 def test_release_frame_under_noise_floor_still_clears_immediately():
     frames = [_travel_report(46, mm) for mm in (1.5, 3.0, 0.8, 0.01)]
     assert _run(frames, 0.1) == {}
+
+
+def _run_hooked(reports, wait_s, hook):
+    lr = device_state.LiveReader(_FakeDev(reports), _KM, indices=[46])
+    lr.on_sample = hook
+    lr.start()
+    try:
+        time.sleep(wait_s)
+        return lr.snapshot()
+    finally:
+        lr.stop()
+
+
+def test_on_sample_sees_every_report_then_the_release_clear():
+    seen = []
+    frames = [_travel_report(46, mm) for mm in _PRESS + _RELEASE_TAIL]
+    assert _run_hooked(frames, 0.6, lambda i, mm, t: seen.append((i, mm))) == {}
+    assert seen == [(46, mm) for mm in _PRESS + _RELEASE_TAIL] + [(46, 0.0)]
+
+
+def test_a_held_key_gets_no_clear():
+    seen = []
+    frames = [_travel_report(46, mm) for mm in (2.56, 3.40)]
+    _run_hooked(frames, 0.6, lambda i, mm, t: seen.append(mm))
+    assert seen == [2.56, 3.40]
+
+
+def test_a_failing_hook_does_not_stop_the_reader():
+    def boom(i, mm, t):
+        raise RuntimeError("hook bug")
+    frames = [_travel_report(46, mm) for mm in _PRESS + _RELEASE_TAIL]
+    assert _run_hooked(frames, 0.6, boom) == {}
+
+
+def test_reader_feeds_telemetry_one_press(tmp_path):
+    import telemetry
+    tel = telemetry.Telemetry(str(tmp_path), board="aula-win60-he",
+                              today=lambda: "2026-11-04", flush_interval_s=None)
+    tel.set_actuation({46: 0.80})
+    frames = [_travel_report(46, mm) for mm in _PRESS + _RELEASE_TAIL]
+    _run_hooked(frames, 0.6, tel.feed)
+    agg = tel.aggregate(1)[46]
+    assert agg["presses"] == 1 and agg["hist"][32] == 1 and agg["unrated"] == 0
