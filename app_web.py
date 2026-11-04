@@ -447,6 +447,10 @@ class Api:
         # Per-key dead-band state — preserved across selection changes so applying
         # to one group doesn't reset the others to defaults.
         self._deadband_state = {}  # idx -> (top_raw, bottom_raw)
+        # idx -> actuation mm, for the pressure effect. Filled by verify_actuation
+        # (firmware read-back) and successful actuation writes; read lock-free
+        # (the engine takes dict() copies via _actuation_snapshot).
+        self._act_mm = {}
         self._init_link_state()
         self.telemetry = self._make_telemetry()
 
@@ -521,6 +525,27 @@ class Api:
         tel = getattr(self, "telemetry", None)
         if tel is not None and mm_by_idx and self._stats_supported():
             tel.set_actuation(mm_by_idx)
+
+    def _note_actuation(self, mm_by_idx):
+        """Remember per-key actuation ({device index: mm}) for the pressure
+        effect. Unlike telemetry's copy (which forgets on every write so presses
+        read "unrated" until the next read-back) this keeps the WRITTEN value:
+        the effect wants the best current guess. Non-finite / out-of-range
+        values are dropped."""
+        cur = getattr(self, "_act_mm", None)
+        if cur is None:
+            cur = self._act_mm = {}
+        for idx, mm in (mm_by_idx or {}).items():
+            try:
+                v = float(mm)
+            except (TypeError, ValueError):
+                continue
+            if v == v and 0.0 < v < 100.0:
+                cur[idx] = v
+
+    def _actuation_snapshot(self):
+        """Copy of the per-key actuation map ({device index: mm})."""
+        return dict(getattr(self, "_act_mm", None) or {})
 
     def _stats_forget_actuation(self, idxs):
         """An actuation write makes the stored read-back stale: forget it."""
@@ -754,6 +779,7 @@ class Api:
             self._remaps = {}
             self._trigger_state = {}
             self._deadband_state = {}
+            self._act_mm = {}
             self._fn_layer_raw = None
             self._idx2code = None
             self._init_link_state()
@@ -1166,6 +1192,7 @@ class Api:
                 self.driver.set_actuation(idxs, mode,
                                           float(travel_mm), float(rt_press_mm),
                                           float(rt_release_mm))
+            self._note_actuation({i: float(travel_mm) for i in idxs})
             return {"ok": True, "keys": len(idxs)}
         except Exception as e:
             return self._fail(e)
@@ -1353,6 +1380,7 @@ class Api:
                     self._flush_triggers(edited_idxs=idxs)
             else:
                 self._flush_triggers(edited_idxs=idxs)
+            self._note_actuation({i: travel_mm for i in idxs})
             return {"ok": True, "keys": len(idxs), "idxs": sorted(idxs)}
         except Exception as e:
             return self._fail(e)
@@ -1396,6 +1424,7 @@ class Api:
                 if detail is not None and name in detail:
                     trig_by_code[design_code] = dict(detail[name])
             self._stats_actuation(act_by_idx)
+            self._note_actuation(act_by_idx)
             wanted = (lambda c: c in codes) if codes else (lambda c: True)
             out = {c: v for c, v in all_by_code.items() if wanted(c)}
             res = {"ok": True, "actuation_mm": out}
@@ -2365,6 +2394,7 @@ class Api:
                 pass
             if self.reader is None:
                 self.fx.get_depths = None
+                self.fx.get_actuation = None
                 return
             km = self.km
 
@@ -2383,8 +2413,11 @@ class Api:
                         if c in idx_of}
 
             self.fx.get_depths = get_depths
+            # The pressure effect also needs each key's actuation point.
+            self.fx.get_actuation = self._actuation_snapshot
         else:
             self.fx.get_depths = None
+            self.fx.get_actuation = None
             self._release_reader("reactive")
 
     def get_light_frame(self):
