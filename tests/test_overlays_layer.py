@@ -234,3 +234,13 @@ def test_overlay_does_not_change_the_frame_rate_cap():
     before = eng._frame_interval
     eng.overlay = overlays.OverlayLayer(ROWS, ALL)
     assert eng._frame_interval == before and eng.fps == 28
+
+
+def test_a_repeated_enable_does_not_swallow_the_phase_change_pulse():
+    lay = _layer()
+    lay.set_enabled("pomodoro", True, now=1000.0)
+    lay.apply(_frame(), 1099.9)                                 # last moment of work
+    lay.set_enabled("pomodoro", True, now=1099.95)              # a status poll re-asserts "on"
+    f = _frame()
+    lay.apply(f, 1100.0)                                        # break begins: the pulse must still fire
+    assert f[0] == overlays.POMO_BREAK_RGB and f[15] == overlays.POMO_BREAK_RGB

@@ -154,7 +154,8 @@ class OverlayLayer:
                     self.pomodoro.start(now)
                 if not on:
                     self.pomodoro.stop()
-                self._last_phase = None
+                if on != was:             # a repeated "on" (status polls) must not forget the last phase
+                    self._last_phase = None
             elif not on:
                 self._val[oid] = None
 
