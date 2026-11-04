@@ -53,7 +53,7 @@ Entry format:
 
 ## 2026-11-04 Phase 1 — implementer (Sonnet)
 - Landed: 53b3e4a telemetry.py press segmentation + aggregates; ed7ce1a day files/prune/clear/flusher; f50d86c LiveReader.on_sample hook; c6e2063 registry `keyStats` + Api reader plumbing (owner "telemetry", calibration parks the shared reader); 1677eee get_stats/clear_stats/set_stats_enabled + actuation from verify_actuation; 023d588 Settings "Key statistics" widget (+ rebuilt ws_settings.js/index_runtime.html); docs commit (CLAUDE.md + this entry).
-- Suite: 750 passing (699 + 51 new), 12 skipped; green at every commit.
+- Suite: 766 passing, 12 skipped; green at every commit. Review fixes: dc5ca8d restored the lost */ that swallowed BackupWidget (+ tests/test_ui_sources.py), 85d5795 bottom-outs now counted independently of shallow (+ docstring fix).
 - Decisions: executed the plan as written. Data model, `peak_percentile(hist, q)`, `Telemetry.load_day(date)`/`aggregate(days)` are ready for Phase 4; no new HID traffic; collectKeyStats defaults ON on Windows only.
 - Deviation: added `telemetry.py` to the Flatpak `cp` list (flatpak/io.github.mrwhosnexus.AetherHE.yml); tests/test_packaging.py::test_flatpak_packages_entire_import_closure requires every module app_web imports.
 - For next phase: build readers only via `Api._make_live_reader`; `_restore_shared_reader` is a no-op while `_calibrating`; stats are keyed per board slug then device index.
