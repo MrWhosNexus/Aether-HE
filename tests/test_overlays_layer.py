@@ -13,7 +13,8 @@ BASE = {i: (50, 60, 70) for i in ALL}
 
 
 def _layer(work=100, brk=20):
-    return overlays.OverlayLayer(ROWS, ALL, overlays.Pomodoro(work, brk))
+    # blank_base=False: these tests check painting over a visible base.
+    return overlays.OverlayLayer(ROWS, ALL, overlays.Pomodoro(work, brk), blank_base=False)
 
 
 def _frame():
@@ -212,7 +213,7 @@ def test_engine_without_an_overlay_streams_the_plain_frame():
 
 
 def test_engine_composites_the_overlay_onto_every_streamed_frame():
-    lay = overlays.OverlayLayer(ROWS, ALL)
+    lay = overlays.OverlayLayer(ROWS, ALL, blank_base=False)
     lay.set_enabled("cpu", True)
     lay.set_value("cpu", 1.0)
     got = _run_engine(lay)
@@ -232,7 +233,7 @@ def test_a_broken_overlay_cannot_stop_the_stream():
 def test_overlay_does_not_change_the_frame_rate_cap():
     eng = effects.PerKeyEffectEngine(_KM(), lambda f: None, max_fps=28)
     before = eng._frame_interval
-    eng.overlay = overlays.OverlayLayer(ROWS, ALL)
+    eng.overlay = overlays.OverlayLayer(ROWS, ALL, blank_base=False)
     assert eng._frame_interval == before and eng.fps == 28
 
 
@@ -244,3 +245,14 @@ def test_a_repeated_enable_does_not_swallow_the_phase_change_pulse():
     f = _frame()
     lay.apply(f, 1100.0)                                        # break begins: the pulse must still fire
     assert f[0] == overlays.POMO_BREAK_RGB and f[15] == overlays.POMO_BREAK_RGB
+
+
+def test_any_overlay_switches_the_lighting_underneath_off():
+    lay = overlays.OverlayLayer(ROWS, ALL, overlays.Pomodoro(100, 20))
+    f = _frame(); lay.apply(f, now=0.0)
+    assert f == BASE                                   # nothing on: untouched
+    lay.set_enabled("cpu", True, now=0.0)
+    lay.set_value("cpu", 0.0)
+    f = _frame(); lay.apply(f, now=0.0)
+    cpu = set(ROWS["cpu"])
+    assert all(f[i] == (0, 0, 0) for i in ALL if i not in cpu)

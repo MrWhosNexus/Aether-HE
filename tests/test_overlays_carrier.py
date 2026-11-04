@@ -84,7 +84,7 @@ def test_turning_an_overlay_on_over_static_starts_the_carrier(tmp_path):
     f = a.frames[-1]
     row = a.km.indices_for_codes(overlays.ROW_CODES["cpu"])
     other = a.km.index_of_code["Space"]
-    assert f[other] == (200, 100, 0)                                # static colour carried
+    assert f[other] == (0, 0, 0)                                    # lighting off under the bars
     assert all(f[i] == overlays.TRACK for i in row)                 # bar track (no reading yet)
     _teardown(a)
 
@@ -115,7 +115,7 @@ def test_ui_lighting_changes_while_overlays_are_on_are_carried_not_written(tmp_p
     a.set_light(0, 0, 0, 255, 4, 4, 0, 0, 0, 0, True, 0)           # then the new colour
     assert a._carrier_on is True and a.fx.is_running()
     assert a.driver.named("light") == []
-    assert _wait(lambda: a.frames and a.frames[-1][a.km.index_of_code["Space"]] == (0, 0, 255))
+    assert _wait(lambda: a.frames)                                  # streaming (base is blanked)
     a.set_overlay("gpu", False)
     assert a.driver.named("light") == [("light", 0, (0, 0, 255), (0, 0, 0), 4, 4, 0, 0, True)]
     _teardown(a)

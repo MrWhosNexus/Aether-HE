@@ -131,8 +131,10 @@ class OverlayLayer:
     engine's per-frame dict. Called on the engine thread; everything else
     (Api threads, the sampler) goes through the lock."""
 
-    def __init__(self, rows, all_indices, pomodoro=None, clock=time.monotonic):
+    def __init__(self, rows, all_indices, pomodoro=None, clock=time.monotonic,
+                 blank_base=True):
         self.rows = {k: list(v) for k, v in rows.items()}
+        self.blank_base = blank_base   # overlays on -> lighting underneath off
         self.all = list(all_indices)
         self.pomodoro = pomodoro or Pomodoro()
         self._clock = clock
@@ -200,6 +202,11 @@ class OverlayLayer:
                 self._last_phase = st.phase
             self._flashes = [f for f in self._flashes if now - f[1] < f[2] / 1000.0]
             flashes = list(self._flashes)
+        if self.blank_base and any(on.values()):
+            # Status bars read best on a dark board: with any overlay on, the
+            # lighting underneath is switched off (the bars and flashes only).
+            for idx in self.all:
+                frame[idx] = (0, 0, 0)
         for oid in SENSOR_IDS:
             if on[oid] and self.rows.get(oid):
                 paint_bar(frame, self.rows[oid], vals[oid], color_for(oid, vals[oid]))
