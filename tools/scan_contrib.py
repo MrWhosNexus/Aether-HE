@@ -71,6 +71,15 @@ FORBIDDEN_SEGMENTS = {"os", "sys", "subprocess", "socket", "builtins", "importli
                       "codecs", "io", "pathlib", "urllib", "http", "signal", "pty",
                       "system", "popen", "spawn", "exec", "loader", "modules", "json",
                       "threading", "logging", "time", "struct", "hid", "re"}
+# Refused as an attribute name on ANY expression (a variable, a call result,
+# a subscript ...), so no alias of anything can be walked to a module or a
+# process/exec primitive. Together with DUNDER_ESCAPES this is the backstop
+# behind the name tracking below.
+GLOBAL_FORBIDDEN_ATTRS = {"os", "sys", "subprocess", "socket", "builtins", "importlib",
+                          "ctypes", "shutil", "pickle", "marshal", "pty", "system",
+                          "popen", "spawn", "spawnv", "spawnl", "exec", "execv", "execl",
+                          "modules", "loader", "f_back", "cr_frame", "ag_frame",
+                          "startfile", "check_output", "check_call", "Popen"}
 FORBIDDEN_CALLS = {"eval", "exec", "compile", "__import__", "open", "input",
                    "breakpoint", "globals", "vars", "locals"}
 ATTR_CALLS = {"getattr", "setattr", "hasattr", "delattr"}
@@ -188,7 +197,7 @@ def scan_source(src, path="<src>"):
                 name = node.args[1] if len(node.args) >= 2 else None
                 if not (isinstance(name, ast.Constant) and isinstance(name.value, str)):
                     out.append(f"{path}:{line}: {fn}() with a computed attribute name")
-                elif name.value.startswith("__"):
+                elif name.value.startswith("__") or name.value in GLOBAL_FORBIDDEN_ATTRS:
                     out.append(f"{path}:{line}: {fn}() of {name.value}")
         elif isinstance(node, ast.Name) and node.id in mods:
             up = parent.get(node)
@@ -199,6 +208,8 @@ def scan_source(src, path="<src>"):
         elif isinstance(node, ast.Attribute):
             if node.attr in DUNDER_ESCAPES:
                 out.append(f"{path}:{line}: .{node.attr}")
+            if node.attr in GLOBAL_FORBIDDEN_ATTRS:
+                out.append(f"{path}:{line}: .{node.attr} (never allowed as an attribute)")
             if isinstance(parent.get(node), ast.Attribute) and parent[node].value is node:
                 continue                   # check each chain once, from its outermost node
             root, attrs = _chain(node)
