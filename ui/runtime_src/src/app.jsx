@@ -1162,6 +1162,9 @@ function App() {
   const profilesRef = useRef(profiles); profilesRef.current = profiles;
   const switchProfileRef = useRef(null); switchProfileRef.current = switchProfile;
   const [actReadNonce, setActReadNonce] = useState(0);   // bump = re-read actuation
+  // The latest games_status() for the Dashboard (same 2 s poll, no second
+  // loop). Only the fields it shows; deduped so an unchanged poll costs no render.
+  const [gamesInfo, setGamesInfo] = useState(null);
   const profileListKey = JSON.stringify(profiles.map(p => [p.id, p.name || ""]));
   const gameSync = (active, seq) => apiCall("games_sync", {
     activeProfile: active, handledSeq: seq,
@@ -1189,6 +1192,12 @@ function App() {
       busy = true;
       try {
         const s = await apiCall("games_status");
+        if (alive && s && s.ok) {
+          const view = { available: !!s.available, autoSwitch: !!s.autoSwitch,
+                         active: s.active || null, foreground: s.foreground || null,
+                         detected: Array.isArray(s.detected) ? s.detected : [] };
+          setGamesInfo(prev => sameJson(prev, view) ? prev : view);
+        }
         const sw = s && s.ok ? s.switch : null;
         if (alive && sw && sw.seq > gameSeqRef.current) {
           gameSeqRef.current = sw.seq;
@@ -1486,8 +1495,13 @@ function App() {
 
   // Travel Test: stream live analog depth for ALL keys (so any keypress shows,
   // not just the selected ones) and mirror it onto the on-screen board.
+  // The Dashboard's "Live depth" hero holds the same stream through liveView
+  // (one loop, one "analog" reader owner); it drops the hold when it leaves
+  // that mode or unmounts, and the reader closes once nobody wants it.
+  const [liveView, setLiveView] = useState(false);
+  const liveWanted = travelTest || liveView;
   useEffect(() => {
-    if (!connected || !travelTest) {
+    if (!connected || !liveWanted) {
       if (connected) apiCall("close_analog");
       setLiveDepths(null);
       return;
@@ -1508,7 +1522,7 @@ function App() {
       }).catch(() => { inflight = false; });
     }, 33);   // ~30fps — smooth enough for visual depth, doesn't starve the lighting stream
     return () => { alive = false; clearInterval(id); };
-  }, [connected, travelTest]);
+  }, [connected, liveWanted]);
 
   // Calibration: the firmware reports each key the moment it's calibrated. Poll
   // those codes and mark them — they light up green both on screen and (driven by
@@ -1686,7 +1700,7 @@ function App() {
     switchId, handlePickSwitch,
     polling, handleSetPolling, pollRestarting,
     // travel test + calibration telemetry
-    travelTest, setTravelTest, liveDepths, liveMax,
+    travelTest, setTravelTest, liveDepths, liveMax, liveView, setLiveView,
     calibrating, handleCalibrate, calibratedKeys,
     // keymap
     layer, setLayer, HID_BY_LABEL, remapSelected, resetRemapSelected,
@@ -1703,6 +1717,8 @@ function App() {
     // gamepad
     gamepadOn, handleGamepadToggle, gamepadMap, handleGamepadMapApply, DEFAULT_PAD_MAP,
     gamepadError, handleInstallVigem,
+    // games (Dashboard tile): latest games_status() view, null until polled
+    games: gamesInfo,
     // board awareness — same object as the React BoardContext value; workspaces
     // may read either ctx.board or window.AetherBoard.useBoard(). Contract in
     // components/board-context.jsx. null only if board-context.jsx failed to load.

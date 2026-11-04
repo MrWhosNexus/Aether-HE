@@ -44,3 +44,22 @@ def test_suggestion_list_has_a_compact_variant():
     assert "compact={!!compact}" in AN
     assert "title={s.detail}" in AN
     assert "{!compact && (" in AN
+
+
+# ---- Task 2: app.jsx plumbing ----------------------------------------------
+APP = _read("src", "app.jsx")
+
+
+def test_live_view_holds_the_one_travel_test_stream():
+    assert "const liveWanted = travelTest || liveView;" in APP
+    assert "if (!connected || !liveWanted) {" in APP
+    assert "}, [connected, liveWanted]);" in APP
+    assert APP.count('apiCall("open_analog_codes"') == 1     # one loop, one owner
+    assert APP.count('apiCall("read_live")') == 1
+    assert "liveView, setLiveView," in APP
+
+
+def test_games_view_comes_from_the_existing_poll():
+    assert APP.count('apiCall("games_status")') == 1
+    assert "setGamesInfo(prev => sameJson(prev, view) ? prev : view);" in APP
+    assert "games: gamesInfo," in APP
