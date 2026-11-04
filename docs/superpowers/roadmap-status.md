@@ -181,6 +181,14 @@ Entry format:
 - Suite: 1183 passed, 17 skipped (was 1175/17 before this round). No JSX changes, no rebuild.
 - Stopped early? No.
 
+## 2026-11-04 Phase 8 — integration (orchestrator, Opus)
+- Landed: dd6fa3a hardware checklist section `## Roadmap 2026-11-04`; review fixes 067479d 28691a3 2fa462a e41c590 b9a0e3d (see entry above).
+- Whole-branch review (Opus): FIX-REQUIRED for one confirmed race (carrier vs start_zones on profile switch); fixed in 067479d with forced-interleaving tests. Privacy, no-HID-in-tests, untouchables, Linux import safety, lock ordering: all passed.
+- Suite: 1183 passed, 17 skipped (683 at branch start).
+- Installer built from e65ae5b, NOT installed: dist\AetherHE-Setup.exe (23,528,734 bytes, SHA-256 da297e49...cf570) and dist\AetherHE-windows.zip, in this worktree. Version still 0.5.4. Built WITHOUT numpy/soundcard, so Music shows "unavailable" in it.
+- Skipped: pip-audit (needs network; the overnight run had none). Queued below.
+- Stopped early? No. Nothing pushed, merged, tagged or released.
+
 ## Waiting on the user
 - [DKS] Run the advanced-keys capture checklist (docs/context/aula-win60-advanced-keys-capture-checklist.md, ~20 min in hed.aulacn.com) to confirm the source-only decode.
 - [DKS] Open: does WIN60 firmware act on DKS/MT/TGL; DKS step codes 2/3; single-slot writes accepted; MT 10 ms unit; per-profile table?
@@ -204,3 +212,7 @@ Entry format:
 - [Phase 7] Veto check: numpy + soundcard (Windows only) are the roadmap's only new dependencies. Estimated cost (not measured): +25-40 MB unpacked (mostly numpy's OpenBLAS), +10-15 MB installer. Say if that is too big.
 - [Phase 7] Run the 14 hardware/audio checks at the end of docs/superpowers/plans/2026-11-04-phase-7-music.md (bars, beat pulse, latency < 60 ms, CPU < 5 % of a core, silence, output switch, no device, capture stops, overlays, tray/dashboard, frozen build, size).
 - [Phase 7] Accept: Music follows the Windows default output only (no device picker); Windows only (Linux shows "needs Windows"); the tray/dashboard grids still offer Music when the deps are missing (it idles with a breathing bottom row, the Lighting tab says why).
+- [Phase 8] Run pip-audit on the build venv (skipped overnight: no network), e.g. from a throwaway venv: `pip install pip-audit` then `pip-audit -r requirements.txt`.
+- [Phase 8] Decide the version number before release: version.py is still 0.5.4 for this build.
+- [Phase 8] After installing numpy + soundcard, rebuild with build_installer.bat so the installer ships Music.
+- [Phase 8] Behaviour change to know: tray Exit now runs disconnect() before stop_multicolor() so overlay bars are cleared from the board on exit (firmware lighting re-sent once).
