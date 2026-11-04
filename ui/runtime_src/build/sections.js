@@ -916,6 +916,10 @@
     label: "Tide",
     icon: "≈"
   }, {
+    id: "music",
+    label: "Music",
+    icon: "♫"
+  }, {
     id: "custom",
     label: "Custom",
     icon: "◇"
@@ -964,6 +968,9 @@
   }, {
     id: "tide",
     label: "Tide"
+  }, {
+    id: "music",
+    label: "Music"
   }];
 
   /* Effect zones: each = a group of keys running its own effect+colors. */

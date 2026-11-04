@@ -710,6 +710,7 @@ const LIGHT_MODES = [
   { id: "rain",     label: "Rain",          icon: "☂" },
   { id: "comet",    label: "Comet",         icon: "☄" },
   { id: "tide",     label: "Tide",          icon: "≈" },
+  { id: "music",    label: "Music",         icon: "♫" },
   { id: "custom",   label: "Custom",        icon: "◇" },
 ];
 
@@ -722,7 +723,7 @@ const ZONE_MODES = [
   { id: "pressure", label: "Pressure" },
   { id: "breath", label: "Breath" }, { id: "static", label: "Static" },
   { id: "rain", label: "Rain" }, { id: "comet", label: "Comet" },
-  { id: "tide", label: "Tide" },
+  { id: "tide", label: "Tide" }, { id: "music", label: "Music" },
 ];
 
 /* Effect zones: each = a group of keys running its own effect+colors. */

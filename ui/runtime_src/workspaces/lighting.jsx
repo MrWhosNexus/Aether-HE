@@ -33,6 +33,7 @@ const LIGHT_MODES = [
   { id: "rain",     label: "Rain",          icon: "☂" },
   { id: "comet",    label: "Comet",         icon: "☄" },
   { id: "tide",     label: "Tide",          icon: "≈" },
+  { id: "music",    label: "Music",         icon: "♫" },
   { id: "custom",   label: "Custom",        icon: "◇" },
 ];
 
@@ -44,7 +45,7 @@ const ZONE_MODES = [
   { id: "pressure", label: "Pressure" },
   { id: "breath", label: "Breath" }, { id: "static", label: "Static" },
   { id: "rain", label: "Rain" }, { id: "comet", label: "Comet" },
-  { id: "tide", label: "Tide" },
+  { id: "tide", label: "Tide" }, { id: "music", label: "Music" },
 ];
 
 const PRESET_PALETTES = [
@@ -134,6 +135,7 @@ const modeGridFor = (bl) => {
      press-reactive: reactive, ripple, speedres, cross, fireworks, pressure
      ambient/slow:   rain, aurora, autorip, striation, twinkle, breath,
                      frenzy, comet, tide
+     audio-reactive: music (system audio, not press-reactive: no ≈ marker)
    wave / neon / radar are classified ambient here as well (slow sweeps /
    pulses, no press input); static has no motion; custom is the zone
    container (its zone modes carry the same ≈ marker in the Effect Preview
@@ -192,7 +194,7 @@ const hostFpsLimited = (bl) => {
 const HOST_FX_IDS = new Set([
   "wave", "neon", "radar", "cross", "breath", "aurora", "ripple", "twinkle",
   "reactive", "striation", "fireworks", "frenzy", "autorip", "speedres",
-  "pressure", "rain", "comet", "tide",
+  "pressure", "rain", "comet", "tide", "music",
 ]);
 
 /* Local copies of app.jsx's color/step helpers (this file loads first, so it
@@ -342,7 +344,7 @@ const PatternPreview = ({ kind, color }) => (
 /* Preview "kind" for a given firmware pattern id (best-effort mapping). */
 const previewKindFor = (pattern) => {
   if (pattern === "static") return "static";
-  if (pattern === "wave" || pattern === "aurora" || pattern === "tide" || pattern === "comet") return "wave";
+  if (pattern === "wave" || pattern === "aurora" || pattern === "tide" || pattern === "comet" || pattern === "music") return "wave";
   if (pattern === "reactive" || pattern === "cross" || pattern === "speedres" || pattern === "pressure") return "react";
   if (pattern === "ripple" || pattern === "autorip" || pattern === "radar") return "ripple";
   if (pattern === "breath" || pattern === "neon") return "breathe";
@@ -492,6 +494,33 @@ function DirectionToggle({ direction, setDirection }) {
   );
 }
 
+/* Music visualizer availability (Phase 7). One music_status call on mount,
+   then every 2 s while Music is the selected effect. null = no bridge or no
+   answer yet: treated as available (a missing bridge never blocks a mode). */
+const MUSIC_POLL_MS = 2000;
+function useMusicStatus(apiCall, active) {
+  const [st, setSt] = useState(null);
+  useEffect(() => {
+    if (!apiCall) return undefined;
+    let alive = true;
+    const load = () => apiCall("music_status").then(r => { if (alive) setSt(r && r.ok ? r : null); });
+    load();
+    const id = active ? setInterval(load, MUSIC_POLL_MS) : null;
+    return () => { alive = false; if (id) clearInterval(id); };
+  }, [apiCall, active]);
+  return st;
+}
+/* The one line shown under the grid while Music is selected (text only). */
+const musicNoteOf = (st) => {
+  if (!st) return null;
+  if (st.available === false || st.state === "no_device" || st.state === "error")
+    return st.reason || "The music visualizer is unavailable.";
+  if (st.state === "listening")
+    return `Listening to ${st.device || "the default output"}. Audio is analysed in memory only, never recorded.`;
+  if (st.state === "starting") return "Starting audio capture…";
+  return "Follows this PC's default audio output while the keyboard is connected.";
+};
+
 function ModePickerWidget(ctx) {
   const {
     pattern, setPattern, brightness, setBrightness, speed, setSpeed,
@@ -523,6 +552,9 @@ function ModePickerWidget(ctx) {
   // Host-engine fps cap — null unless the board declares one meaningfully
   // below the 60fps engine rate (missing hostEngineMaxFps => null => no change).
   const fpsCap = !firmwareOnly ? hostFpsLimited(bl) : null;
+  // Music visualizer: never hidden; disabled with the reason when it cannot run.
+  const musicSt = useMusicStatus(ctx.apiCall, pattern === "music");
+  const musicNote = pattern === "music" ? musicNoteOf(musicSt) : null;
 
   return (
     <div className="flex flex-col gap-5">
@@ -558,20 +590,24 @@ function ModePickerWidget(ctx) {
             // footnote below can be specific. degraded is always false when the
             // board declares no cap, so nothing changes on such boards.
             const degraded = fpsCap != null && HOST_FX_FAST.has(m.id);
+            const musicOff = m.id === "music" && !!musicSt && musicSt.available === false;
             return (
-              <button key={m.id} onClick={() => setPattern(m.id)}
-                title={degraded ? `Press-reactive — ${boardName} sustains ~${fpsCap} fps, so this effect will look choppy` : undefined}
+              <button key={m.id} onClick={() => setPattern(m.id)} disabled={musicOff}
+                title={musicOff ? musicSt.reason : degraded ? `Press-reactive — ${boardName} sustains ~${fpsCap} fps, so this effect will look choppy` : undefined}
                 className={`h-9 rounded-lg border font-display text-[11px] tracking-[0.06em] flex items-center justify-center gap-1.5 transition-all
                             ${active
                               ? "border-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_14px_var(--accent-glow)]"
                               : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`}
-                style={ active ? { background: "var(--accent-gradient, var(--accent))" } : {} }>
+                style={ active ? { background: "var(--accent-gradient, var(--accent))" } : (musicOff ? { opacity: 0.4, cursor: "not-allowed" } : {}) }>
                 <span className="text-[12px]">{m.icon}</span> {m.label}
                 {degraded && <span className="font-mono text-[9px] opacity-70">≈</span>}
               </button>
             );
           })}
         </div>
+        {musicNote && (
+          <div data-music-note className="mt-2 font-mono text-[10px] text-[var(--text-faint)] leading-relaxed">{musicNote}</div>
+        )}
         {firmwareOnly && (
           <div className="mt-2 font-mono text-[10px] text-[var(--text-faint)] leading-relaxed">
             This is {boardName}'s own firmware effect set. Aether's host-animated effects

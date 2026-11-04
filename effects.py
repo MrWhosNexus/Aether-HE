@@ -189,7 +189,7 @@ class PerKeyEffectEngine:
             "reactive": self._g_reactive, "pressure": self._g_pressure,
             "neon": self._g_breath, "speedres": self._g_speedres, "static": self._g_static,
             "rain": self._g_rain, "comet": self._g_comet, "tide": self._g_slopewave,
-            "autorip": self._g_autorip,
+            "autorip": self._g_autorip, "music": self._g_music,
             "calibrate": self._g_calibrate,
         }
         self.zones = []

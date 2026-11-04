@@ -35322,6 +35322,10 @@
     label: "Tide",
     icon: "≈"
   }, {
+    id: "music",
+    label: "Music",
+    icon: "♫"
+  }, {
     id: "custom",
     label: "Custom",
     icon: "◇"
@@ -35370,6 +35374,9 @@
   }, {
     id: "tide",
     label: "Tide"
+  }, {
+    id: "music",
+    label: "Music"
   }];
 
   /* Effect zones: each = a group of keys running its own effect+colors. */
@@ -40297,6 +40304,10 @@
     label: "Tide",
     icon: "≈"
   }, {
+    id: "music",
+    label: "Music",
+    icon: "♫"
+  }, {
     id: "custom",
     label: "Custom",
     icon: "◇"
@@ -40343,6 +40354,9 @@
   }, {
     id: "tide",
     label: "Tide"
+  }, {
+    id: "music",
+    label: "Music"
   }];
   const PRESET_PALETTES = [["#9d4edd"], ["#00f5ff"], ["#ff3d6e"], ["#39ff8a"], ["#9d4edd", "#00f5ff"], ["#ff7a59", "#ffaa1f"], ["#ff3d6e", "#ffaa1f", "#39ff8a"], ["#ff3d6e", "#ffaa1f", "#39ff8a", "#3b82f6"]];
   const BG_SWATCHES = ["#000000", "#0b0f19", "#1a0833", "#001318", "#0a1f10", "#241400", "#2a0814", "#ffffff"];
@@ -40436,6 +40450,7 @@
        press-reactive: reactive, ripple, speedres, cross, fireworks, pressure
        ambient/slow:   rain, aurora, autorip, striation, twinkle, breath,
                        frenzy, comet, tide
+       audio-reactive: music (system audio, not press-reactive: no ≈ marker)
      wave / neon / radar are classified ambient here as well (slow sweeps /
      pulses, no press input); static has no motion; custom is the zone
      container (its zone modes carry the same ≈ marker in the Effect Preview
@@ -40489,7 +40504,7 @@
      firmware (today's rule) and calibrate is engine-internal. Keep in step with
      effects.py; ids sent to start_multicolor MUST come from this set so the
      engine never silently falls back on an id it doesn't know. */
-  const HOST_FX_IDS = new Set(["wave", "neon", "radar", "cross", "breath", "aurora", "ripple", "twinkle", "reactive", "striation", "fireworks", "frenzy", "autorip", "speedres", "pressure", "rain", "comet", "tide"]);
+  const HOST_FX_IDS = new Set(["wave", "neon", "radar", "cross", "breath", "aurora", "ripple", "twinkle", "reactive", "striation", "fireworks", "frenzy", "autorip", "speedres", "pressure", "rain", "comet", "tide", "music"]);
 
   /* Local copies of app.jsx's color/step helpers (this file loads first, so it
      cannot import them; keep in step). briByteFor/spdByteFor generalise the
@@ -40699,7 +40714,7 @@
   /* Preview "kind" for a given firmware pattern id (best-effort mapping). */
   const previewKindFor = pattern => {
     if (pattern === "static") return "static";
-    if (pattern === "wave" || pattern === "aurora" || pattern === "tide" || pattern === "comet") return "wave";
+    if (pattern === "wave" || pattern === "aurora" || pattern === "tide" || pattern === "comet" || pattern === "music") return "wave";
     if (pattern === "reactive" || pattern === "cross" || pattern === "speedres" || pattern === "pressure") return "react";
     if (pattern === "ripple" || pattern === "autorip" || pattern === "radar") return "ripple";
     if (pattern === "breath" || pattern === "neon") return "breathe";
@@ -40937,6 +40952,36 @@
       }, ic), lbl);
     }));
   }
+
+  /* Music visualizer availability (Phase 7). One music_status call on mount,
+     then every 2 s while Music is the selected effect. null = no bridge or no
+     answer yet: treated as available (a missing bridge never blocks a mode). */
+  const MUSIC_POLL_MS = 2000;
+  function useMusicStatus(apiCall, active) {
+    const [st, setSt] = useState(null);
+    useEffect(() => {
+      if (!apiCall) return undefined;
+      let alive = true;
+      const load = () => apiCall("music_status").then(r => {
+        if (alive) setSt(r && r.ok ? r : null);
+      });
+      load();
+      const id = active ? setInterval(load, MUSIC_POLL_MS) : null;
+      return () => {
+        alive = false;
+        if (id) clearInterval(id);
+      };
+    }, [apiCall, active]);
+    return st;
+  }
+  /* The one line shown under the grid while Music is selected (text only). */
+  const musicNoteOf = st => {
+    if (!st) return null;
+    if (st.available === false || st.state === "no_device" || st.state === "error") return st.reason || "The music visualizer is unavailable.";
+    if (st.state === "listening") return `Listening to ${st.device || "the default output"}. Audio is analysed in memory only, never recorded.`;
+    if (st.state === "starting") return "Starting audio capture…";
+    return "Follows this PC's default audio output while the keyboard is connected.";
+  };
   function ModePickerWidget(ctx) {
     const {
       pattern,
@@ -40978,6 +41023,9 @@
     // Host-engine fps cap — null unless the board declares one meaningfully
     // below the 60fps engine rate (missing hostEngineMaxFps => null => no change).
     const fpsCap = !firmwareOnly ? hostFpsLimited(bl) : null;
+    // Music visualizer: never hidden; disabled with the reason when it cannot run.
+    const musicSt = useMusicStatus(ctx.apiCall, pattern === "music");
+    const musicNote = pattern === "music" ? musicNoteOf(musicSt) : null;
     return /*#__PURE__*/React.createElement("div", {
       className: "flex flex-col gap-5"
     }, /*#__PURE__*/React.createElement("div", {
@@ -41015,21 +41063,29 @@
       // footnote below can be specific. degraded is always false when the
       // board declares no cap, so nothing changes on such boards.
       const degraded = fpsCap != null && HOST_FX_FAST.has(m.id);
+      const musicOff = m.id === "music" && !!musicSt && musicSt.available === false;
       return /*#__PURE__*/React.createElement("button", {
         key: m.id,
         onClick: () => setPattern(m.id),
-        title: degraded ? `Press-reactive — ${boardName} sustains ~${fpsCap} fps, so this effect will look choppy` : undefined,
+        disabled: musicOff,
+        title: musicOff ? musicSt.reason : degraded ? `Press-reactive — ${boardName} sustains ~${fpsCap} fps, so this effect will look choppy` : undefined,
         className: `h-9 rounded-lg border font-display text-[11px] tracking-[0.06em] flex items-center justify-center gap-1.5 transition-all
                             ${active ? "border-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_14px_var(--accent-glow)]" : "border-[var(--line)] bg-white/[0.02] text-[var(--text-dim)] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`,
         style: active ? {
           background: "var(--accent-gradient, var(--accent))"
+        } : musicOff ? {
+          opacity: 0.4,
+          cursor: "not-allowed"
         } : {}
       }, /*#__PURE__*/React.createElement("span", {
         className: "text-[12px]"
       }, m.icon), " ", m.label, degraded && /*#__PURE__*/React.createElement("span", {
         className: "font-mono text-[9px] opacity-70"
       }, "\u2248"));
-    })), firmwareOnly && /*#__PURE__*/React.createElement("div", {
+    })), musicNote && /*#__PURE__*/React.createElement("div", {
+      "data-music-note": true,
+      className: "mt-2 font-mono text-[10px] text-[var(--text-faint)] leading-relaxed"
+    }, musicNote), firmwareOnly && /*#__PURE__*/React.createElement("div", {
       className: "mt-2 font-mono text-[10px] text-[var(--text-faint)] leading-relaxed"
     }, "This is ", boardName, "'s own firmware effect set. Aether's host-animated effects (Rain, Comet, Tide, Aurora and the rest) stream per-key RGB frames from the PC, and that streaming path is not yet proven on this board \u2014 so they are not offered. Static per-key painting still works."), fpsCap != null && /*#__PURE__*/React.createElement("div", {
       className: "mt-2 font-mono text-[10px] text-[var(--text-faint)] leading-relaxed"
