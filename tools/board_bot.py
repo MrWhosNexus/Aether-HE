@@ -20,7 +20,13 @@ from validate_keymap import validate_keymap  # noqa: E402
 from board_submission import validate_submission  # noqa: E402
 
 _JSON_BLOCK = re.compile(r"```json\s*(\{.*?\})\s*```", re.S)
-_JSON_URL = re.compile(r"https://[^\s)\"']+\.json")
+# Only GitHub's own issue uploads, which are immutable: the maintainer's
+# approval (a hash of the issue body, see run) then also covers the file. A
+# branch URL (raw.githubusercontent.com/.../main/x.json) could change after
+# approval, so it is never followed.
+_JSON_URL = re.compile(
+    r"https://github\.com/(?:user-attachments/files|[A-Za-z0-9-]+/[A-Za-z0-9._-]+/files)"
+    r"/\d+/[A-Za-z0-9._-]+\.json(?=[\s)\"'\]]|$)")
 _FILE_BLOCK = re.compile(r"=== FILE: (?P<name>[^\n=]+?) ===\n(?P<body>.*?)(?=\n=== FILE:|\Z)", re.S)
 _REQUIRED_ENTRY_KEYS = {"slug", "name", "vid", "pid", "usage_page", "formFactor",
                         "protocol", "keymap", "capabilities", "status"}
@@ -173,7 +179,7 @@ def extract_json_block(body):
 
 
 def extract_attachment_url(body):
-    """Return the first https URL ending in .json, or None."""
+    """The first immutable GitHub issue-upload URL of a .json file, or None."""
     m = _JSON_URL.search(body or "")
     return m.group(0) if m else None
 

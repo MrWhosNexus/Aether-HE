@@ -9,8 +9,20 @@ def test_extract_json_block_none():
     assert bot.extract_json_block("no code here") is None
 
 def test_extract_attachment_url():
-    body = "see file [board.json](https://github.com/x/files/1/board.json) attached"
-    assert bot.extract_attachment_url(body) == "https://github.com/x/files/1/board.json"
+    u = "https://github.com/user-attachments/files/31014493/board-win68he-20260812-232853.json"
+    assert bot.extract_attachment_url(f"see [board.json]({u}) attached") == u
+    legacy = "https://github.com/MrWhosNexus/Aether-HE/files/123/board.json"
+    assert bot.extract_attachment_url(f"file: {legacy}") == legacy
+
+
+def test_mutable_attachment_links_are_never_followed():
+    # The approval hash covers the issue body; a branch file could change after it.
+    for body in ("https://raw.githubusercontent.com/a/b/main/board.json",
+                 "https://github.com/a/b/blob/main/board.json",
+                 "https://gist.githubusercontent.com/a/1/raw/board.json",
+                 "https://evil.example/user-attachments/files/1/board.json",
+                 "https://github.com/user-attachments/files/1/board.json.exe"):
+        assert bot.extract_attachment_url(body) is None, body
 
 def test_extract_attachment_url_none():
     assert bot.extract_attachment_url("no links") is None

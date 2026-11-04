@@ -23,6 +23,7 @@ import ast
 import glob
 import hashlib
 import os
+import re
 import sys
 
 ALLOWED_MODULES = {
@@ -31,6 +32,16 @@ ALLOWED_MODULES = {
     "hid",            # the HID library itself (device access is the job)
 }
 ALLOWED_LOCAL = {"boards", "device_state", "aula_device", "protocol", "drivers"}
+# Module names are matched EXACTLY (`logging` yes, `logging.config` no), plus
+# protocol_<name> modules and drivers.<name>.
+_LOCAL_RE = re.compile(r"^(protocol_[a-z0-9_]+|drivers\.[a-z0-9_]+)$")
+# Attribute segments that lead out of a module to something dangerous
+# (os.path.os.system, logging.config.listen, threading._os, ...). Any segment
+# starting with "_" is refused as well.
+FORBIDDEN_SEGMENTS = {"os", "sys", "subprocess", "socket", "builtins", "importlib",
+                      "config", "handlers", "ctypes", "shutil", "pickle", "marshal",
+                      "codecs", "io", "pathlib", "urllib", "http", "signal", "pty",
+                      "system", "popen", "spawn", "exec", "loader", "modules"}
 FORBIDDEN_CALLS = {"eval", "exec", "compile", "__import__", "open", "input",
                    "breakpoint", "globals", "vars", "locals"}
 ATTR_CALLS = {"getattr", "setattr", "hasattr", "delattr"}
@@ -52,8 +63,19 @@ def _root(name):
 
 
 def _module_allowed(name):
-    r = _root(name)
-    return r in ALLOWED_MODULES or r in ALLOWED_LOCAL or r.startswith("protocol")
+    return (name in ALLOWED_MODULES or name in ALLOWED_LOCAL
+            or bool(_LOCAL_RE.match(name or "")))
+
+
+def _chain(node):
+    """(root name, [attr, ...]) of a dotted chain like a.b.c, else (None, [])."""
+    attrs = []
+    while isinstance(node, ast.Attribute):
+        attrs.append(node.attr)
+        node = node.value
+    if isinstance(node, ast.Name):
+        return node.id, list(reversed(attrs))
+    return None, []
 
 
 def scan_source(src, path="<src>"):
@@ -91,12 +113,19 @@ def scan_source(src, path="<src>"):
                         out.append(f"{path}:{line}: from os import {a.name} (only os.path)")
                     module_names.add(a.asname or a.name)
             elif mod == "os.path":
-                pass
+                for a in node.names:
+                    if a.name.startswith("_") or a.name in FORBIDDEN_SEGMENTS:
+                        out.append(f"{path}:{line}: from os.path import {a.name}")
             elif not _module_allowed(mod):
                 out.append(f"{path}:{line}: from {mod} import ... (not allowed)")
             else:
                 for a in node.names:
+                    if a.name.startswith("_") or a.name in FORBIDDEN_SEGMENTS:
+                        out.append(f"{path}:{line}: from {mod} import {a.name}")
                     module_names.add(a.asname or a.name)
+    for parent in ast.walk(tree):
+        for child in ast.iter_child_nodes(parent):
+            child._parent_attr = parent
     for node in ast.walk(tree):
         line = getattr(node, "lineno", 0)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
@@ -118,6 +147,15 @@ def scan_source(src, path="<src>"):
                 out.append(f"{path}:{line}: os.{node.attr} (only os.path)")
             if node.attr in DUNDER_ESCAPES:
                 out.append(f"{path}:{line}: .{node.attr}")
+            if not isinstance(getattr(node, "_parent_attr", None), ast.Attribute):
+                root, attrs = _chain(node)
+                if root in module_names:
+                    rest = attrs[1:] if (root in os_names and attrs[:1] == ["path"]) else attrs
+                    for seg in rest:
+                        if seg.startswith("_") or seg in FORBIDDEN_SEGMENTS:
+                            out.append(f"{path}:{line}: {root}.{'.'.join(attrs)} "
+                                       f"(reaches {seg})")
+                            break
         elif isinstance(node, ast.Name) and node.id in ("__builtins__", "__loader__", "__spec__"):
             out.append(f"{path}:{line}: {node.id}")
     return sorted(set(out), key=lambda s: (int(s.split(":")[1]) if s.split(":")[1].isdigit() else 0, s))

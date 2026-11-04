@@ -72,3 +72,31 @@ def test_reviewed_exemption_is_pinned_to_the_line(tmp_path, monkeypatch):
     f.write_text("x = open('other')\n")
     monkeypatch.setattr(scan_contrib.os.path, "relpath", lambda p, start: "drivers/mini60.py")
     assert scan_contrib.main([str(f)]) == 1
+
+
+def test_transitive_and_submodule_escapes_are_caught():
+    cases = {
+        "import os\nos.path.os.system('x')\n": "reaches os",
+        "import os.path as p\np.os.system('x')\n": "reaches os",
+        "from os.path import os\n": "from os.path import os",
+        "import logging.config\n": "import logging.config",
+        "import logging\nlogging.config.listen()\n": "reaches config",
+        "import logging\nlogging.handlers.SocketHandler('h', 1)\n": "reaches handlers",
+        "from logging import config\n": "from logging import config",
+        "from logging import handlers as h\n": "from logging import handlers",
+        "import threading\nthreading._os\n": "reaches _os",
+        "import json\njson.decoder.sys\n": "reaches sys",
+        "import json.decoder\n": "import json.decoder",
+        "import protocol_x.evil\n": "import protocol_x.evil",
+    }
+    for src, needle in cases.items():
+        found = " ".join(_hits(src))
+        assert needle in found, (src, found)
+
+
+def test_ordinary_module_use_stays_clean():
+    src = ("import logging\nimport threading\nimport struct\nimport os\n"
+           "log = logging.getLogger(__name__)\nt = threading.Thread(target=f)\n"
+           "b = struct.pack('<H', 1)\np = os.path.join(os.path.dirname(x), 'y')\n"
+           "import drivers.base\nimport protocol_mini60\n")
+    assert _hits(src) == []
