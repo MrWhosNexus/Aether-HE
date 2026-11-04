@@ -226,12 +226,26 @@ class SoundcardBackend:
         self._com = False
 
     def enter(self):
-        if sys.platform == "win32":
-            import ctypes
-            hr = ctypes.windll.ole32.CoInitializeEx(None, 0)   # COINIT_MULTITHREADED
-            self._com = hr in (0, 1)                           # S_OK / S_FALSE
+        # Import FIRST. soundcard's import runs CoInitializeEx(MTA) on the
+        # importing thread and treats S_FALSE ("already initialised") as a
+        # fatal "Error 0x100000001", so initialising COM ourselves before the
+        # first import broke every capture. Later capture threads (the module
+        # is cached) still need their own COM init, which is ours below.
+        self._sc = self._import()
+        self._com = self._co_init()
+
+    @staticmethod
+    def _import():
         import soundcard
-        self._sc = soundcard
+        return soundcard
+
+    @staticmethod
+    def _co_init():
+        if sys.platform != "win32":
+            return False
+        import ctypes
+        hr = ctypes.windll.ole32.CoInitializeEx(None, 0)       # COINIT_MULTITHREADED
+        return hr in (0, 1)                                    # S_OK / S_FALSE: balance it
 
     def leave(self):
         if self._com:

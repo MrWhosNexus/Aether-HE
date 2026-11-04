@@ -248,3 +248,15 @@ def test_numpy_spectrum_keeps_the_newest_window_across_blocks():
     for k in range(3):
         last = a(x[k * music.HOP:(k + 1) * music.HOP])
     assert last == pytest.approx(b(x[-music.N_FFT:]))      # 1440 samples fed, last 1024 kept
+
+
+def test_soundcard_backend_imports_before_com_init(monkeypatch):
+    # soundcard's import runs CoInitializeEx itself and treats S_FALSE as a
+    # fatal "Error 0x100000001"; initialising COM first broke all capture.
+    order = []
+    monkeypatch.setattr(music.SoundcardBackend, "_import",
+                        staticmethod(lambda: order.append("import") or object()))
+    monkeypatch.setattr(music.SoundcardBackend, "_co_init",
+                        staticmethod(lambda: order.append("com") or False))
+    music.SoundcardBackend().enter()
+    assert order == ["import", "com"]
