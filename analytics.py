@@ -147,3 +147,156 @@ def summarize(day_buckets, code_of, days):
                       "shallow": sum(a["shallow"] for a in m),
                       "bottom": sum(a["bottom"] for a in m)})
     return {"keys": keys, "totals": key_summary(total), "daily": daily}
+
+
+def trig_norm(t):
+    """Read-back trigger tuple (mode, rt press, rt release) -> the part an
+    actuation write must keep; None when unknown. Fixed mode ignores RT."""
+    if not t:
+        return None
+    mode = int(t[0])
+    return (0, None, None) if mode == 0 else (mode, t[1], t[2])
+
+
+def evaluate(agg, act_raw, deeper_ok):
+    """Verdict for one aggregate recorded at ``act_raw`` (0.01 mm), or None
+    when there is too little data or nothing to suggest. ``kind`` is
+    "shallower" / "deeper" (with ``target_raw``), "floor" or "mixed"."""
+    rated = agg["presses"] - agg["unrated"]
+    if rated < MIN_PRESSES:
+        return None
+    attempts = rated + agg["shallow"]
+    s_rate = agg["shallow"] / attempts
+    b_rate = agg["barely"] / rated
+    base = {"current_raw": act_raw, "presses": rated, "attempts": attempts,
+            "shallow": agg["shallow"], "barely": agg["barely"],
+            "shallow_pct": round(100 * s_rate, 1),
+            "barely_pct": round(100 * b_rate, 1),
+            "p10_mm": telemetry.peak_percentile(agg["hist"], P_QUANTILE)}
+    want_shallow = s_rate > SHALLOW_RATE
+    want_deeper = deeper_ok and b_rate > BARELY_RATE
+    if want_shallow and want_deeper:
+        return dict(base, kind="mixed")
+    if want_shallow:
+        cand = act_raw - STEP_RAW
+        if base["p10_mm"] is not None:
+            cand = min(cand, int(round(base["p10_mm"] * 100)) - MARGIN_RAW)
+        cand = (cand // STEP_RAW) * STEP_RAW
+        cand = max(FLOOR_RAW, MIN_RAW, min(MAX_RAW, cand))
+        if cand >= act_raw:
+            return dict(base, kind="floor")
+        return dict(base, kind="shallower", target_raw=cand)
+    if want_deeper:
+        step = DEEPER_STRONG_RAW if b_rate > BARELY_STRONG_RATE else DEEPER_RAW
+        cand = max(FLOOR_RAW, min(MAX_RAW, act_raw + step))
+        if cand <= act_raw:
+            return None
+        return dict(base, kind="deeper", target_raw=cand)
+    return None
+
+
+def _mm(raw):
+    return round(raw / 100.0, 2)
+
+
+def _suggestion(scope, sid, label, codes, v, trig):
+    cur, new = _mm(v["current_raw"]), _mm(v["target_raw"])
+    these = "these keys" if len(codes) > 1 else "this key"
+    if v["kind"] == "shallower":
+        title = f"{label}: actuate earlier, {cur:.2f} → {new:.2f} mm"
+        detail = (f"{v['shallow_pct']:.1f}% of your presses on {these} stopped "
+                  f"before {cur:.2f} mm and did not type. 9 in 10 of your "
+                  f"presses reach {v['p10_mm']:.2f} mm or deeper, so {new:.2f} mm "
+                  f"should catch most of the missed ones.")
+        score = v["shallow"]
+    else:
+        title = f"{label}: actuate later, {cur:.2f} → {new:.2f} mm"
+        detail = (f"{v['barely_pct']:.1f}% of the presses that typed on {these} "
+                  f"went less than 0.10 mm past {cur:.2f} mm. Presses that light "
+                  f"are often a resting or brushing finger, so {new:.2f} mm "
+                  f"leaves a little more room before a key types.")
+        score = v["barely"]
+    mode, rtp, rtr = trig
+    return {"id": f"{scope}:{sid}", "scope": scope,
+            "group": sid if scope == "group" else None, "label": label,
+            "codes": list(codes), "direction": v["kind"],
+            "current_mm": cur, "suggested_mm": new,
+            "mode": mode, "rt_press_mm": rtp, "rt_release_mm": rtr,
+            "presses": v["presses"], "attempts": v["attempts"],
+            "shallow": v["shallow"], "barely": v["barely"],
+            "shallow_pct": v["shallow_pct"], "barely_pct": v["barely_pct"],
+            "p10_mm": v["p10_mm"], "score": score,
+            "title": title, "detail": detail}
+
+
+def _note(kind, gid, label, v=None, presses=0):
+    if kind == "data":
+        text = (f"{label}: {presses} of {MIN_PRESSES} presses recorded at the "
+                f"current actuation. Suggestions start at {MIN_PRESSES}.")
+    elif kind == "floor":
+        text = (f"{label}: {v['shallow_pct']:.1f}% of presses stopped short, but "
+                f"{_mm(v['current_raw']):.2f} mm is already at the 0.30 mm "
+                f"minimum Aether suggests, so there is nothing shallower to offer.")
+    else:
+        text = (f"{label}: presses bunch up right at {_mm(v['current_raw']):.2f} mm "
+                f"({v['shallow_pct']:.1f}% stopped short, {v['barely_pct']:.1f}% "
+                f"only just typed). Moving the point either way would make one of "
+                f"those worse, so no change is suggested.")
+    return {"id": f"note:{gid}", "kind": kind, "group": gid, "label": label,
+            "text": text}
+
+
+def suggest(rated, act_by_idx, trig_by_idx, index_of_code):
+    """Auto-tune suggestions.
+
+    rated:        idx -> agg recorded at the key's current actuation (rated_at)
+    act_by_idx:   idx -> current read-back actuation, 0.01 mm
+    trig_by_idx:  idx -> read-back (mode, rt press mm, rt release mm)
+    index_of_code: design code -> idx (KeyMap.index_of_code)
+
+    A key is "ready" only with both a read-back actuation and trigger mode.
+    A group is judged on its summed counters when every member is ready and
+    they all share one actuation and one trigger setting; a group suggestion
+    covers its members, so no key ever gets two (or opposite) suggestions.
+    Every key not covered is then judged on its own counters. Returns
+    {"suggestions": [...] most-affected-presses first, "notes": [...]}."""
+    code_of = {i: c for c, i in index_of_code.items()}
+    suggestions, notes, covered = [], [], set()
+
+    def ready(i):
+        return i in act_by_idx and trig_norm(trig_by_idx.get(i)) is not None
+
+    for gid, label, codes, deeper_ok in GROUPS:
+        members = [index_of_code[c] for c in codes if c in index_of_code]
+        if not members or not all(ready(i) for i in members):
+            continue
+        acts = {act_by_idx[i] for i in members}
+        trigs = {trig_norm(trig_by_idx[i]) for i in members}
+        if len(acts) != 1 or len(trigs) != 1:
+            continue
+        agg = telemetry.empty_agg()
+        for i in members:
+            if i in rated:
+                telemetry.merge_agg(agg, rated[i])
+        v = evaluate(agg, acts.pop(), deeper_ok)
+        if v is None:
+            n = agg["presses"] - agg["unrated"]
+            if n < MIN_PRESSES:
+                notes.append(_note("data", gid, label, presses=n))
+        elif v["kind"] in ("shallower", "deeper"):
+            suggestions.append(_suggestion("group", gid, label,
+                                           [code_of[i] for i in members],
+                                           v, trigs.pop()))
+            covered.update(members)
+        else:
+            notes.append(_note(v["kind"], gid, label, v))
+    for idx in sorted(code_of):
+        code = code_of[idx]
+        if idx in covered or not ready(idx) or idx not in rated:
+            continue
+        v = evaluate(rated[idx], act_by_idx[idx], code in DEEPER_CODES)
+        if v is not None and v["kind"] in ("shallower", "deeper"):
+            suggestions.append(_suggestion("key", code, key_label(code), [code],
+                                           v, trig_norm(trig_by_idx[idx])))
+    suggestions.sort(key=lambda s: (-s["score"], s["id"]))
+    return {"suggestions": suggestions, "notes": notes}
