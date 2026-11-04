@@ -40,4 +40,10 @@ jobs:
         run: |
           git config user.name "aether-board-bot"
           git config user.email "bot@users.noreply.github.com"
-          python tools/board_bot.py --issue "$ISSUE"
+          # Bind the run to the body the maintainer saw when labelling: an
+          # edit after the label makes the bot refuse (board_bot.run).
+          EXPECT=""
+          if [ "$GITHUB_EVENT_NAME" = "issues" ]; then
+            EXPECT=$(python -c "import hashlib,json,os; e=json.load(open(os.environ['GITHUB_EVENT_PATH'],encoding='utf-8')); print(hashlib.sha256(((e.get('issue') or {}).get('body') or '').encode('utf-8')).hexdigest())")
+          fi
+          python tools/board_bot.py --issue "$ISSUE" ${EXPECT:+--expect-body-sha256 "$EXPECT"}

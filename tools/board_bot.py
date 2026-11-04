@@ -4,6 +4,7 @@ main() shells out to `gh`."""
 import argparse
 import ast
 import ipaddress
+import hashlib
 import json
 import os
 import re
@@ -24,21 +25,45 @@ _FILE_BLOCK = re.compile(r"=== FILE: (?P<name>[^\n=]+?) ===\n(?P<body>.*?)(?=\n=
 _REQUIRED_ENTRY_KEYS = {"slug", "name", "vid", "pid", "usage_page", "formFactor",
                         "protocol", "keymap", "capabilities", "status"}
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
-# The registry entry is model output driven by an UNTRUSTED issue: keep only
-# plain identity/layout fields and pin everything that changes app behaviour.
-_ENTRY_KEEP = _REQUIRED_ENTRY_KEYS | {"productString", "_note"}
+# The registry entry is model output driven by an UNTRUSTED issue: it is
+# REBUILT from validated identity fields only, and everything that changes app
+# behaviour is pinned (no driver, no capabilities, not offered, the layout path
+# is the file the bot itself wrote).
 _PR_BODY_MAX = 60000
+_HEX16_RE = re.compile(r"^0[xX][0-9A-Fa-f]{1,4}$")
+_FORM_FACTORS = {"40%", "60%", "65%", "68%", "75%", "80%", "TKL", "96%", "100%", "other"}
 
 
-def safe_registry_entry(reg):
-    """The drafted registry entry, reduced to known keys, with the protocol
-    unset (no driver until a human wires one), status experimental and never
-    offered in the UI."""
-    out = {k: v for k, v in reg.items() if k in _ENTRY_KEEP}
-    out["protocol"] = None
-    out["status"] = "experimental"
-    out["offerInUi"] = False
-    return out
+def _hex16(v):
+    """'0x1a' -> '0x001A' (the registry's form); None unless 1-4 hex digits."""
+    return "0x%04X" % int(v, 16) if isinstance(v, str) and _HEX16_RE.match(v) else None
+
+
+def safe_registry_entry(reg, slug):
+    """(entry, problems). The entry holds only validated identity fields; the
+    problems are reasons to refuse the draft (bad VID/PID)."""
+    problems = []
+    vid, pid = _hex16(reg.get("vid")), _hex16(reg.get("pid"))
+    if vid is None or pid is None:
+        problems.append("vid/pid must be 0x-prefixed hex (up to 4 digits)")
+    up = reg.get("usage_page")
+    up = _hex16(up) if up is not None else None
+    name = reg.get("name") if isinstance(reg.get("name"), str) else slug
+    name = "".join(ch for ch in name if ch.isprintable())[:80] or slug
+    ff = reg.get("formFactor") if reg.get("formFactor") in _FORM_FACTORS else "other"
+    entry = {"slug": slug, "name": name, "vid": vid, "pid": pid, "usage_page": up,
+             "formFactor": ff, "protocol": None, "keymap": f"ui/layouts/{slug}.json",
+             "capabilities": {}, "status": "experimental", "offerInUi": False,
+             "_note": "AI-DRAFTED from a public issue; identity unverified."}
+    return entry, problems
+
+
+def shared_vid_pid(entry, boards):
+    """Slugs of registered boards with the same VID:PID (several real boards
+    share one, so this is flagged for the reviewer, not refused)."""
+    key = (str(entry.get("vid")).upper(), str(entry.get("pid")).upper())
+    return [b.get("slug") for b in boards
+            if (str(b.get("vid")).upper(), str(b.get("pid")).upper()) == key]
 
 
 def _fence(text):
@@ -47,7 +72,7 @@ def _fence(text):
     return "`" * max(3, run + 1)
 
 
-def pr_body(issue_number, adapter, syntax_error):
+def pr_body(issue_number, adapter, syntax_error, shares=()):
     """PR description. The drafted adapter is shown as TEXT for a human to
     review and port; it is never committed as a .py file (a prompt-injected
     issue could otherwise land runnable code in a bot-authored PR)."""
@@ -56,6 +81,10 @@ def pr_body(issue_number, adapter, syntax_error):
             "See DECODE_NOTES.md.\n\nThis PR commits data only (registry entry with "
             "`protocol: null`, layout). The drafted protocol adapter is below as text: "
             "review it line by line and port it by hand - never copy it in unread.\n")
+    if shares:
+        head += ("\n> **VID:PID already registered** for: " + ", ".join(map(str, shares))
+                 + ". Same-ID siblings need a `productString` discriminator; check "
+                 "this does not hijack detection of an existing board.\n")
     if not adapter:
         return head
     if syntax_error:
@@ -223,12 +252,22 @@ def _read_prompt():
     return open(os.path.join(here, "prompts", "board_draft.md"), encoding="utf-8").read()
 
 
-def run(issue_number, *, gh, complete, repo_root):
+def body_sha256(body):
+    return hashlib.sha256((body or "").encode("utf-8")).hexdigest()
+
+
+def run(issue_number, *, gh, complete, repo_root, expect_body_sha256=None):
     """Testable core. gh(args)->stdout, complete(prompt)->text are injected.
     NEVER merges, force-pushes, or touches main directly — only creates
     branch board/<slug> and opens a PR via `gh pr create`."""
     issue = json.loads(gh(["issue", "view", str(issue_number), "--json", "number,title,body"]))
     body = issue.get("body", "")
+    if expect_body_sha256 and body_sha256(body) != expect_body_sha256:
+        # Edited after the maintainer added the label: draft nothing.
+        gh(["issue", "comment", str(issue_number), "--body",
+            "Automated draft skipped: the issue changed after it was approved for "
+            "drafting. A maintainer must re-apply the `bot-draft` label."])
+        return {"ok": False, "pr_url": None, "reason": "issue changed after approval"}
     sub = extract_json_block(body)
     if sub is None:
         url = extract_attachment_url(body)
@@ -268,9 +307,15 @@ def run(issue_number, *, gh, complete, repo_root):
 
     slug = artifacts["registry"]["slug"]
     syntax_error = any("syntax error" in p for p in problems)
+    entry, bad = safe_registry_entry(artifacts["registry"], slug)
+    if bad:
+        gh(["issue", "comment", str(issue_number), "--body",
+            "Automated draft could not produce a clean board:\n- " + "\n- ".join(bad)])
+        return {"ok": False, "pr_url": None, "reason": "sanity failed"}
     # write files: DATA ONLY (no Python is ever committed from model output)
     reg = json.load(open(reg_path))
-    reg["boards"].append(safe_registry_entry(artifacts["registry"]))
+    shares = shared_vid_pid(entry, reg.get("boards", []))
+    reg["boards"].append(entry)
     json.dump(reg, open(reg_path, "w"), indent=2)
     lay_path = os.path.join(repo_root, "ui", "layouts", f"{slug}.json")
     os.makedirs(os.path.dirname(lay_path), exist_ok=True)
@@ -300,7 +345,7 @@ def run(issue_number, *, gh, complete, repo_root):
     except Exception:
         pass  # already exists (or no perms) — non-fatal
     pr_url = gh(["pr", "create", "--title", f"Draft board: {slug} (experimental)",
-                 "--body", pr_body(issue_number, artifacts.get("adapter") or "", syntax_error),
+                 "--body", pr_body(issue_number, artifacts.get("adapter") or "", syntax_error, shares),
                  "--label", "experimental", "--head", branch]).strip()
     gh(["issue", "comment", str(issue_number), "--body", f"Automated draft opened: {pr_url}"])
     return {"ok": True, "pr_url": pr_url, "reason": "ok"}
@@ -328,11 +373,15 @@ def _load_dotenv(repo_root):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--issue", type=int, required=True)
+    ap.add_argument("--expect-body-sha256", default=None,
+                    help="refuse unless the issue body still hashes to this "
+                         "(the body as it was when the bot-draft label was added)")
     args = ap.parse_args()
     repo_root = os.getcwd()
     _load_dotenv(repo_root)                              # local runs: pick up .env
     from minimax_client import complete as mm_complete   # env key; raises if absent
-    res = run(args.issue, gh=_gh, complete=mm_complete, repo_root=repo_root)
+    res = run(args.issue, gh=_gh, complete=mm_complete, repo_root=repo_root,
+              expect_body_sha256=args.expect_body_sha256)
     print("result:", res["reason"])   # never prints the key
 
 

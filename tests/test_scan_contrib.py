@@ -34,3 +34,41 @@ def test_flags_network_process_native_and_eval():
 
 def test_unparseable_code_fails():
     assert "does not parse" in _hits("def (:\n")[0]
+
+
+def test_alias_and_module_getattr_bypasses_are_caught():
+    cases = {
+        "import os as o\no.system('x')\n": "os.system",
+        "import os\ngetattr(os, 'system')('x')\n": "on module os",
+        "import os.path as p\nimport os\nos.popen('x')\n": "os.popen",
+        "from os import system\n": "only os.path",
+        "from os import system as s\n": "only os.path",
+        "import sys\nsys.modules['subprocess']\n": "import sys",
+        "import asyncio\n": "import asyncio",
+        "import io\n": "import io",
+        "import pathlib\n": "import pathlib",
+        "import struct as s\ngetattr(s, 'pack')\n": "on module s",
+        "x = ().__class__.__bases__[0].__subclasses__()\n": "__subclasses__",
+        "getattr(obj, '__globals__')\n": "of __globals__",
+        "from struct import *\n": "import *",
+    }
+    for src, needle in cases.items():
+        found = " ".join(_hits(src))
+        assert needle in found, (src, found)
+
+
+def test_allowed_code_stays_clean():
+    src = ("import os\nimport os.path\nfrom os import path\nimport struct as st\n"
+           "from .base import BoardDriver\nimport protocol_mini60 as pm\nimport boards\n"
+           "p = os.path.join('a', 'b')\nn = getattr(profile, 'slug', None)\n")
+    assert _hits(src) == []
+
+
+def test_reviewed_exemption_is_pinned_to_the_line(tmp_path, monkeypatch):
+    # The real mini60 exemption passes; the same finding on another line does not.
+    assert scan_contrib.main([]) == 0
+    f = tmp_path / "drivers" / "mini60.py"
+    f.parent.mkdir()
+    f.write_text("x = open('other')\n")
+    monkeypatch.setattr(scan_contrib.os.path, "relpath", lambda p, start: "drivers/mini60.py")
+    assert scan_contrib.main([str(f)]) == 1

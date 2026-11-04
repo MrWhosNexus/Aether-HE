@@ -13,3 +13,7 @@
 /tools/scan_contrib.py     @MrWhosNexus
 /tools/board_bot.py        @MrWhosNexus
 /app_web.py                @MrWhosNexus
+# Local modules that tools/scan_contrib.py lets board code import:
+/boards.py                 @MrWhosNexus
+/device_state.py           @MrWhosNexus
+/aula_device.py            @MrWhosNexus

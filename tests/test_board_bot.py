@@ -96,15 +96,44 @@ def test_run_happy_path(tmp_path, monkeypatch):
     assert calls["comment"] is not None   # commented the PR link on the issue
 
 
-def test_safe_registry_entry_drops_unknown_keys_and_pins_behaviour():
-    e = bot.safe_registry_entry({"slug": "a", "name": "A", "vid": "0x1", "pid": "0x2",
-                                 "usage_page": None, "formFactor": "60%",
-                                 "protocol": "protocol", "keymap": "x.json",
-                                 "capabilities": {}, "status": "supported",
-                                 "offerInUi": True, "lighting": {"hostEngine": True},
-                                 "evil": "<script>"})
-    assert e["protocol"] is None and e["status"] == "experimental" and e["offerInUi"] is False
-    assert "lighting" not in e and "evil" not in e
+def test_safe_registry_entry_is_rebuilt_from_validated_identity_only():
+    e, bad = bot.safe_registry_entry({"slug": "a", "name": "A\x00<b>", "vid": "0x2e3c", "pid": "0xC365",
+                                      "usage_page": "0xff1b", "formFactor": "60%",
+                                      "protocol": "protocol", "keymap": "../../app_web.py",
+                                      "capabilities": {"lighting": True}, "status": "supported",
+                                      "offerInUi": True, "lighting": {"hostEngine": True},
+                                      "productString": ["x"], "evil": "<script>"}, "acme-60")
+    assert bad == []
+    assert e["slug"] == "acme-60" and e["keymap"] == "ui/layouts/acme-60.json"
+    assert e["vid"] == "0x2E3C" and e["pid"] == "0xC365" and e["usage_page"] == "0xFF1B"
+    assert e["protocol"] is None and e["capabilities"] == {} and e["status"] == "experimental"
+    assert e["offerInUi"] is False and e["name"] == "A<b>"
+    for k in ("lighting", "evil", "productString"):
+        assert k not in e
+
+
+def test_safe_registry_entry_refuses_bad_ids():
+    _, bad = bot.safe_registry_entry({"vid": "2E3C; rm -rf", "pid": "0x12345"}, "x")
+    assert bad
+
+
+def test_shared_vid_pid_is_flagged():
+    e, _ = bot.safe_registry_entry({"vid": "0x2e3c", "pid": "0xc365"}, "x")
+    assert bot.shared_vid_pid(e, [{"slug": "aula-win60-he", "vid": "0x2E3C", "pid": "0xC365"}]) == ["aula-win60-he"]
+    assert "already registered" in bot.pr_body(1, "", False, ["aula-win60-he"])
+
+
+def test_issue_edited_after_approval_is_refused(tmp_path):
+    calls = []
+    def fake_gh(args):
+        calls.append(args)
+        if args[:2] == ["issue", "view"]:
+            return '{"number": 9, "title": "t", "body": "edited later"}'
+        return ""
+    res = bot.run(9, gh=fake_gh, complete=lambda p: 1 / 0, repo_root=str(tmp_path),
+                  expect_body_sha256=bot.body_sha256("what the maintainer saw"))
+    assert res["ok"] is False and res["reason"] == "issue changed after approval"
+    assert not any(a and a[0] == "pr" for a in calls)
 
 
 def test_pr_body_fence_cannot_be_closed_by_the_adapter():
