@@ -177,3 +177,28 @@ Full steps are in `docs/context/aula-win60-advanced-keys-capture-checklist.md`. 
 - [ ] R1: read-back after a page reload returns the same payload bytes.
 - [ ] X1: delete the test entries; the board returns to 40 empty slots and J, K and Caps Lock type normally.
 - [ ] Send back the JSON (Method 1) or filtered `.pcapng` (Method 2) with the step marks, one feel-test line per step, and any mismatch against an Expect line.
+
+## WIN 68 HE Max bring-up (1CA2:1901, issue #7)
+For a WIN 68 HE Max owner (nieruuu19 offered in #7). Nobody working on Aether owns this board, so every line below is unverified until a tester ticks it. `protocol_magnet.py` rebuilds all 344 frames the vendor web driver sent byte for byte (`tests/test_protocol_magnet.py`), but no frame from Aether has reached a Max yet. The board is detected and driven when plugged in; it is not offered in the board picker until this list passes.
+
+### Before you start
+- [ ] Close the vendor web driver (magnet.aulastar.com). Two programs on one HID handle steal each other's replies.
+- [ ] Use a build from Aether's CI or `python app_web.py` on this repo. Never use a build from a fork.
+- [ ] Note the Max's current lighting in the vendor driver so you can restore it.
+
+### Default mode (safe: captured frames only)
+- [ ] Connect: the top bar says WIN 68 HE MAX, and the on-screen keyboard is the 68-key layout (Ins/Del/PgUp/PgDn column, arrows). `aether.log` shows it opened the 0xFFA0 interface. If it opened another interface, report the `usage_page` list from the log.
+- [ ] Static colour: pick Static and a colour; every key turns that colour. Change brightness 0-4 and confirm each step is visible.
+- [ ] Lights off: the power toggle turns the board dark; on brings the colour back.
+- [ ] Per-key paint: paint W, A, S and D; only those four change.
+- [ ] Host effects: run Wave, then Rain, and note how smooth they look. hostEngineMaxFps is a guessed 12 (each changed key costs one HID write); report whether motion stutters or keys lag so the value can be tuned.
+- [ ] Firmware effects: pick Breath. Aether should say the effect is not supported on this board rather than show something else. Effects 1-20 still need names: for each one, report the vendor driver's name for mode N (the vendor log prints 灯光模式：N).
+- [ ] Travel: in default mode the Travel Test cannot run (live travel is experimental-only) and Key Statistics are not offered for this board. That is expected.
+
+### Experimental mode (unverified frames from the contributor fork)
+Set `AETHER_EXPERIMENTAL=magnet` before starting Aether (PowerShell: `$env:AETHER_EXPERIMENTAL="magnet"; python app_web.py`). `aether.log` then warns that experimental writes are on. Run these one at a time. If anything misbehaves, restore the board's settings with the vendor driver.
+- [ ] Travel Test: press W slowly; the on-screen depth follows within about 50 ms and returns to 0 on release. Press keys on every row, including the arrows and the right-hand column, and check the right key moves. Wrong keys mean the 21-per-row matrix index is off: report which key lit for which press.
+- [ ] Actuation: set W to 0.50 mm; W now fires on a shallow press in Notepad. Set it back to 2.00 mm. Re-open the vendor driver and check it shows the same values.
+- [ ] Rapid trigger: set W to RT with 0.10 / 0.10 mm; tap-and-hold with small lifts re-fires W. Turn RT off again.
+- [ ] SOCD: one A/D pair on Model 4 (last pressed wins); hold A, press D, release D: A should come back. Delete the pair.
+- [ ] Send back: the `aether.log` from the session, which lines passed, and the vendor driver's view of actuation and SOCD after each write.
