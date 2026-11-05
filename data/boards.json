@@ -31,7 +31,7 @@
       "switches": "Hall-effect",
       "lighting": "wip",
       "actuation": "wip",
-      "status": "Bring-up — auto-detected, shares the Win60 protocol; not yet verified on hardware"
+      "status": "Bring-up — auto-detected, shares the Win60 protocol; full 68-key layout and live travel confirmed from an owner's capture (#20), settings not yet round-tripped on hardware"
     }
   ],
   "recognized": [
@@ -82,8 +82,8 @@
     },
     {
       "slug": "aula-win68he-max",
-      "name": "Aula win68 HE Max",
-      "reason": "layout added (65%), needs captures (#7)"
+      "name": "Aula WIN 68 HE Max",
+      "reason": "protocol decoded from a vendor-driver capture (#7): lighting and per-key colour drive when plugged in; actuation, live travel and SOCD wait for a hardware bring-up. Not offered in the picker until then."
     },
     {
       "slug": "aula-win60he-pro",

@@ -842,8 +842,19 @@ class Api:
             # hostEngineMaxFps field (see _lighting_block).
             "lighting": _lighting_block(b),
             "actuation": getattr(b, "actuation", None),
+            "uiLayout": self._ui_layout(),
         }
         return {"active": active, "boards": roster}
+
+    # Design codes that make a keymap the 68-key (65 %) WIN 68 layout.
+    _UI68_CODES = frozenset({"Ins", "Del", "PgUp", "PgDn", "Up", "Left", "Down", "Right"})
+
+    def _ui_layout(self):
+        """Which on-screen keyboard the UI draws for the active keymap: "68"
+        for the WIN 68 HE / HE Max key set, else "60" (the Win60 drawing)."""
+        km = getattr(self, "km", None)
+        codes = set(getattr(km, "index_of_code", None) or ())
+        return "68" if self._UI68_CODES <= codes and "Menu" not in codes else "60"
 
     def list_boards(self):
         """Every registered board with its live connection state — for the
@@ -3232,7 +3243,21 @@ def _on_start(window):
         log.warning("render-state probe failed: %s", e)
 
 
+def _apply_experimental_flags(env=None):
+    """AETHER_EXPERIMENTAL=magnet turns on the WIN 68 HE Max driver's
+    SOURCE-ONLY features (actuation, live travel, SOCD) for a hardware
+    bring-up tester. Off by default; nothing else reads it."""
+    flags = {f.strip().lower() for f in
+             ((os.environ if env is None else env).get("AETHER_EXPERIMENTAL") or "").split(",")}
+    import drivers.magnet
+    drivers.magnet.MagnetDriver.experimental = "magnet" in flags
+    if "magnet" in flags:
+        log.warning("EXPERIMENTAL: WIN 68 HE Max actuation/travel/SOCD enabled "
+                    "(unverified frames, bring-up only)")
+
+
 def main():
+    _apply_experimental_flags()
     if not os.path.exists(INDEX):
         boot.show_error(f"Aether HE could not start: UI not found\n\n{INDEX}")
         raise SystemExit(f"UI not found: {INDEX}")

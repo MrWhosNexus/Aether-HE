@@ -55,9 +55,16 @@ def _is_mini60_frame(f, profile):
     return len(f) == n + 1 and f[0] == 0x00 and f[1] == pm.MAGIC
 
 
+def _is_magnet_frame(f, profile):
+    import protocol_magnet
+    return (len(f) == protocol_magnet.FRAME_LEN + 1 and f[0] == protocol_magnet.REPORT_ID
+            and protocol_magnet.is_valid(list(f[1:])))
+
+
 FRAME_SHAPE = {
     "protocol": _is_win60_frame,
     "protocol_mini60": _is_mini60_frame,
+    "protocol_magnet": _is_magnet_frame,
 }
 
 
@@ -234,6 +241,10 @@ LIGHT_BOARDS = [s for s, p in _drivable()
 def _wire_mode_byte(profile, frames):
     """The mode byte the board actually received, read out of the LAST
     lighting frame in this board's own layout."""
+    if profile.protocol == "protocol_magnet":
+        # report id 0 + [0x5C, len, cmd, chk, payload...]; mode = payload[39]
+        light = [f for f in frames if f[3] == 0x18 and f[2] == 44]
+        return light[-1][1 + 4 + 39] if light else None
     if profile.protocol == "protocol_mini60":
         # frames carry the 0x00 report id: [0]=id [1]=0xAA [2]=cmd
         light = [f for f in frames if f[2] == pm.CMD_LIGHTING]

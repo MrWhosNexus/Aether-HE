@@ -5,7 +5,7 @@
 ; first run, and a proper uninstaller).
 
 #define MyAppName        "AETHER HE"
-#define MyAppVersion     "0.6.1"
+#define MyAppVersion     "0.6.2"
 #define MyAppPublisher   "MrWhosNexus"
 #define MyAppURL         "https://github.com/MrWhosNexus/Aether-HE"
 #define MyAppExeName     "AetherHE.exe"
@@ -35,6 +35,9 @@ PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog
 CloseApplications=force
 RestartApplications=no
+; Shown on interactive installs (silent auto-updates skip the wizard pages).
+LicenseFile=LICENSE
+InfoBeforeFile=docs\legal\INSTALL_NOTICE.txt
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -49,6 +52,13 @@ Name: "installvigem"; Description: "Install ViGEmBus driver (needed for virtual 
 ; Bundle the entire PyInstaller output (AetherHE.exe + _internal/).
 Source: "dist\AetherHE\AetherHE.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "dist\AetherHE\_internal\*"; DestDir: "{app}\_internal"; Flags: ignoreversion recursesubdirs createallsubdirs
+; License, notices, privacy and AI disclosure travel with every install (GPL-3.0 sec. 4-6).
+Source: "LICENSE"; DestDir: "{app}\legal"; DestName: "LICENSE.txt"; Flags: ignoreversion
+Source: "NOTICE.md"; DestDir: "{app}\legal"; Flags: ignoreversion
+Source: "PRIVACY.md"; DestDir: "{app}\legal"; Flags: ignoreversion
+Source: "AI_DISCLOSURE.md"; DestDir: "{app}\legal"; Flags: ignoreversion
+Source: "THIRD_PARTY_NOTICES.md"; DestDir: "{app}\legal"; Flags: ignoreversion
+Source: "docs\legal\INSTALL_NOTICE.txt"; DestDir: "{app}\legal"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"; Tasks: startmenuicon

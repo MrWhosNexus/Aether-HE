@@ -36,10 +36,11 @@
   const KB = window.AetherKeyboard || {};
   const KeyboardPanel = KB.KeyboardPanel;
   const KB_ROWS = KB.KB_ROWS || [];
-  const ALL_CODES = KB_ROWS.flat().map(r => r[2]);
+  // The ACTIVE board's key count (KB.KB_ROWS is a getter on the active layout).
+  const activeKeyCount = () => (KB.KB_ROWS || KB_ROWS).flat().length;
   const LABEL_OF_CODE = {};
-  KB_ROWS.flat().forEach(([label, _u, code]) => {
-    LABEL_OF_CODE[code] = label;
+  (KB.ALL_ROWS || KB_ROWS).flat().forEach(([label, _u, code]) => {
+    if (!(code in LABEL_OF_CODE)) LABEL_OF_CODE[code] = label;
   });
 
   // analytics.jsx loads before this file, lighting.jsx after it (build order is
@@ -317,7 +318,7 @@
       on: mode === id,
       onClick: () => setMode(id)
     }, (HERO_MODES.find(m => m.id === id) || {}).label)));
-    const sum = mode === "actuation" ? actuationSummary(ctx.perKeyActuation, ctx.perKeyTrigger, ALL_CODES.length) : null;
+    const sum = mode === "actuation" ? actuationSummary(ctx.perKeyActuation, ctx.perKeyTrigger, activeKeyCount()) : null;
     const legend = mode === "heatmap" ? /*#__PURE__*/React.createElement(Legend, {
       top: "more",
       bottom: "fewer",
@@ -379,7 +380,7 @@
     const isSup = board.isSupported || (() => true);
     const state = ctx.pollRestarting ? "Restarting keyboard…" : ctx.connecting ? "Connecting…" : ctx.connected ? "Linked" : "Offline";
     const g = gameLine(ctx.games, ctx.profiles);
-    const sum = actuationSummary(ctx.perKeyActuation, ctx.perKeyTrigger, ALL_CODES.length);
+    const sum = actuationSummary(ctx.perKeyActuation, ctx.perKeyTrigger, activeKeyCount());
     const block = "px-4 py-3";
     return /*#__PURE__*/React.createElement("section", {
       className: "glass flex flex-col min-h-0 overflow-hidden",

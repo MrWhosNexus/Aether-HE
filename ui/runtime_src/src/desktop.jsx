@@ -33,9 +33,11 @@ const BOARD_CTX = (window.AetherBoard && window.AetherBoard.BoardContext)
 
 const BOARD_CHIP_LABEL = { "aula-win60-he": "WIN 60 HE" };
 
+const BOARD_CHIP_68 = { "aula-win68-he": "WIN 68 HE", "aula-win68he-max": "WIN 68 HE MAX" };
 const boardChipName = (board) => {
   if (!board) return "WIN 60 HE";                       // fail-open: today's string
   if (BOARD_CHIP_LABEL[board.slug]) return BOARD_CHIP_LABEL[board.slug];
+  if (BOARD_CHIP_68[board.slug]) return BOARD_CHIP_68[board.slug];
   return String(board.name || "")
     .replace(/^aula\s+/i, "")                           // vendor prefix is noise here
     .replace(/\s*\([^)]*\)\s*/g, " ")                   // drop "(wired)" / "(2.4GHz dongle)"
@@ -237,7 +239,10 @@ const SECTION_DEFS = [
 function TopBar({ sections, active, onSelect, connected, connecting, onTogglePair,
                   autoConnect, setAutoConnect, onOpenSettings, zoom, setZoom }) {
   const defs = sections || SECTION_DEFS;
-  const bctx = React.useContext(BOARD_CTX);
+  // Resolve the context NOW, not at file load: desktop.jsx is compiled
+  // before components/board-context.jsx, so the load-time BOARD_CTX is a
+  // private, never-provided context and the chip always read "WIN 60 HE".
+  const bctx = React.useContext((window.AetherBoard && window.AetherBoard.BoardContext) || BOARD_CTX);
   const chipName = boardChipName(bctx && bctx.board);
   return (
     <header className="topbar">
@@ -302,5 +307,5 @@ function TopBar({ sections, active, onSelect, connected, connecting, onTogglePai
   );
 }
 
-window.AetherDesktop = { WidgetFrame, Workspace, Dock, TopBar, SECTION_DEFS };
+window.AetherDesktop = { WidgetFrame, Workspace, Dock, TopBar, SECTION_DEFS, boardChipName };
 })();

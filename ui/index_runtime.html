@@ -34115,6 +34115,54 @@
      "Magnetic Switch Keyboard · 30 Seconds Quick Operation Guide". */
   const KB_ROWS = [[["Esc", 4, "Escape", "`~"], ["1!", 4, "1", "F1"], ["2@", 4, "2", "F2"], ["3#", 4, "3", "F3"], ["$4", 4, "4", "F4"], ["5%", 4, "5", "F5"], ["6^", 4, "6", "F6"], ["7&", 4, "7", "F7"], ["8*", 4, "8", "F8"], ["9(", 4, "9", "F9"], ["0)", 4, "0", "F10"], ["-_", 4, "Minus", "F11"], ["=+", 4, "Equal", "F12"], ["Back", 8, "Backspace", "Color"]], [["Tab", 6, "Tab", "Light FX"], ["Q", 4, "Q", ""], ["W", 4, "W", "↑"], ["E", 4, "E", "Vol−"], ["R", 4, "R", "Vol+"], ["T", 4, "T", "Prev"], ["Y", 4, "Y", "Next"], ["U", 4, "U", "Play"], ["I", 4, "I", ""], ["O", 4, "O", "Mail"], ["P", 4, "P", "Home"], ["{[", 4, "Lbr", ""], ["}]", 4, "Rbr", ""], ["\\|", 6, "Bsl", ""]], [["Caps", 7, "Caps"], ["A", 4, "A", "←"], ["S", 4, "S", "↓"], ["D", 4, "D", "→"], ["F", 4, "F", "Brt+"], ["G", 4, "G", "Brt−"], ["H", 4, "H", ""], ["J", 4, "J", ""], ["K", 4, "K", ""], ["L", 4, "L", ""], [";:", 4, "Semi", "Ins"], ["'\"", 4, "Quot", ""], ["Enter", 9, "Enter", ""]], [["L-Shift", 9, "LShift"], ["Z", 4, "Z", "Win"], ["X", 4, "X", "Mac"], ["C", 4, "C", ""], ["V", 4, "V", ""], ["B", 4, "B", ""], ["N", 4, "N", "Reset"], ["M", 4, "M", "End"], [",<", 4, "Comma", "PgUp"], [".>", 4, "Dot", "PgDn"], ["/?", 4, "Slash", "Del"], ["R-Shift", 11, "RShift"]], [["L-Ctrl", 5, "LCtrl"], ["L-Win", 5, "LWin", "WinLk"], ["L-Alt", 5, "LAlt"], ["Space", 25, "Space"], ["R-Alt", 5, "RAlt"], ["Menu", 5, "Menu"], ["R-Ctrl", 5, "RCtrl"], ["Fn", 5, "Fn", "Fn"]]];
 
+  /* 68-key (65 %) layout of the WIN 68 HE / WIN 68 HE Max: the 60 % block plus
+     a right-hand Ins/Del/PgUp/PgDn column and arrows; a shorter right Shift and
+     three 1u keys right of Space (no Menu). Each row totals 64 cols. Codes are
+     the design codes device_state.WEB_TO_DESIGN gives these keys. FN labels
+     are only the number row: the rest of the WIN 68 FN layer is not
+     transcribed (the Win60 ones were arrows/media that the 68 has physically). */
+  const KB_ROWS_68 = [[["Esc", 4, "Escape", "`~"], ["1!", 4, "1", "F1"], ["2@", 4, "2", "F2"], ["3#", 4, "3", "F3"], ["$4", 4, "4", "F4"], ["5%", 4, "5", "F5"], ["6^", 4, "6", "F6"], ["7&", 4, "7", "F7"], ["8*", 4, "8", "F8"], ["9(", 4, "9", "F9"], ["0)", 4, "0", "F10"], ["-_", 4, "Minus", "F11"], ["=+", 4, "Equal", "F12"], ["Back", 8, "Backspace", ""], ["Ins", 4, "Ins", ""]], [["Tab", 6, "Tab", ""], ["Q", 4, "Q", ""], ["W", 4, "W", ""], ["E", 4, "E", ""], ["R", 4, "R", ""], ["T", 4, "T", ""], ["Y", 4, "Y", ""], ["U", 4, "U", ""], ["I", 4, "I", ""], ["O", 4, "O", ""], ["P", 4, "P", ""], ["{[", 4, "Lbr", ""], ["}]", 4, "Rbr", ""], ["\\|", 6, "Bsl", ""], ["Del", 4, "Del", ""]], [["Caps", 7, "Caps"], ["A", 4, "A", ""], ["S", 4, "S", ""], ["D", 4, "D", ""], ["F", 4, "F", ""], ["G", 4, "G", ""], ["H", 4, "H", ""], ["J", 4, "J", ""], ["K", 4, "K", ""], ["L", 4, "L", ""], [";:", 4, "Semi", ""], ["'\"", 4, "Quot", ""], ["Enter", 9, "Enter", ""], ["PgUp", 4, "PgUp", ""]], [["L-Shift", 9, "LShift"], ["Z", 4, "Z", ""], ["X", 4, "X", ""], ["C", 4, "C", ""], ["V", 4, "V", ""], ["B", 4, "B", ""], ["N", 4, "N", ""], ["M", 4, "M", ""], [",<", 4, "Comma", ""], [".>", 4, "Dot", ""], ["/?", 4, "Slash", ""], ["R-Shift", 7, "RShift"], ["↑", 4, "Up", ""], ["PgDn", 4, "PgDn", ""]], [["L-Ctrl", 5, "LCtrl"], ["L-Win", 5, "LWin", ""], ["L-Alt", 5, "LAlt"], ["Space", 25, "Space"], ["R-Alt", 4, "RAlt"], ["Fn", 4, "Fn", "Fn"], ["R-Ctrl", 4, "RCtrl"], ["←", 4, "Left", ""], ["↓", 4, "Down", ""], ["→", 4, "Right", ""]]];
+
+  /* Board layouts. The active one follows get_board().active.uiLayout (set by
+     app.jsx through setLayout); KeyboardPanel re-renders on a change, and
+     window.AetherKeyboard.KB_ROWS always returns the ACTIVE rows. ALL_ROWS is
+     every layout's keys, for label lookups that must work on any board. */
+  const LAYOUTS = {
+    "60": {
+      rows: KB_ROWS,
+      cols: 60
+    },
+    "68": {
+      rows: KB_ROWS_68,
+      cols: 64
+    }
+  };
+  let activeLayoutId = "60";
+  const layoutSubs = new Set();
+  const setLayout = id => {
+    const next = LAYOUTS[id] ? id : "60";
+    if (next === activeLayoutId) return;
+    activeLayoutId = next;
+    layoutSubs.forEach(fn => {
+      try {
+        fn();
+      } catch (e) {}
+    });
+  };
+  const useLayout = () => {
+    const [, force] = useState(0);
+    useEffect(() => {
+      const fn = () => force(n => n + 1);
+      layoutSubs.add(fn);
+      return () => {
+        layoutSubs.delete(fn);
+      };
+    }, []);
+    return LAYOUTS[activeLayoutId];
+  };
+  const ALL_ROWS = [...KB_ROWS, ...KB_ROWS_68];
+  const PILL_FALLBACK_CTX = React.createContext(null);
+
   /* Compute a fractional width string given units in 0.25u increments out of 60 cols. */
   const ufrac = u => `${u / 60 * 100}%`;
 
@@ -34242,20 +34290,30 @@
     }, rtRelease.toFixed(2))))), mode === "actuation" && /*#__PURE__*/React.createElement("span", {
       className: "absolute top-1 right-1 z-10 font-mono text-[8px] text-[var(--accent)]/90"
     }, (depth < 0.05 ? 0 : depth).toFixed(2)));
-  }, (prev, next) => prev.code === next.code && prev.layer === next.layer && prev.depth === next.depth && prev.actuationPoint === next.actuationPoint && prev.rtPress === next.rtPress && prev.rtRelease === next.rtRelease && prev.selected === next.selected && prev.highlighted === next.highlighted && prev.mode === next.mode && prev.calibrating === next.calibrating && prev.calibrated === next.calibrated && prev.ledColor === next.ledColor);
+  }, (prev, next) => prev.code === next.code &&
+  // A board-layout switch keeps the same code with a new width/label
+  // (R-Shift is 11 cols on the 60 %, 7 on the 68): compare them too.
+  prev.units === next.units && prev.label === next.label && prev.fnLabel === next.fnLabel && prev.layer === next.layer && prev.depth === next.depth && prev.actuationPoint === next.actuationPoint && prev.rtPress === next.rtPress && prev.rtRelease === next.rtRelease && prev.selected === next.selected && prev.highlighted === next.highlighted && prev.mode === next.mode && prev.calibrating === next.calibrating && prev.calibrated === next.calibrated && prev.ledColor === next.ledColor);
 
-  /* Top "WIN 60 HE" pill */
+  /* Top device pill: the active board's short name (desktop.jsx boardChipName
+     over the board context), "WIN 60 HE" when either is unavailable. */
   const DevicePill = ({
     connected
-  }) => /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-2 px-4 py-1.5 rounded-md bg-[var(--accent)]/15 border border-[var(--accent)]/40 text-[var(--accent)] shadow-[0_0_18px_var(--accent-glow)] whitespace-nowrap"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "relative inline-block w-1.5 h-1.5 rounded-full bg-[var(--accent)] pulse-ring text-[var(--accent)]"
-  }), /*#__PURE__*/React.createElement("span", {
-    className: "font-display font-semibold tracking-[0.18em] text-[12px]"
-  }, "WIN 60 HE"), /*#__PURE__*/React.createElement("span", {
-    className: "font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--accent)]/70 ml-1"
-  }, connected ? "Linked" : "Offline"));
+  }) => {
+    const B = window.AetherBoard;
+    const bctx = React.useContext(B && B.BoardContext || PILL_FALLBACK_CTX);
+    const D = window.AetherDesktop;
+    const name = D && D.boardChipName ? D.boardChipName(bctx && bctx.board) : "WIN 60 HE";
+    return /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-2 px-4 py-1.5 rounded-md bg-[var(--accent)]/15 border border-[var(--accent)]/40 text-[var(--accent)] shadow-[0_0_18px_var(--accent-glow)] whitespace-nowrap"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "relative inline-block w-1.5 h-1.5 rounded-full bg-[var(--accent)] pulse-ring text-[var(--accent)]"
+    }), /*#__PURE__*/React.createElement("span", {
+      className: "font-display font-semibold tracking-[0.18em] text-[12px]"
+    }, name), /*#__PURE__*/React.createElement("span", {
+      className: "font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--accent)]/70 ml-1"
+    }, connected ? "Linked" : "Offline"));
+  };
 
   /* The full keyboard panel — handles live actuation telemetry and selection */
   const KeyboardPanel = ({
@@ -34279,6 +34337,7 @@
     showFooter = true
   }) => {
     const calibSet = calibratedCodes || null;
+    const layout = useLayout();
     // Real per-key travel depth (mm), streamed from the board by the HID bridge
     // (App polls api.read_live() while Travel Test is on). When the bridge isn't
     // streaming, every key reads 0 — no simulated motion fighting the hardware.
@@ -34346,11 +34405,11 @@
       className: "pointer-events-none absolute -top-px left-12 right-12 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent"
     }), /*#__PURE__*/React.createElement("div", {
       className: "flex flex-col gap-[3px]"
-    }, KB_ROWS.map((row, ri) => /*#__PURE__*/React.createElement("div", {
+    }, layout.rows.map((row, ri) => /*#__PURE__*/React.createElement("div", {
       key: ri,
       className: "grid w-full gap-[3px]",
       style: {
-        gridTemplateColumns: "repeat(60, minmax(0, 1fr))"
+        gridTemplateColumns: `repeat(${layout.cols}, minmax(0, 1fr))`
       }
     }, row.map(([label, units, code, fnLabel]) => {
       const override = perKeyOverride?.[code] || {};
@@ -34398,8 +34457,17 @@
   };
   window.AetherKeyboard = {
     KeyboardPanel,
-    KB_ROWS,
-    DevicePill
+    DevicePill,
+    LAYOUTS,
+    ALL_ROWS,
+    setLayout,
+    useLayout,
+    get KB_ROWS() {
+      return LAYOUTS[activeLayoutId].rows;
+    },
+    get layoutId() {
+      return activeLayoutId;
+    }
   };
 })();
 </script>
@@ -37124,9 +37192,14 @@
   const BOARD_CHIP_LABEL = {
     "aula-win60-he": "WIN 60 HE"
   };
+  const BOARD_CHIP_68 = {
+    "aula-win68-he": "WIN 68 HE",
+    "aula-win68he-max": "WIN 68 HE MAX"
+  };
   const boardChipName = board => {
     if (!board) return "WIN 60 HE"; // fail-open: today's string
     if (BOARD_CHIP_LABEL[board.slug]) return BOARD_CHIP_LABEL[board.slug];
+    if (BOARD_CHIP_68[board.slug]) return BOARD_CHIP_68[board.slug];
     return String(board.name || "").replace(/^aula\s+/i, "") // vendor prefix is noise here
     .replace(/\s*\([^)]*\)\s*/g, " ") // drop "(wired)" / "(2.4GHz dongle)"
     .trim().toUpperCase() || "KEYBOARD";
@@ -37460,7 +37533,10 @@
     setZoom
   }) {
     const defs = sections || SECTION_DEFS;
-    const bctx = React.useContext(BOARD_CTX);
+    // Resolve the context NOW, not at file load: desktop.jsx is compiled
+    // before components/board-context.jsx, so the load-time BOARD_CTX is a
+    // private, never-provided context and the chip always read "WIN 60 HE".
+    const bctx = React.useContext(window.AetherBoard && window.AetherBoard.BoardContext || BOARD_CTX);
     const chipName = boardChipName(bctx && bctx.board);
     return /*#__PURE__*/React.createElement("header", {
       className: "topbar"
@@ -37545,7 +37621,8 @@
     Workspace,
     Dock,
     TopBar,
-    SECTION_DEFS
+    SECTION_DEFS,
+    boardChipName
   };
 })();
 </script>
@@ -38369,8 +38446,8 @@
   const KeyboardPanel = KB.KeyboardPanel;
   const KB_ROWS = KB.KB_ROWS || [];
   const LABEL_OF_CODE = {};
-  KB_ROWS.flat().forEach(([label, _u, code]) => {
-    LABEL_OF_CODE[code] = label;
+  (KB.ALL_ROWS || KB_ROWS).flat().forEach(([label, _u, code]) => {
+    if (!(code in LABEL_OF_CODE)) LABEL_OF_CODE[code] = label;
   });
   const RANGES = [{
     days: 1,
@@ -39030,10 +39107,11 @@
   const KB = window.AetherKeyboard || {};
   const KeyboardPanel = KB.KeyboardPanel;
   const KB_ROWS = KB.KB_ROWS || [];
-  const ALL_CODES = KB_ROWS.flat().map(r => r[2]);
+  // The ACTIVE board's key count (KB.KB_ROWS is a getter on the active layout).
+  const activeKeyCount = () => (KB.KB_ROWS || KB_ROWS).flat().length;
   const LABEL_OF_CODE = {};
-  KB_ROWS.flat().forEach(([label, _u, code]) => {
-    LABEL_OF_CODE[code] = label;
+  (KB.ALL_ROWS || KB_ROWS).flat().forEach(([label, _u, code]) => {
+    if (!(code in LABEL_OF_CODE)) LABEL_OF_CODE[code] = label;
   });
 
   // analytics.jsx loads before this file, lighting.jsx after it (build order is
@@ -39311,7 +39389,7 @@
       on: mode === id,
       onClick: () => setMode(id)
     }, (HERO_MODES.find(m => m.id === id) || {}).label)));
-    const sum = mode === "actuation" ? actuationSummary(ctx.perKeyActuation, ctx.perKeyTrigger, ALL_CODES.length) : null;
+    const sum = mode === "actuation" ? actuationSummary(ctx.perKeyActuation, ctx.perKeyTrigger, activeKeyCount()) : null;
     const legend = mode === "heatmap" ? /*#__PURE__*/React.createElement(Legend, {
       top: "more",
       bottom: "fewer",
@@ -39373,7 +39451,7 @@
     const isSup = board.isSupported || (() => true);
     const state = ctx.pollRestarting ? "Restarting keyboard…" : ctx.connecting ? "Connecting…" : ctx.connected ? "Linked" : "Offline";
     const g = gameLine(ctx.games, ctx.profiles);
-    const sum = actuationSummary(ctx.perKeyActuation, ctx.perKeyTrigger, ALL_CODES.length);
+    const sum = actuationSummary(ctx.perKeyActuation, ctx.perKeyTrigger, activeKeyCount());
     const block = "px-4 py-3";
     return /*#__PURE__*/React.createElement("section", {
       className: "glass flex flex-col min-h-0 overflow-hidden",
@@ -41774,8 +41852,8 @@
 
   /* Design code -> key label, for the bindings list. */
   const LABEL_OF_CODE = {};
-  KB_ROWS.flat().forEach(([label, _u, code]) => {
-    LABEL_OF_CODE[code] = label;
+  (KB.ALL_ROWS || KB_ROWS).flat().forEach(([label, _u, code]) => {
+    if (!(code in LABEL_OF_CODE)) LABEL_OF_CODE[code] = label;
   });
 
   /* Playback modes = macro slot header byte 1 (vendor getMacroType). Only 0 and
@@ -45041,7 +45119,9 @@
       onClick: () => setStep(2)
     }, "Next"))), step === 2 && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
       className: "font-mono text-[11px] text-[var(--text-dim)] mb-2"
-    }, "We\u2019ll record what the board ", /*#__PURE__*/React.createElement("b", null, "sends"), " (read-only \u2014 we never write to it). Press every key once, then a few keys slowly."), /*#__PURE__*/React.createElement("div", {
+    }, "We\u2019ll record what the board ", /*#__PURE__*/React.createElement("b", null, "sends"), " (read-only \u2014 we never write to it). Press every key once, then a few keys slowly."), /*#__PURE__*/React.createElement("p", {
+      className: "font-mono text-[11px] text-amber-300/90 mb-2"
+    }, "Don\u2019t type passwords or anything private while capturing: the file records which keys you press and when, and it is posted publicly on GitHub with your submission."), /*#__PURE__*/React.createElement("div", {
       className: "glass p-4 mb-3"
     }, /*#__PURE__*/React.createElement("div", {
       className: "font-title text-[28px] text-[var(--accent)]"
@@ -45975,7 +46055,9 @@
     const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || "");
     return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : [0, 0, 0];
   };
-  const rgbToHex = rgb => "#" + (rgb || [0, 0, 0]).map(c => Math.max(0, Math.min(255, c | 0)).toString(16).padStart(2, "0")).join("");
+  // Non-array input (a malformed bridge reply) renders black instead of throwing:
+  // an exception here unmounted the whole app.
+  const rgbToHex = rgb => "#" + (Array.isArray(rgb) ? rgb : [0, 0, 0]).map(c => Math.max(0, Math.min(255, c | 0)).toString(16).padStart(2, "0")).join("");
   // Lighting %→firmware steps. `max` comes from the active board's registry
   // (lighting.brightnessMax/speedMax); the default 4 is the Win60 scale and
   // makes these exactly the legacy functions (0% = off). Boards with a
@@ -46110,8 +46192,10 @@
   // SOCD key labels (BASIC/EXTENDED) → design data-code, from the keyboard layout.
   const LABEL_TO_CODE = (() => {
     const map = {};
-    (window.AetherKeyboard && window.AetherKeyboard.KB_ROWS || []).flat().forEach(([label, _u, code]) => {
-      if (label && code) map[label] = code;
+    // ALL_ROWS: every board layout's keys, so 68-key labels (Del, ↑ ...) resolve too.
+    const KBm = window.AetherKeyboard || {};
+    (KBm.ALL_ROWS || KBm.KB_ROWS || []).flat().forEach(([label, _u, code]) => {
+      if (label && code && !(label in map)) map[label] = code;
     });
     return map;
   })();
@@ -47242,6 +47326,11 @@
     // every poll, and swapping identity for identical data would re-render the
     // whole App (ctx is rebuilt from `board`) every 5 s for nothing.
     const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    // The on-screen keyboard follows the active board's physical layout.
+    useEffect(() => {
+      const KBm = window.AetherKeyboard;
+      if (KBm && KBm.setLayout) KBm.setLayout(board && board.uiLayout || "60");
+    }, [board && board.uiLayout]);
     const refreshBoards = async () => {
       try {
         const g = await apiCall("get_board");

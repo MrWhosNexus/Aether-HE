@@ -130,7 +130,10 @@ def test_only_captured_boards_are_drivable():
 
     Guards against the shared-VID fallacy: 0C45:FEFE (#6) shares a vendor ID with
     the decoded 0C45:80A1 (#4) but has no capture of its own, so it must NOT be
-    drivable. Same for the 1CA2 pair (#5/#7). The SayoDevice 8089:0009 (#3)
+    drivable. Same for the 1CA2 Win60 HE Max (#5); its sibling the WIN 68 HE Max
+    (#7, 1CA2:1901) earned its slot with its OWN vendor-driver capture
+    (tests/fixtures/magnet_win68max_tx.txt, rebuilt byte for byte by
+    protocol_magnet in tests/test_protocol_magnet.py). The SayoDevice 8089:0009 (#3)
     earned its slot via its own captures (protocol_sayo).
 
     0C45:80A2 (the wired MINI 60 HE PRO) earned its slot the hard way: it shares
@@ -218,7 +221,8 @@ def test_only_captured_boards_are_drivable():
     captured = {"aula-win60-he", "aula-mini60he-max",
                 "aula-win60he-pro", "aula-mini60he-pro",  # own decoded protocol
                 "aula-mini60he-pro-24g",  # own dongle captures + HW-verified 0xFF60 transport (see docstring)
-                "aula-win68-he", "aula-kp-te153"}  # 2E3C:C365 shared-identity exception (see docstring)
+                "aula-win68-he", "aula-kp-te153",  # 2E3C:C365 shared-identity exception (see docstring)
+                "aula-win68he-max"}  # own capture: tests/fixtures/magnet_win68max_tx.txt (#7), golden-tested
     for p in reg.profiles:
         if p.slug in captured:
             assert p.drivable, f"{p.slug} should be drivable"

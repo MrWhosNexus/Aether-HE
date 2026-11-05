@@ -31,3 +31,7 @@ graphify-out/
 .superpowers/
 *.log
 service/service.log
+
+# Vendor-authored reference material (driver code, string tables, configs).
+# Kept locally for protocol research; never published (copyright: see NOTICE.md).
+/research/

@@ -116,8 +116,10 @@ const hexToRgbArr = (hex) => {
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || "");
   return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : [0, 0, 0];
 };
+// Non-array input (a malformed bridge reply) renders black instead of throwing:
+// an exception here unmounted the whole app.
 const rgbToHex = (rgb) =>
-  "#" + (rgb || [0, 0, 0]).map(c => Math.max(0, Math.min(255, c | 0)).toString(16).padStart(2, "0")).join("");
+  "#" + (Array.isArray(rgb) ? rgb : [0, 0, 0]).map(c => Math.max(0, Math.min(255, c | 0)).toString(16).padStart(2, "0")).join("");
 // Lighting %→firmware steps. `max` comes from the active board's registry
 // (lighting.brightnessMax/speedMax); the default 4 is the Win60 scale and
 // makes these exactly the legacy functions (0% = off). Boards with a
@@ -156,8 +158,10 @@ const MODE_BYTE = Object.fromEntries(Object.entries(FW_MODES).map(([k, v]) => [k
 // SOCD key labels (BASIC/EXTENDED) → design data-code, from the keyboard layout.
 const LABEL_TO_CODE = (() => {
   const map = {};
-  ((window.AetherKeyboard && window.AetherKeyboard.KB_ROWS) || []).flat()
-    .forEach(([label, _u, code]) => { if (label && code) map[label] = code; });
+  // ALL_ROWS: every board layout's keys, so 68-key labels (Del, ↑ ...) resolve too.
+  const KBm = window.AetherKeyboard || {};
+  (KBm.ALL_ROWS || KBm.KB_ROWS || []).flat()
+    .forEach(([label, _u, code]) => { if (label && code && !(label in map)) map[label] = code; });
   return map;
 })();
 
@@ -936,6 +940,11 @@ function App() {
   // every poll, and swapping identity for identical data would re-render the
   // whole App (ctx is rebuilt from `board`) every 5 s for nothing.
   const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  // The on-screen keyboard follows the active board's physical layout.
+  useEffect(() => {
+    const KBm = window.AetherKeyboard;
+    if (KBm && KBm.setLayout) KBm.setLayout((board && board.uiLayout) || "60");
+  }, [board && board.uiLayout]);
   const refreshBoards = async () => {
     try {
       const g = await apiCall("get_board");

@@ -32,9 +32,10 @@ const { useState, useEffect, useMemo } = React;
 const KB = window.AetherKeyboard || {};
 const KeyboardPanel = KB.KeyboardPanel;
 const KB_ROWS = KB.KB_ROWS || [];
-const ALL_CODES = KB_ROWS.flat().map(r => r[2]);
+// The ACTIVE board's key count (KB.KB_ROWS is a getter on the active layout).
+const activeKeyCount = () => ((KB.KB_ROWS || KB_ROWS).flat().length);
 const LABEL_OF_CODE = {};
-KB_ROWS.flat().forEach(([label, _u, code]) => { LABEL_OF_CODE[code] = label; });
+(KB.ALL_ROWS || KB_ROWS).flat().forEach(([label, _u, code]) => { if (!(code in LABEL_OF_CODE)) LABEL_OF_CODE[code] = label; });
 
 // analytics.jsx loads before this file, lighting.jsx after it (build order is
 // alphabetical), so both are read when used, never at module load.
@@ -249,7 +250,7 @@ function Hero({ ctx, store, modes, mode, setMode }) {
       ))}
     </div>
   );
-  const sum = mode === "actuation" ? actuationSummary(ctx.perKeyActuation, ctx.perKeyTrigger, ALL_CODES.length) : null;
+  const sum = mode === "actuation" ? actuationSummary(ctx.perKeyActuation, ctx.perKeyTrigger, activeKeyCount()) : null;
   const legend = mode === "heatmap" ? <Legend top="more" bottom="fewer" gradient={HEAT_GRADIENT}/>
     : mode === "actuation" ? <Legend top={sum ? `${sum.max.toFixed(2)} later` : "later"}
                                      bottom={sum ? `${sum.min.toFixed(2)} earlier` : "earlier"} gradient={ACT_GRADIENT}/>
@@ -289,7 +290,7 @@ function Rail({ ctx }) {
   const state = ctx.pollRestarting ? "Restarting keyboard…" : ctx.connecting ? "Connecting…"
     : ctx.connected ? "Linked" : "Offline";
   const g = gameLine(ctx.games, ctx.profiles);
-  const sum = actuationSummary(ctx.perKeyActuation, ctx.perKeyTrigger, ALL_CODES.length);
+  const sum = actuationSummary(ctx.perKeyActuation, ctx.perKeyTrigger, activeKeyCount());
   const block = "px-4 py-3";
   return (
     <section className="glass flex flex-col min-h-0 overflow-hidden" data-dash-panel="rail">

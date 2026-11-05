@@ -14,6 +14,8 @@ Run: python -m pytest tests/test_layouts.py
 import glob
 import json
 import os
+
+import pytest
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -24,7 +26,11 @@ sys.path.insert(0, os.path.join(ROOT, "tools"))
 from validate_keymap import load_keymap, validate_keymap
 
 LAYOUT_DIR = os.path.join(ROOT, "ui", "layouts")
-VENDOR_HED = os.path.join(ROOT, "docs", "context", "hed-aulacn-raw", "driver_src")
+# Vendor key tables are NOT published (copyright; see NOTICE.md). They live in
+# the git-ignored research/vendor-reference/ on a maintainer's machine; tests
+# that compare against them skip elsewhere (CI, contributors).
+VENDOR_HED = os.path.join(ROOT, "research", "vendor-reference", "docs", "context",
+                          "hed-aulacn-raw", "driver_src")
 
 
 def _layout_paths():
@@ -159,6 +165,8 @@ HED_IMPORTS = {
 
 
 def test_hed_imports_match_vendor_configs_verbatim():
+    if not os.path.isdir(VENDOR_HED):
+        pytest.skip("vendor reference files are local-only (research/vendor-reference)")
     for fname, (vendor, nkeys, typ) in HED_IMPORTS.items():
         data = _load_json(os.path.join(LAYOUT_DIR, fname))
         src = _load_json(os.path.join(VENDOR_HED, vendor))

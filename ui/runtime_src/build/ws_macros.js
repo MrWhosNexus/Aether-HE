@@ -99,8 +99,8 @@
 
   /* Design code -> key label, for the bindings list. */
   const LABEL_OF_CODE = {};
-  KB_ROWS.flat().forEach(([label, _u, code]) => {
-    LABEL_OF_CODE[code] = label;
+  (KB.ALL_ROWS || KB_ROWS).flat().forEach(([label, _u, code]) => {
+    if (!(code in LABEL_OF_CODE)) LABEL_OF_CODE[code] = label;
   });
 
   /* Playback modes = macro slot header byte 1 (vendor getMacroType). Only 0 and
