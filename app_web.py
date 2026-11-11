@@ -1913,14 +1913,22 @@ class Api:
         signal (link lost, reads failing): the UI stops waiting."""
         r = self.calib_reader
         aborted = getattr(self, "_calib_aborted", None)
+        fail_code = getattr(r, "fail_code", None) if r is not None else None
         if r is not None and getattr(r, "failed", False):
-            aborted = aborted or "the keyboard stopped answering"
+            # fail_code set = the FIRMWARE ended the session as failed
+            # (vendor: alertCalibrationFail); unset = the link went quiet.
+            aborted = aborted or (
+                f"the keyboard reported that calibration failed (code {fail_code}); "
+                "press every key fully to the bottom"
+                if fail_code is not None else "the keyboard stopped answering")
         if not r:
             out = {"ok": True, "codes": [], "done": False}
         else:
             out = {"ok": True, "codes": r.snapshot(), "done": bool(getattr(r, "done", False))}
         if aborted:
             out["aborted"] = aborted
+        if fail_code is not None:
+            out["fail_code"] = fail_code
         return out
 
     # ---- gamepad mode / win-lock ----

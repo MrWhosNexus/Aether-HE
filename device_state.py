@@ -480,13 +480,24 @@ class CalibrationReader:
     decodes them as: hidapi r[1]==33, r[6] in {8,15}, r[7]==1, then bytes r[8:30]
     are a column-major bitmask — bit `b` of byte `c` means device index `b*22 + c`
     has been calibrated. We collect those into a set of design codes so the UI can
-    light each key the moment it's calibrated (i.e. on every press)."""
+    light each key the moment it's calibrated (i.e. on every press).
+
+    r[7] is the session state (vendor a[6]; WebHID strips the report id, so
+    vendor a[n] == hidapi r[n+1]): 0 = finished, 1 = progress, 2 or 4 = the
+    firmware FAILED the calibration (the vendor driver shows
+    alertCalibrationFail and leaves calibration mode for exactly these two)."""
+
+    #: r[7] values with which the firmware ends a session as failed.
+    FAIL_CODES = (2, 4)
+
     def __init__(self, device, keymap, on_change=None):
         self.dev = device
         self.km = keymap
         self.calibrated = set()    # design codes confirmed calibrated
         self.done = False          # firmware signalled calibration complete
-        self.failed = False        # reads kept failing: the session is over
+        self.failed = False        # session over WITHOUT a normal finish:
+                                   # reads kept failing, or the firmware said so
+        self.fail_code = None      # the firmware's failure code (2/4), else None
         self.on_change = on_change # called(calibrated_set) when it grows (render LEDs)
         self._stop = threading.Event()
         self._thread = None
@@ -496,6 +507,9 @@ class CalibrationReader:
             return
         self.calibrated = set()
         self.done = False
+        # Reset too, or a retry after a failed run reports the OLD failure.
+        self.failed = False
+        self.fail_code = None
         self._stop = threading.Event()      # per-run flag (see LiveReader.start)
         self._thread = threading.Thread(target=self._run, args=(self._stop,),
                                         daemon=True)
@@ -556,6 +570,15 @@ class CalibrationReader:
                             pass
                 elif r[7] == 0:                    # firmware: calibration complete
                     self.done = True
+                elif r[7] in self.FAIL_CODES:
+                    # The firmware gave up on the session. This used to be
+                    # ignored, so `done` never came and the UI waited on a
+                    # session the board had already abandoned. Not `done`:
+                    # the keys are NOT calibrated. Api.read_calibrated turns
+                    # `failed` into `aborted`, which ends the UI's session.
+                    self.failed = True
+                    self.fail_code = r[7]
+                    break
 
     def snapshot(self):
         return sorted(self.calibrated)
