@@ -3449,6 +3449,10 @@ def main():
         elif res == single_instance.UNRESPONSIVE:
             log.warning("Aether is already running but not responding")
             inst.notify_unresponsive(tray.APP_NAME)
+        elif sys.platform == "darwin":
+            # No window to raise it through (AppKit refused or is missing):
+            # the running instance is still the one to use. Exit quietly.
+            log.info("Aether is already running — this launch exits")
         else:
             log.warning("Aether is already running but could not be reached")
             inst.notify_unreachable(tray.APP_NAME)

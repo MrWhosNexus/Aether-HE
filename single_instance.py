@@ -1,4 +1,4 @@
-"""One Aether at a time (Windows).
+"""One Aether at a time (Windows and macOS).
 
 Why: WebView2 refuses to open a user-data folder that another WebView2
 process already holds with different environment options — HRESULT
@@ -9,10 +9,21 @@ running instance, which shows its window, and exits.
 
 Mechanics: a named mutex says "someone is running"; a named auto-reset event
 is the poke. Both live in the per-session ``Local`` namespace, so nothing
-leaks across users. Non-Windows: everything is a no-op and `acquire()`
-always says we are the first instance.
+leaks across users.
+
+macOS: an exclusive `flock` on `<user data dir>/aether.lock`, held for the life
+of the process (the kernel drops it when the process dies, so a crash never
+leaves a stale lock). Without it the LaunchAgent autostart (RunAtLoad +
+`launchctl bootstrap` starts the agent at once) put a second Aether next to the
+running one: its `open_path` failed with a misleading permission error, and the
+updater's swap helper - which waits for ONE pid - could replace the bundle
+under the other. A second launch activates the running app and exits.
+
+Linux: everything is a no-op and `acquire()` always says we are the first
+instance.
 """
 import logging
+import os
 import sys
 import threading
 
@@ -67,8 +78,22 @@ def _k32():
     return _declare(ctypes.WinDLL("kernel32", use_last_error=True))
 
 
+LOCK_NAME = "aether.lock"
+
+
+def _is_mac():
+    return sys.platform == "darwin"
+
+
+def _default_lock_path():
+    import boot
+    return os.path.join(boot.user_data_dir(), LOCK_NAME)
+
+
 class SingleInstance:
-    def __init__(self):
+    def __init__(self, lock_path=None):
+        self._lock_path = lock_path     # macOS only; None = user data dir
+        self._lock_fd = None
         self._mutex = None
         self._event = None
         self._ack = None
@@ -78,6 +103,8 @@ class SingleInstance:
     def acquire(self):
         """True if this process is the first instance (and now owns the
         mutex); False if another Aether is already running."""
+        if _is_mac():
+            return self._acquire_flock()
         if not sys.platform.startswith("win"):
             return True
         try:
@@ -95,10 +122,74 @@ class SingleInstance:
             log.warning("single-instance check failed, continuing: %s", e)
             return True
 
+    def _acquire_flock(self):
+        """macOS: take the exclusive lock, or learn that someone holds it.
+        Any failure other than "held by another process" lets the launch go
+        ahead - a broken lock file must never keep the app from starting."""
+        if self._lock_fd is not None:
+            return True
+        fd = None
+        try:
+            import fcntl
+            path = self._lock_path or _default_lock_path()
+            # Python opens fds close-on-exec, so no child (the update helper,
+            # `open`, launchctl) inherits the lock and outlives us holding it.
+            fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                os.close(fd)
+                return False
+            self._lock_fd = fd
+            try:                        # the pid is for poke_existing()
+                os.ftruncate(fd, 0)
+                os.write(fd, str(os.getpid()).encode())
+            except OSError:
+                pass
+            return True
+        except Exception as e:
+            log.warning("single-instance check failed, continuing: %s", e)
+            if fd is not None and self._lock_fd is None:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+            return True
+
+    def holder_pid(self):
+        """macOS: pid the lock file names (the running instance), or None."""
+        try:
+            with open(self._lock_path or _default_lock_path(), "r") as f:
+                pid = int(f.read().strip() or 0)
+            return pid if pid > 0 else None
+        except (OSError, ValueError):
+            return None
+
+    def _poke_mac(self):
+        """Bring the running instance's window to the front. Best effort:
+        AppKit comes with pywebview on macOS; without it the second launch
+        still exits, just without raising the first."""
+        pid = self.holder_pid()
+        if not pid or pid == os.getpid():
+            return UNREACHABLE
+        try:
+            from AppKit import NSRunningApplication
+            app = NSRunningApplication.runningApplicationWithProcessIdentifier_(pid)
+            if app is None:
+                return UNREACHABLE
+            NSApplicationActivateIgnoringOtherApps = 1 << 1
+            ok = app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)
+            return SHOWN if ok else UNREACHABLE
+        except Exception as e:
+            log.info("poke: could not activate pid %s (%s)", pid, e)
+            return UNREACHABLE
+
     def poke_existing(self, ack_timeout_ms=ACK_TIMEOUT_MS):
         """Ask the running instance to show its window and wait for it to say
-        it did. Returns SHOWN, UNRESPONSIVE or UNREACHABLE (False off
-        Windows)."""
+        it did. Returns SHOWN, UNRESPONSIVE or UNREACHABLE (False on Linux;
+        macOS activates the running app and never reports UNRESPONSIVE)."""
+        if _is_mac():
+            return self._poke_mac()
         if not sys.platform.startswith("win"):
             return False
         try:
@@ -202,6 +293,12 @@ class SingleInstance:
 
     def release(self):
         self._stop.set()
+        if self._lock_fd is not None:
+            try:
+                os.close(self._lock_fd)     # closing the fd drops the flock
+            except OSError:
+                pass
+            self._lock_fd = None
         if not sys.platform.startswith("win"):
             return
         try:

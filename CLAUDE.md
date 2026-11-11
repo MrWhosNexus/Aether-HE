@@ -125,7 +125,10 @@ protocol module, `hid.enumerate()`, then exits). Platform differences, all in co
   must never call `vigembus_present()` (it constructs a pad on Windows).
 - **Autostart**: LaunchAgent `~/Library/LaunchAgents/io.github.mrwhosnexus.AetherHE.plist`
   + `launchctl bootout/bootstrap` (no `--autostart` flag: there is no tray to hide into).
-- Windows-only and inert here: tray, single-instance mutex, games, music.
+- **One instance**: `single_instance` holds an exclusive `flock` on
+  `<user data dir>/aether.lock` (darwin only; Linux stays a no-op). A second launch (the
+  LaunchAgent starts one at `bootstrap`) activates the running app and exits.
+- Windows-only and inert here: tray, games, music.
 - `ui/assets/logo.icns` is generated (`tools/make_icns.sh`), never committed.
 
 ## SOCD model numbering (all boards on the Win60 PRCS path)
