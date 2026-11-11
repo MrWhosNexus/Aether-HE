@@ -15,7 +15,10 @@ each platform's native mechanism:
               installed AetherHE.app, verify it (signature, bundle id, version,
               arch), then hand over to a detached /bin/sh helper that waits for
               this process to exit, swaps the bundle with two same-volume
-              renames (restoring the old one if anything fails) and relaunches.
+              renames, relaunches, and keeps the old bundle until the new app
+              reports that it started (macos_note_healthy) - restoring it if
+              anything fails. A failed version is on record and is not
+              retried unattended.
               When the app cannot be replaced where it is (translocated, on a
               read-only disk image, no write access, source checkout) the zip
               is downloaded to ~/Downloads and revealed instead.
@@ -557,7 +560,8 @@ def _apply_update(asset_url=None, asset_name=None, asset_size=None, asset_sha256
 #
 # The swap is two rename(2) calls on one volume, so there is no moment where a
 # half-copied app sits in /Applications, and the old bundle is kept until the
-# new one has been verified in place and opened. Any failure puts it back.
+# new one has been verified in place, opened, and has reported itself healthy.
+# Any failure puts it back.
 MACOS_BUNDLE_ID = "io.github.mrwhosnexus.AetherHE"
 
 # How long the helper waits for this process to exit before giving up (and
