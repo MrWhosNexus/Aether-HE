@@ -1116,6 +1116,16 @@ const LightingSection = ({
   );
 };
 
+// apply_update result that neither quit nor asked for a restart: the update was
+// only downloaded. `message` (macOS) says why it was not installed in place;
+// show it, and the path too unless the message already names it.
+const updateDownloadedText = (r, fallback) => {
+  const where = r && r.path ? `Downloaded to ${r.path}` : fallback;
+  const why = r && typeof r.message === "string" ? r.message.trim() : "";
+  if (!why) return where;
+  return (r.path && !why.includes(r.path)) ? `${why} ${where}` : why;
+};
+
 /* ===== SOCD SECTION ===== */
 const SOCDSection = ({ socdMode, setSocdMode, hotkey, hotkeyEnabled, setHotkeyEnabled, onApply,
                        profiles, setProfiles, active, setActive }) => {
@@ -1225,10 +1235,10 @@ const SOCDSection = ({ socdMode, setSocdMode, hotkey, hotkeyEnabled, setHotkeyEn
           <div className="rounded-md border border-[var(--line)] bg-[rgba(5,11,14,0.5)] p-3 text-[11.5px] text-[var(--text-dim)] leading-relaxed">
             <div className="text-[var(--text)] font-display uppercase tracking-[0.18em] text-[10.5px] mb-2">When both Key1 and Key2 fire:</div>
             <div className="space-y-1.5 font-mono">
-              <div><span className="text-[var(--accent)]">Model 1</span> · First press wins; second is interrupted.</div>
-              <div><span className="text-[var(--accent)]">Model 2</span> · Key1 interrupts Key2.</div>
-              <div><span className="text-[var(--accent)]">Model 3</span> · Key2 interrupts Key1.</div>
-              <div><span className="text-[var(--accent)]">Model 4</span> · Later-triggered key wins (Snap Tap).</div>
+              <div><span className="text-[var(--accent)]">Model 1</span> · Last press wins: the key pressed first is interrupted (Snap Tap).</div>
+              <div><span className="text-[var(--accent)]">Model 2</span> · Key 1 interrupts Key 2.</div>
+              <div><span className="text-[var(--accent)]">Model 3</span> · Key 2 interrupts Key 1.</div>
+              <div><span className="text-[var(--accent)]">Model 4</span> · Neutral: the later key is not sent and interrupts the first.</div>
             </div>
           </div>
         </div>
@@ -1281,11 +1291,13 @@ const OtherSection = ({ activeProfileName = "Profile", onResetProfile = () => {}
     if (!api?.apply_update || !upd.info) return;
     setUpd(u => ({ ...u, phase: "installing", msg: "Downloading…" }));
     try {
-      const r = await api.apply_update(upd.info.asset_url, upd.info.asset_name);
+      // 5th argument: this is a click, not the launch-time flow (macOS retries
+      // an in-place install that failed before only when the user asks).
+      const r = await api.apply_update(upd.info.asset_url, upd.info.asset_name, null, null, true);
       if (!r || !r.ok) { setUpd(u => ({ ...u, phase: "error", msg: r?.error || "install failed" })); return; }
       if (r.quit) setUpd(u => ({ ...u, phase: "done", msg: "Installer launched — Aether will close and reopen." }));
       else if (r.restart) setUpd(u => ({ ...u, phase: "done", msg: "Update installed — quit and reopen Aether to apply it." }));
-      else setUpd(u => ({ ...u, phase: "done", msg: r.path ? `Downloaded to ${r.path}` : "Downloaded." }));
+      else setUpd(u => ({ ...u, phase: "done", msg: updateDownloadedText(r, "Downloaded.") }));
     } catch (e) { setUpd(u => ({ ...u, phase: "error", msg: String(e) })); }
   };
   useEffect(() => {
@@ -1608,7 +1620,7 @@ const GamepadSection = ({ connected, enabled, onToggle, map, onApplyMap, default
 window.AetherSections = {
   // Shared primitives + telemetry parts, exported so workspace files (desktop
   // widget bodies) can reuse them byte-identically instead of re-implementing.
-  Slider, Chip, SubTabs, SwitchRender, ToolbarButton,
+  Slider, Chip, SubTabs, SwitchRender, ToolbarButton, updateDownloadedText,
   KeymapSection: React.memo(KeymapSection, (prev, next) => (
     prev.selectedKey === next.selectedKey &&
     prev.selectedCount === next.selectedCount &&

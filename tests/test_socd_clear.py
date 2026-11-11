@@ -27,5 +27,5 @@ def test_empty_socd_list_is_written_as_a_clear():
     assert all(w[0] == protocol.REPORT_ID for w in a.dev.writes)
     cleared = list(a.dev.writes)
     a.dev.writes.clear()
-    assert a.set_socd([{"model": 4, "key1": "A", "key2": "D"}])["ok"]
+    assert a.set_socd([{"model": 3, "key1": "A", "key2": "D"}])["ok"]
     assert a.dev.writes and a.dev.writes != cleared

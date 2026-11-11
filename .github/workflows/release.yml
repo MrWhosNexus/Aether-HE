@@ -3,8 +3,9 @@ name: Release
 # Push a version tag to cut a release. From either OS:
 #   1. bump __version__ in version.py
 #   2. git tag v0.2.0 && git push origin v0.2.0
-# This builds the Windows installer and the Linux Flatpak bundle and publishes
-# them as assets on the GitHub Release for that tag. The in-app updater
+# This builds the Windows installer, the Linux Flatpak bundle and the macOS
+# .dmg + updater .zip, and publishes them as assets on the GitHub Release for
+# that tag. The in-app updater
 # (updater.py) then offers the matching asset to every user on next check.
 on:
   push:
@@ -21,8 +22,31 @@ permissions:
   contents: write           # create releases + upload assets
 
 jobs:
+  # ----------------------------------------------------------- version gate --
+  # The release tag must be v<version.py>. Every build job needs this one, so a
+  # mismatch fails BEFORE anything is built or published: a Mac asset built
+  # from a mismatched tree is one every client refuses (the updater checks the
+  # bundle's version against the release tag), and a Windows/Linux one keeps
+  # offering itself as an update forever. A manual build-only run has no tag
+  # and passes.
+  version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Release tag must match version.py
+        env:
+          # Same expression the release job publishes under. Passed through
+          # the environment, never interpolated into the script.
+          RELEASE_TAG: ${{ inputs.tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}
+        run: python tools/check_release_tag.py
+
   # ----------------------------------------------------------------- Windows --
   windows:
+    needs: version
     runs-on: windows-latest
     timeout-minutes: 30        # vgamepad's MSI popup once hung CI for 6h; fail fast.
     steps:
@@ -80,6 +104,7 @@ jobs:
   # failure from failing the run, and the release job below publishes whatever
   # assets actually exist.
   linux:
+    needs: version
     runs-on: ubuntu-latest
     continue-on-error: true
     timeout-minutes: 45
@@ -102,11 +127,76 @@ jobs:
           path: AetherHE.flatpak
           if-no-files-found: error
 
+  # ------------------------------------------------------------------- macOS --
+  # Like Linux, macOS is built in CI but is NOT allowed to hold up a release —
+  # the Windows installer is still the shipping artifact. continue-on-error keeps
+  # a macOS failure from failing the run, and the release job publishes whatever
+  # was actually built.
+  #
+  # macos-14 is the Apple Silicon runner, so this produces an ARM64 slice. That
+  # is deliberate rather than universal2: hidapi and the pyobjc wheels are
+  # arch-specific, and stitching a universal build from two wheel sets buys
+  # nothing for a keyboard utility. Intel Macs are not served by this job — the
+  # updater's asset matcher looks for the running machine's arch and reports
+  # "no asset for this platform" rather than offering a broken download.
+  #
+  # Two assets, two jobs:
+  #   AetherHE-macos-arm64.dmg  first install (drag to Applications)
+  #   AetherHE-macos-arm64.zip  the payload updater.py downloads, verifies and
+  #                             swaps in place. Its name is what the updater
+  #                             matches on — do not rename one without the other.
+  macos:
+    needs: version
+    runs-on: macos-14
+    continue-on-error: true
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Release tag must match version.py
+        # Asserted again HERE, in the job whose asset depends on it most: the
+        # updater rejects a zip whose bundle version is not the release tag,
+        # and this job is continue-on-error, so it must fail on its own
+        # account rather than rely on the gate job staying wired up.
+        env:
+          RELEASE_TAG: ${{ inputs.tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}
+        run: python3 tools/check_release_tag.py
+      - name: Create venv + install deps
+        run: |
+          set -euo pipefail
+          python3 -m venv venv-web
+          venv-web/bin/python -m pip install --upgrade pip
+          venv-web/bin/pip install --no-input -r requirements.txt pyinstaller pytest
+      - name: Run tests
+        # Gate: a red suite must not produce an asset. This includes the updater
+        # tests that run the real swap helper against a fake .app, so the thing
+        # that replaces a user's installed app is exercised on every release.
+        run: venv-web/bin/python -m pytest tests/ -q
+      - name: Build .app + .dmg + .zip
+        # build_macos.sh generates ui/assets/logo.icns (tools/make_icns.sh — the
+        # icns is a build artifact, never checked in), runs PyInstaller, signs,
+        # runs tools/verify_macos_bundle.py on the built app, then packages.
+        #
+        # Ad-hoc signed. A Developer ID signature would need secrets this repo
+        # does not have; the app is unnotarized either way, so users get
+        # Gatekeeper's right-click-Open prompt on FIRST launch from the DMG.
+        # Updates installed by the app itself carry no quarantine flag.
+        run: ./build_macos.sh --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: |
+            dist/AetherHE-macos-*.dmg
+            dist/AetherHE-macos-*.zip
+          if-no-files-found: error
+
   # ----------------------------------------------------------------- Release --
   release:
-    needs: [windows, linux]
+    needs: [version, windows, linux, macos]
     runs-on: ubuntu-latest
-    # Publish as long as WINDOWS succeeded. always() is required because `needs`
+    # Publish as long as the version gate and WINDOWS succeeded. always() is required because `needs`
     # would otherwise skip this job when linux failed; the explicit windows
     # check keeps the Windows installer a hard requirement rather than
     # degrading the whole gate.
@@ -114,7 +204,8 @@ jobs:
     # action-gh-release then creates that tag at the built commit itself, so
     # a release can be cut from an environment that can't push tags.
     if: >-
-      always() && needs.windows.result == 'success' &&
+      always() && needs.version.result == 'success' &&
+      needs.windows.result == 'success' &&
       (startsWith(github.ref, 'refs/tags/') ||
        (github.event_name == 'workflow_dispatch' && inputs.tag != ''))
     steps:
@@ -136,7 +227,20 @@ jobs:
           if [ -f artifacts/linux/AetherHE.flatpak ]; then
             FILES="$FILES"$'\nartifacts/linux/AetherHE.flatpak'
           else
-            echo "::warning::Linux Flatpak was not produced — publishing Windows assets only."
+            echo "::warning::Linux Flatpak was not produced — publishing without it."
+          fi
+          # macOS ships as a PAIR: the .dmg for a first install and the .zip the
+          # in-app updater installs from. The names carry the arch
+          # (AetherHE-macos-arm64.*), which updater._pick_asset_full matches on,
+          # so glob rather than hardcode. Publish both or neither: a release
+          # with only the .dmg is one existing Mac users can never update to,
+          # and only the .zip leaves new users nothing to install from.
+          MACOS_DMG="$(find artifacts/macos -name 'AetherHE-macos-*.dmg' -type f 2>/dev/null | sort | head -1 || true)"
+          MACOS_ZIP="$(find artifacts/macos -name 'AetherHE-macos-*.zip' -type f 2>/dev/null | sort | head -1 || true)"
+          if [ -n "$MACOS_DMG" ] && [ -n "$MACOS_ZIP" ]; then
+            FILES="$FILES"$'\n'"$MACOS_DMG"$'\n'"$MACOS_ZIP"
+          else
+            echo "::warning::macOS .dmg/.zip pair was not produced — publishing without macOS."
           fi
           { echo "files<<__EOF__"; echo "$FILES"; echo "__EOF__"; } >> "$GITHUB_OUTPUT"
       - name: Publish release

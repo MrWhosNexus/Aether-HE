@@ -79,7 +79,9 @@ venv-web/bin/python ui/runtime_src/build_runtime.py
   matches is the payload LENGTH byte, not a sub-command — sub 0x05 is the per-key config read;
   `idx=r[7]*22+r[8],depth=(r[9]|r[10]<<8)/100` — offsets confirmed correct by capture).
 - **Calibration**: cmd33 sub `r[6]∈{8,15}`; `r[7]==1` → bitmask `r[8:30]` (idx=bit*22+col) of
-  calibrated keys; `r[7]==0` → complete.
+  calibrated keys; `r[7]==0` → complete; `r[7]∈{2,4}` → the firmware FAILED the session
+  (vendor alertCalibrationFail): `CalibrationReader.failed` + `fail_code`, surfaced as
+  `read_calibrated().aborted`.
 - **Macros (cmd 25)**: 10 slots x 256 B, paged 4x58+24 (`[1]=slot` write, `slot|0x80` read; never-
   written slot reads all 0xFF, vendor writes all-0x00 for unused). Header `[slot, playMode, lenBE16,
   countBE16, 0, 0]` — byte 1 is the vendor macroType (0 once, 1 repeat N; 2 toggle / 3 hold UNVERIFIED),
@@ -105,6 +107,45 @@ comes from `Api._act_mm` (read-back + successful writes), unknown keys use the m
 **Music** = 14 band columns, height over the rows, palette bottom->top, background pulse on beats (not press-reactive: not in `PRESS_REACTIVE`/`HOST_FX_FAST`).
 **Rain** = Matrix curtain (dense columns, bright heads, long tails). Per-frame spawners
 (rain/twinkle/frenzy) scale by `_SPAWN_NORM` so density is FPS-independent.
+
+## macOS
+Runs on macOS (Apple Silicon) from source (`run.command`) and as `AetherHE.app`
+(`build_macos.sh` + `AetherHE-macos.spec`; `tools/verify_macos_bundle.py` runs the frozen app
+with `AETHER_SELFTEST=1`, which `app_web._selftest` answers: UI payload, every registry
+protocol module, `hid.enumerate()`, then exits). Platform differences, all in code:
+- **HID pick** (`aula_device.find_vendor_interface`): hidapi's macOS backend reports
+  `interface_number == -1` for non-USB transports, so with no usage-page match and
+  uninformative numbers it takes the vendor-defined collection (0xFF00..0xFFFF) only if the
+  usage pages single one out (the Windows several-collections-per-interface case), and
+  otherwise raises `VendorInterfaceUnresolved` instead of guessing.
+- **One handle only**: a second `open_path()` on a held device fails on macOS, so
+  `AulaDevice.open()` keeps the held handle while its path is still enumerated.
+- **Open errors**: hidapi says only "open failed"; `_translate_open_error` names both causes
+  (Input Monitoring, exclusive access). The Win60's 0xFF1B interface needs no TCC grant.
+- **No gamepad**: `gamepad.backend_status()` (platform gate, `MACOS_UNSUPPORTED_REASON`);
+  `Api.platform_info()` + the `&pf=<platform>` URL fragment hide the tab. `platform_info`
+  must never call `vigembus_present()` (it constructs a pad on Windows).
+- **Autostart**: LaunchAgent `~/Library/LaunchAgents/io.github.mrwhosnexus.AetherHE.plist`
+  + `launchctl bootout/bootstrap` (no `--autostart` flag: there is no tray to hide into).
+- **One instance**: `single_instance` holds an exclusive `flock` on
+  `<user data dir>/aether.lock` (darwin only; Linux stays a no-op). A second launch (the
+  LaunchAgent starts one at `bootstrap`) activates the running app and exits.
+- Windows-only and inert here: tray, games, music.
+- `ui/assets/logo.icns` is generated (`tools/make_icns.sh`), never committed.
+
+## SOCD model numbering
+UI, saved profiles AND the bridge (`set_socd` / `apply_profile_to_board` `model`) hold the
+vendor's model NUMBER 1..4 (`ui/runtime_src/src/components/socd-model.jsx`). The wire byte
+is each DRIVER's business: `Win60Driver.set_socd` sends number - 1 and refuses anything
+outside 1..4 (`protocol.PRCS_MODEL_MAX`; capture: "Model2" wrote `01 01 04 07`); the
+MINI 60 and magnet drivers take the number unchanged (1..4, as before). Never convert in
+shared UI/API code: that leaked the Win60's zero-basing into the other boards.
+Builds up to 0.6.4 sent the stored value verbatim, so profile states without `socdRev: 2`
+are renumbered once on load/import (old 1/2/3 -> 2/3/4, old 4 -> 1, no mode/0 -> 2) so a
+Win60 keeps its behaviour. Profiles are global (no board recorded), so the renumbering
+assumes the Win60 PRCS path, the only one a saved model reached in a normal build (the
+MINI 60 driver refuses the bridge's pairs; magnet SOCD needs `AETHER_EXPERIMENTAL=magnet`).
+Model meanings (vendor strings): 1 last press wins, 2 Key 1 wins, 3 Key 2 wins, 4 neutral.
 
 ## Porting to Windows (current focus)
 Reference repo for the Windows build: https://github.com/MrWhosNexus/WIN60-HE-Mod.git

@@ -800,7 +800,9 @@
         }
       };
       try {
-        const r = await api.apply_update(info.asset_url, info.asset_name, info.asset_size, info.asset_sha256);
+        // Last argument: a click, not the launch-time flow (macOS retries an
+        // in-place install that failed before only when the user asks).
+        const r = await api.apply_update(info.asset_url, info.asset_name, info.asset_size, info.asset_sha256, true);
         stop();
         if (!r?.ok) {
           setUpdateState(s => ({
@@ -812,7 +814,7 @@
         }
         // Windows launches the installer and the app must quit; Flatpak installs
         // in place and needs a manual restart. Say which one happened.
-        const msg = r.quit ? "Installer launched — Aether will close and reopen." : r.restart ? "Update installed — quit and reopen Aether to apply it." : r.path ? `Downloaded to ${r.path}` : "Update complete";
+        const msg = r.quit ? "Installer launched — Aether will close and reopen." : r.restart ? "Update installed — quit and reopen Aether to apply it." : S.updateDownloadedText(r, "Update complete");
         setUpdateState(s => ({
           ...s,
           phase: "installed",

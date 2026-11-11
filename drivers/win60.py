@@ -601,9 +601,29 @@ class Win60Driver(BoardDriver):
         return bytes(table) if complete else None
 
     # ---- SOCD / PRCS (cmd 36) ----
+    #: `model` arrives as the vendor's model NUMBER, "Model 1".."Model 4" -
+    #: the same value every driver's set_socd is handed. Only THIS board's
+    #: PRCS frame is zero-based, so the conversion lives here and nowhere
+    #: shared: number - 1 (capture: "Model2" wrote `01 01 04 07`).
+    SOCD_MODEL_NUMBERS = range(1, protocol.PRCS_MODEL_MAX + 2)      # 1..4
+
+    @classmethod
+    def socd_wire_model(cls, number):
+        n = int(number)
+        if n not in cls.SOCD_MODEL_NUMBERS:
+            raise ValueError(
+                "SOCD model %d out of range %d..%d (Model 1..4; the Win60 "
+                "wire byte is the model number minus one)"
+                % (n, cls.SOCD_MODEL_NUMBERS[0], cls.SOCD_MODEL_NUMBERS[-1]))
+        return n - 1
+
     def set_socd(self, prcs_list):
+        # Convert and build first: a bad list (too many pairs, a model outside
+        # 1..4) must be refused before ANY frame is written.
+        wire = [dict(p, model=self.socd_wire_model(p["model"])) for p in prcs_list]
+        pkts = protocol.build_prcs(wire)
         self._write(protocol.build_prcs_power(True))
-        for pkt in protocol.build_prcs(list(prcs_list)):
+        for pkt in pkts:
             self._write(pkt)
 
     # ---- calibration ----

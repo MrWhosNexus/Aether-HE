@@ -1412,6 +1412,16 @@
     }))));
   };
 
+  // apply_update result that neither quit nor asked for a restart: the update was
+  // only downloaded. `message` (macOS) says why it was not installed in place;
+  // show it, and the path too unless the message already names it.
+  const updateDownloadedText = (r, fallback) => {
+    const where = r && r.path ? `Downloaded to ${r.path}` : fallback;
+    const why = r && typeof r.message === "string" ? r.message.trim() : "";
+    if (!why) return where;
+    return r.path && !why.includes(r.path) ? `${why} ${where}` : why;
+  };
+
   /* ===== SOCD SECTION ===== */
   const SOCDSection = ({
     socdMode,
@@ -1539,13 +1549,13 @@
       className: "space-y-1.5 font-mono"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
       className: "text-[var(--accent)]"
-    }, "Model 1"), " \xB7 First press wins; second is interrupted."), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+    }, "Model 1"), " \xB7 Last press wins: the key pressed first is interrupted (Snap Tap)."), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
       className: "text-[var(--accent)]"
-    }, "Model 2"), " \xB7 Key1 interrupts Key2."), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+    }, "Model 2"), " \xB7 Key 1 interrupts Key 2."), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
       className: "text-[var(--accent)]"
-    }, "Model 3"), " \xB7 Key2 interrupts Key1."), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+    }, "Model 3"), " \xB7 Key 2 interrupts Key 1."), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
       className: "text-[var(--accent)]"
-    }, "Model 4"), " \xB7 Later-triggered key wins (Snap Tap).")))), /*#__PURE__*/React.createElement("div", {
+    }, "Model 4"), " \xB7 Neutral: the later key is not sent and interrupts the first.")))), /*#__PURE__*/React.createElement("div", {
       className: "flex flex-col gap-4"
     }, /*#__PURE__*/React.createElement(KeyGrid, {
       title: "Basic Keys",
@@ -1654,7 +1664,9 @@
         msg: "Downloading…"
       }));
       try {
-        const r = await api.apply_update(upd.info.asset_url, upd.info.asset_name);
+        // 5th argument: this is a click, not the launch-time flow (macOS retries
+        // an in-place install that failed before only when the user asks).
+        const r = await api.apply_update(upd.info.asset_url, upd.info.asset_name, null, null, true);
         if (!r || !r.ok) {
           setUpd(u => ({
             ...u,
@@ -1674,7 +1686,7 @@
         }));else setUpd(u => ({
           ...u,
           phase: "done",
-          msg: r.path ? `Downloaded to ${r.path}` : "Downloaded."
+          msg: updateDownloadedText(r, "Downloaded.")
         }));
       } catch (e) {
         setUpd(u => ({
@@ -2099,6 +2111,7 @@
     SubTabs,
     SwitchRender,
     ToolbarButton,
+    updateDownloadedText,
     KeymapSection: React.memo(KeymapSection, (prev, next) => prev.selectedKey === next.selectedKey && prev.selectedCount === next.selectedCount && prev.selectedKeys === next.selectedKeys && prev.connected === next.connected),
     ActuationSection: React.memo(ActuationSection, (prev, next) => prev.actuation === next.actuation && prev.rtPress === next.rtPress && prev.rtRelease === next.rtRelease && prev.rtEnabled === next.rtEnabled && prev.polling === next.polling && prev.travelTest === next.travelTest && prev.calibrating === next.calibrating && prev.deadTop === next.deadTop && prev.deadBottom === next.deadBottom && prev.switchId === next.switchId && prev.liveDepth === next.liveDepth && prev.selectedCount === next.selectedCount && prev.selectedKeys === next.selectedKeys && prev.connected === next.connected),
     LightingSection: React.memo(LightingSection, (prev, next) => prev.colors === next.colors && prev.bgColor === next.bgColor && prev.perKeyColors === next.perKeyColors && prev.pattern === next.pattern && prev.brightness === next.brightness && prev.speed === next.speed && prev.power === next.power && prev.fullColor === next.fullColor && prev.direction === next.direction && prev.striOrient === next.striOrient && prev.bgBright === next.bgBright && prev.zones === next.zones && prev.selectedKeys === next.selectedKeys),

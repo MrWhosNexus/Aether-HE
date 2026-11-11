@@ -22,6 +22,14 @@ import boot
 from boot import user_data_dir
 if __name__ == "__main__":
     boot.install_file_logging()
+    # Installed macOS build: put this process's pid on record for the update
+    # helper NOW, before the third-party imports below. An update that hangs
+    # in one of them would otherwise never be nameable by pid (the helper also
+    # looks it up by executable path, so this is the fast path, not the only
+    # one). updater is stdlib-only; this never raises.
+    import updater as _updater_early
+    _updater_early.macos_note_launch()
+    del _updater_early
 
 import hid
 import webview
@@ -1834,7 +1842,13 @@ class Api:
 
 
     def set_socd(self, pairs):
-        """pairs: [{model, key1, key2}] using design codes."""
+        """pairs: [{model, key1, key2}] using design codes.
+
+        `model` is the UI's "Model N" NUMBER (1..4) for every board. Turning
+        it into a wire byte is the driver's job, because the byte differs per
+        board: Win60Driver sends N - 1 (and refuses anything outside 1..4
+        before a frame is written); the MINI 60 and magnet drivers take N as
+        is, as they always have."""
         if not self.km:
             return {"ok": False, "error": "no keymap"}
         try:
@@ -1908,14 +1922,22 @@ class Api:
         signal (link lost, reads failing): the UI stops waiting."""
         r = self.calib_reader
         aborted = getattr(self, "_calib_aborted", None)
+        fail_code = getattr(r, "fail_code", None) if r is not None else None
         if r is not None and getattr(r, "failed", False):
-            aborted = aborted or "the keyboard stopped answering"
+            # fail_code set = the FIRMWARE ended the session as failed
+            # (vendor: alertCalibrationFail); unset = the link went quiet.
+            aborted = aborted or (
+                f"the keyboard reported that calibration failed (code {fail_code}); "
+                "press every key fully to the bottom"
+                if fail_code is not None else "the keyboard stopped answering")
         if not r:
             out = {"ok": True, "codes": [], "done": False}
         else:
             out = {"ok": True, "codes": r.snapshot(), "done": bool(getattr(r, "done", False))}
         if aborted:
             out["aborted"] = aborted
+        if fail_code is not None:
+            out["fail_code"] = fail_code
         return out
 
     # ---- gamepad mode / win-lock ----
@@ -1992,11 +2014,38 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    def platform_info(self):
+        """Cheap, side-effect-free platform capability probe for the UI shell.
+
+        Deliberately NOT gamepad_status(): that one calls vigembus_present(),
+        which constructs a real VX360 pad on Windows. Nav rendering must never
+        have that side effect, so this reads the backend table only.
+        """
+        backend = gamepad.backend_status()
+        return {"ok": True,
+                "platform": sys.platform,
+                # Whether the Gamepad tab exists at all: False only where the
+                # platform can never have a pad (macOS). NOT `supported` -
+                # that is also False on Windows/Linux before the backend is
+                # installed, which is exactly when the tab's guidance is needed.
+                "gamepad_platform": gamepad.platform_capable(),
+                "gamepad_supported": backend["supported"],
+                "gamepad_installable": backend["installable"],
+                "gamepad_reason": backend["reason"]}
+
     def gamepad_status(self):
+        backend = gamepad.backend_status()
         return {"ok": True,
                 "capturing": bool(self._pad_thread and self._pad_thread.is_alive()),
                 "evdev": gamepad.EVDEV_AVAILABLE,
                 "platform": sys.platform,
+                # `supported` false + `installable` false means the platform
+                # refuses (macOS): the UI must show the reason, not an install
+                # button.
+                "supported": backend["supported"],
+                "reason": backend["reason"],
+                "installable": backend["installable"],
+                "backend": backend["backend"],
                 "vigembus": gamepad.vigembus_present() if sys.platform.startswith("win") else None,
                 "can_install_vigembus": bool(
                     sys.platform.startswith("win") and gamepad._vigembus_installer_path()
@@ -2006,9 +2055,27 @@ class Api:
         """Run the bundled ViGEmBus installer (Windows). Prompts UAC."""
         return gamepad.install_vigembus_driver()
 
-    # ---- launch-on-startup (Windows: HKCU Run) ----
+    # ---- launch-on-startup (Windows: HKCU Run · macOS: LaunchAgent) ----
     _AUTOSTART_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
     _AUTOSTART_NAME = "AetherHE"
+    _LAUNCH_AGENT_LABEL = "io.github.mrwhosnexus.AetherHE"
+
+    def _launch_agent_path(self):
+        return os.path.expanduser(
+            f"~/Library/LaunchAgents/{self._LAUNCH_AGENT_LABEL}.plist")
+
+    def _autostart_argv(self):
+        """The argv macOS should run at login.
+
+        Frozen .app → the executable inside the bundle; source checkout → the
+        running interpreter + app_web.py, so dev installs work too. No
+        --autostart flag: that only decides "start hidden in the tray", and
+        there is no tray on macOS (tray.py is Windows-only), so a hidden
+        start would be an app with no way to show its window.
+        """
+        if getattr(sys, "frozen", False):
+            return [sys.executable]
+        return [sys.executable, os.path.join(HERE, "app_web.py")]
 
     def _autostart_target(self):
         """The command Windows should invoke at login.
@@ -2027,6 +2094,21 @@ class Api:
         return f'"{py}" "{os.path.join(HERE, "app_web.py")}" {flag}'
 
     def get_autostart(self):
+        if sys.platform == "darwin":
+            p = self._launch_agent_path()
+            if not os.path.exists(p):
+                return {"ok": True, "supported": True, "enabled": False}
+            try:
+                import plistlib
+                with open(p, "rb") as f:
+                    pl = plistlib.load(f)
+                # RunAtLoad absent/false means the file exists but is inert:
+                # report that as disabled rather than as "on".
+                return {"ok": True, "supported": True,
+                        "enabled": bool(pl.get("RunAtLoad")),
+                        "command": " ".join(pl.get("ProgramArguments") or [])}
+            except Exception as e:
+                return {"ok": False, "error": str(e)}
         if not sys.platform.startswith("win"):
             return {"ok": True, "enabled": False, "supported": False}
         try:
@@ -2238,6 +2320,8 @@ class Api:
             for p in pairs:
                 if not isinstance(p, dict):
                     raise ValueError("invalid SOCD pair")
+                # model = the UI's Model NUMBER (1..4, range-checked by the
+                # board's driver, which also maps it to its wire byte).
                 k1, k2, model = p.get("key1"), p.get("key2"), int(p.get("model", 1))
                 if not (isinstance(k1, str) and isinstance(k2, str) and 0 < len(k1) <= 32
                         and 0 < len(k2) <= 32 and 0 <= model <= 255):
@@ -2734,13 +2818,17 @@ class Api:
         and without this the window looks frozen for the whole download."""
         return {"ok": True, **updater.get_progress()}
 
-    def apply_update(self, asset_url, asset_name=None, asset_size=None, asset_sha256=None):
+    def apply_update(self, asset_url, asset_name=None, asset_size=None, asset_sha256=None,
+                     manual=False):
         """Download + install the update for this OS. On success the caller
         should quit (Windows) or prompt a restart (Flatpak).
 
         asset_size/asset_sha256 come from check_update(); updater re-fetches them
-        if omitted, so the download is verified either way."""
-        res = updater.apply_update(asset_url, asset_name, asset_size, asset_sha256)
+        if omitted, so the download is verified either way. `manual` is True
+        when the user clicked Update (the launch-time flow leaves it False):
+        macOS retries an in-place install that failed before only on a click."""
+        res = updater.apply_update(asset_url, asset_name, asset_size, asset_sha256,
+                                   manual=bool(manual))
         if res.get("ok") and res.get("quit"):
             # Let the bridge return first, then exit so the installer can replace
             # files that are otherwise locked by the running process.
@@ -2765,9 +2853,61 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    def _set_autostart_macos(self, on):
+        """Install/remove a per-user LaunchAgent.
+
+        Writing the plist is what makes it stick across logins; `launchctl
+        bootstrap` is only what makes it take effect in THIS session. Those can
+        fail independently, so the result says which one happened rather than
+        reporting a blanket success.
+        """
+        import plistlib
+        import subprocess
+        path = self._launch_agent_path()
+        domain = f"gui/{os.getuid()}"
+        try:
+            if not on:
+                # bootout first: removing the file alone leaves it loaded until logout.
+                subprocess.run(["launchctl", "bootout", domain, path],
+                               capture_output=True, timeout=10)
+                if os.path.exists(path):
+                    os.remove(path)
+                return {"ok": True, "enabled": False}
+
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            plist = {
+                "Label": self._LAUNCH_AGENT_LABEL,
+                "ProgramArguments": self._autostart_argv(),
+                "RunAtLoad": True,
+                # Login-item semantics: start once at login, don't respawn it
+                # forever if the user quits the app.
+                "KeepAlive": False,
+                "ProcessType": "Interactive",
+            }
+            tmp = path + ".part"
+            with open(tmp, "wb") as f:
+                plistlib.dump(plist, f)
+            os.replace(tmp, path)          # atomic: never a half-written agent
+
+            # Replace any already-loaded copy so the new argv takes effect now.
+            subprocess.run(["launchctl", "bootout", domain, path],
+                           capture_output=True, timeout=10)
+            r = subprocess.run(["launchctl", "bootstrap", domain, path],
+                               capture_output=True, timeout=10)
+            if r.returncode != 0:
+                return {"ok": True, "enabled": True, "active_now": False,
+                        "note": "Installed; takes effect at next login "
+                                f"(launchctl bootstrap said: "
+                                f"{(r.stderr or b'').decode(errors='replace').strip()})"}
+            return {"ok": True, "enabled": True, "active_now": True}
+        except Exception as e:
+            return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
     def set_autostart(self, on):
+        if sys.platform == "darwin":
+            return self._set_autostart_macos(bool(on))
         if not sys.platform.startswith("win"):
-            return {"ok": False, "error": "autostart is Windows-only"}
+            return {"ok": False, "error": "autostart is Windows and macOS only"}
         try:
             import winreg
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, self._AUTOSTART_KEY,
@@ -3241,6 +3381,34 @@ def _on_start(window):
         log.info("Webview render state: %s", state)
     except Exception as e:
         log.warning("render-state probe failed: %s", e)
+    _report_update_health(window)
+
+
+def _ui_is_up(window):
+    """True once the page has mounted React into #root and the bridge exists."""
+    try:
+        return bool(window.evaluate_js(
+            "!!(window.React && window.pywebview && window.pywebview.api && "
+            "document.getElementById('root') && "
+            "document.getElementById('root').children.length > 0)"))
+    except Exception:
+        return False
+
+
+def _report_update_health(window, tries=30, pause=1.0):
+    """Installed macOS build only: tell the updater's swap helper that THIS
+    version starts. The helper keeps the previous bundle until this marker
+    appears and puts it back if it never does, so it is written only once the
+    UI has really rendered - not merely because the process is alive."""
+    if not updater.macos_health_wanted():
+        return False
+    import time
+    for _ in range(tries):
+        if _ui_is_up(window):
+            return updater.macos_note_healthy()
+        time.sleep(pause)
+    log.warning("UI did not come up; not reporting this build as healthy")
+    return False
 
 
 def _apply_experimental_flags(env=None):
@@ -3256,7 +3424,62 @@ def _apply_experimental_flags(env=None):
                     "(unverified frames, bring-up only)")
 
 
+def _selftest():
+    """Prove a PACKAGED build can reach everything it needs, then exit.
+
+    Run via `AETHER_SELFTEST=1 AetherHE.app/Contents/MacOS/AetherHE`
+    (tools/verify_macos_bundle.py does). This is the only check that inspects
+    the SHIPPED artifact rather than the source tree: on a dev checkout every
+    module is simply present on disk, which is why the 0.3.0 Flatpak boot-crash
+    was invisible to a green test suite.
+
+    It asserts what actually decides what loads at runtime: the UI payload,
+    every protocol module the board registry names (those are looked up by
+    string, so no static analysis and no PyInstaller graph will ever find
+    them), and the native hid extension.
+    """
+    import importlib
+    problems = []
+    if not os.path.exists(INDEX):
+        problems.append(f"UI missing: {INDEX}")
+    try:
+        registry = boards.load_registry()
+        needed = sorted({p.protocol for p in registry.profiles
+                         if getattr(p, "protocol", None) and p.drivable})
+        for mod in needed:
+            try:
+                importlib.import_module(mod)
+            except Exception as e:
+                problems.append(f"protocol module {mod!r} not importable: {e}")
+        print(f"selftest: registry protocol modules checked: {needed}")
+    except Exception as e:
+        problems.append(f"board registry unreadable: {type(e).__name__}: {e}")
+
+    # The native HID extension is the one piece codesigning can silently break:
+    # a re-signed .so that fails to load turns into "no keyboard found" at
+    # runtime, which looks like a hardware problem rather than a packaging one.
+    # Enumerating needs no device attached and writes nothing, so it is safe in CI.
+    try:
+        import hid
+        found = hid.enumerate()
+        aula = [d for d in found
+                if d.get("vendor_id") in (0x2E3C, 0x0C45, 0x1CA2, 0x8089, 0x258A, 0x38A6)]
+        print(f"selftest: hid extension OK — {len(found)} HID entries, "
+              f"{len(aula)} Aula-family interface(s)")
+    except Exception as e:
+        problems.append(f"hid extension unusable in this build: {type(e).__name__}: {e}")
+
+    if problems:
+        for p in problems:
+            print(f"SELFTEST FAIL: {p}", file=sys.stderr)
+        raise SystemExit(1)
+    print("SELFTEST OK")
+    raise SystemExit(0)
+
+
 def main():
+    if os.environ.get("AETHER_SELFTEST"):
+        _selftest()
     _apply_experimental_flags()
     if not os.path.exists(INDEX):
         boot.show_error(f"Aether HE could not start: UI not found\n\n{INDEX}")
@@ -3272,10 +3495,21 @@ def main():
         elif res == single_instance.UNRESPONSIVE:
             log.warning("Aether is already running but not responding")
             inst.notify_unresponsive(tray.APP_NAME)
+        elif sys.platform == "darwin":
+            # No window to raise it through (AppKit refused or is missing):
+            # the running instance is still the one to use. Exit quietly.
+            log.info("Aether is already running — this launch exits")
         else:
             log.warning("Aether is already running but could not be reached")
             inst.notify_unreachable(tray.APP_NAME)
         return
+    # Again once the instance guard is held, so the file names the instance
+    # that actually runs. It is not kept truthful after that: a later, refused
+    # second launch overwrites it at import time with its own soon-dead pid,
+    # and nothing here rewrites it (macOS delivers no poke to this process).
+    # That is safe - the helper checks any pid it reads before signalling it
+    # and otherwise finds the app by executable path.
+    updater.macos_note_launch()
     api = Api()
     # Pass an explicit file:// URI: pywebview only treats a string as a local
     # file when it exists on disk verbatim, and a "?v=" cache-buster query
@@ -3286,7 +3520,13 @@ def main():
     # `index_runtime.html?v=…` as a literal filename → ERR_FILE_NOT_FOUND.
     # Fragments are client-side only and safe on every backend.
     from pathlib import Path
-    url = Path(INDEX).as_uri() + f"#v={int(os.path.getmtime(INDEX))}"
+    # `pf` lets the shell know the platform SYNCHRONOUSLY, at module scope,
+    # before the pywebview bridge exists. Without it the nav has to wait for an
+    # async platform_info round-trip, so a section the platform cannot support
+    # (macOS + Gamepad) renders first and disappears a moment later. The async
+    # call still runs and remains authoritative; this only removes the gap.
+    url = (Path(INDEX).as_uri()
+           + f"#v={int(os.path.getmtime(INDEX))}&pf={sys.platform}")
     # Tray residency: closing the window hides it and the effect engine keeps
     # streaming; `--minimized` (the autostart entry) starts hidden. The React
     # app in a hidden WebView2 still runs — it is what applies tray changes —

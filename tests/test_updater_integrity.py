@@ -112,7 +112,8 @@ def _release(monkeypatch, url=REL, size=999, sha="abc123", ok=True):
     """check_for_update() as the GitHub API would answer (the ONLY trusted
     source of the asset URL / size / digest)."""
     monkeypatch.setattr(updater, "check_for_update",
-                        lambda *a, **k: {"ok": ok, "asset_url": url,
+                        lambda *a, **k: {"ok": ok, "latest": "9.9.9",
+                                         "asset_url": url,
                                          "asset_name": "AetherHE-Setup.exe",
                                          "asset_size": size, "asset_sha256": sha,
                                          "error": None if ok else "offline"})

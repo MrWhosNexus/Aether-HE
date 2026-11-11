@@ -281,9 +281,11 @@ def test_win60_deadband_switch_socd_poll_gamepad_bytes():
     d.set_switch({0: 2, 9: 1})
     assert dev.writes == protocol.build_switch_table({0: 2, 9: 1})
     dev.writes.clear()
-    plist = [{"model": 1, "key1_hid": 4, "key2_hid": 7}]
+    plist = [{"model": 2, "key1_hid": 4, "key2_hid": 7}]      # "Model 2"
     d.set_socd(plist)
-    assert dev.writes == [protocol.build_prcs_power(True)] + protocol.build_prcs(plist)
+    assert dev.writes == [protocol.build_prcs_power(True)] + protocol.build_prcs(
+        [{"model": 1, "key1_hid": 4, "key2_hid": 7}])        # wire = number - 1
+    assert plist[0]["model"] == 2, "set_socd must not rewrite the caller's list"
     dev.writes.clear()
     d.set_poll_rate(3)
     assert dev.writes == [protocol.build_poll_rate(3)]

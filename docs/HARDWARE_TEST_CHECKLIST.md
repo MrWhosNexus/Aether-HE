@@ -200,5 +200,5 @@ Set `AETHER_EXPERIMENTAL=magnet` before starting Aether (PowerShell: `$env:AETHE
 - [ ] Travel Test: press W slowly; the on-screen depth follows within about 50 ms and returns to 0 on release. Press keys on every row, including the arrows and the right-hand column, and check the right key moves. Wrong keys mean the 21-per-row matrix index is off: report which key lit for which press.
 - [ ] Actuation: set W to 0.50 mm; W now fires on a shallow press in Notepad. Set it back to 2.00 mm. Re-open the vendor driver and check it shows the same values.
 - [ ] Rapid trigger: set W to RT with 0.10 / 0.10 mm; tap-and-hold with small lifts re-fires W. Turn RT off again.
-- [ ] SOCD: one A/D pair on Model 4 (last pressed wins); hold A, press D, release D: A should come back. Delete the pair.
+- [ ] SOCD: one A/D pair on Model 1 (last pressed wins); hold A, press D, release D: A should come back. Then Model 2 (A always wins), Model 3 (D always wins) and Model 4 (neutral: with A held, D is not sent and A stops): each must behave differently. Delete the pair.
 - [ ] Send back: the `aether.log` from the session, which lines passed, and the vendor driver's view of actuation and SOCD after each write.

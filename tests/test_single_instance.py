@@ -204,3 +204,99 @@ def test_main_notifies_when_running_instance_is_unreachable():
 def test_notify_unresponsive_is_a_no_op_off_windows(monkeypatch):
     monkeypatch.setattr(sys, "platform", "linux")
     assert si.SingleInstance.notify_unresponsive() is False
+
+
+# ------------------------------------------------------------- macOS flock --
+import subprocess  # noqa: E402
+
+import pytest  # noqa: E402
+
+needs_flock = pytest.mark.skipif(sys.platform.startswith("win"), reason="no fcntl")
+
+
+@needs_flock
+def test_macos_second_instance_is_refused_until_the_first_releases(monkeypatch, tmp_path):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    lock = str(tmp_path / "aether.lock")
+    first, second = si.SingleInstance(lock), si.SingleInstance(lock)
+    assert first.acquire() is True
+    assert first.acquire() is True, "re-acquiring our own lock must not fail"
+    assert second.acquire() is False, "two Aethers at once (LaunchAgent + manual launch)"
+    assert second.holder_pid() == os.getpid()
+    second.release()                      # a refused instance releasing is harmless
+    assert si.SingleInstance(lock).acquire() is False
+    first.release()
+    third = si.SingleInstance(lock)
+    assert third.acquire() is True
+    third.release()
+
+
+@needs_flock
+def test_macos_lock_is_held_by_a_real_process_and_dies_with_it(monkeypatch, tmp_path):
+    """The guard is between PROCESSES, and a crashed Aether must not leave a
+    lock that keeps the app from ever starting again."""
+    lock = str(tmp_path / "aether.lock")
+    code = ("import sys, time; sys.path.insert(0, %r); sys.platform = 'darwin';"
+            "import single_instance as si; s = si.SingleInstance(%r);"
+            "print(int(s.acquire()), flush=True); time.sleep(60)" % (ROOT, lock))
+    holder = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE)
+    try:
+        assert holder.stdout.readline().strip() == b"1"
+        monkeypatch.setattr(sys, "platform", "darwin")
+        s = si.SingleInstance(lock)
+        assert s.acquire() is False
+        assert s.holder_pid() == holder.pid
+        holder.kill()                     # no release(): a crash
+        holder.wait()
+        assert s.acquire() is True, "a dead holder's lock must be free"
+        s.release()
+    finally:
+        if holder.poll() is None:
+            holder.kill()
+            holder.wait()
+
+
+@needs_flock
+def test_macos_child_processes_do_not_inherit_the_lock(monkeypatch, tmp_path):
+    """The update helper outlives the app; if it inherited the lock the
+    relaunched app would see itself as a second instance and exit."""
+    monkeypatch.setattr(sys, "platform", "darwin")
+    lock = str(tmp_path / "aether.lock")
+    s = si.SingleInstance(lock)
+    assert s.acquire() is True
+    child = subprocess.Popen(["/bin/sleep", "30"])
+    try:
+        s.release()
+        again = si.SingleInstance(lock)
+        assert again.acquire() is True
+        again.release()
+    finally:
+        child.kill()
+        child.wait()
+
+
+@needs_flock
+def test_macos_unusable_lock_file_does_not_block_launch(monkeypatch, tmp_path):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    s = si.SingleInstance(str(tmp_path / "no-such-dir" / "aether.lock"))
+    assert s.acquire() is True
+    s.release()
+
+
+@needs_flock
+def test_macos_poke_without_a_holder_is_unreachable(monkeypatch, tmp_path):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    s = si.SingleInstance(str(tmp_path / "aether.lock"))
+    assert s.poke_existing() == si.UNREACHABLE      # no lock file at all
+    assert s.acquire() is True
+    assert s.poke_existing() == si.UNREACHABLE      # never "poke" ourselves
+    s.release()
+
+
+@needs_flock
+def test_linux_takes_no_lock(monkeypatch, tmp_path):
+    monkeypatch.setattr(sys, "platform", "linux")
+    lock = tmp_path / "aether.lock"
+    a, b = si.SingleInstance(str(lock)), si.SingleInstance(str(lock))
+    assert a.acquire() is True and b.acquire() is True
+    assert not lock.exists()

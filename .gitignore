@@ -35,3 +35,7 @@ service/service.log
 # Vendor-authored reference material (driver code, string tables, configs).
 # Kept locally for protocol research; never published (copyright: see NOTICE.md).
 /research/
+
+# macOS: local virtualenv, and the icon CI generates with tools/make_icns.sh
+.venv-mac/
+ui/assets/logo.icns

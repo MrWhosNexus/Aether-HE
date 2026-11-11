@@ -728,8 +728,10 @@ function AboutWidget(ctx) {
     }
     const stop = () => { if (poll) { clearInterval(poll); poll = null; } };
     try {
+      // Last argument: a click, not the launch-time flow (macOS retries an
+      // in-place install that failed before only when the user asks).
       const r = await api.apply_update(info.asset_url, info.asset_name,
-                                       info.asset_size, info.asset_sha256);
+                                       info.asset_size, info.asset_sha256, true);
       stop();
       if (!r?.ok) {
         setUpdateState(s => ({ ...s, phase: "error", msg: `Installation failed: ${r?.error || "unknown error"}` }));
@@ -739,7 +741,7 @@ function AboutWidget(ctx) {
       // in place and needs a manual restart. Say which one happened.
       const msg = r.quit ? "Installer launched — Aether will close and reopen."
                 : r.restart ? "Update installed — quit and reopen Aether to apply it."
-                : r.path ? `Downloaded to ${r.path}` : "Update complete";
+                : S.updateDownloadedText(r, "Update complete");
       setUpdateState(s => ({ ...s, phase: "installed", msg }));
     } catch (e) {
       stop();

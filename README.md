@@ -10,7 +10,8 @@ ship with them. It runs entirely on your computer, it is free and open source
 them.
 
 > ### → [**Download the latest release**](https://github.com/MrWhosNexus/Aether-HE/releases/latest)
-> Windows: `AetherHE-Setup.exe` · Linux: `AetherHE.flatpak`.
+> Windows: `AetherHE-Setup.exe` · macOS (Apple Silicon): `AetherHE-macos-arm64.dmg` ·
+> Linux: `AetherHE.flatpak`.
 > Aether updates itself on launch (if you allow it) and checks every download's
 > SHA-256 before running it.
 
@@ -47,7 +48,7 @@ them.
 | **Status on keys** | CPU, RAM and GPU load and a Pomodoro timer as bars on the key rows. |
 | **Game profiles** | Detects a running game and switches to the profile you picked for it, then back when you quit. |
 | **SOCD, remap, macros** | SOCD pairs (incl. last-input-wins), key remaps and firmware macros that work with the app closed. |
-| **Virtual gamepad** | Hall-effect travel as Xbox 360 sticks and triggers (ViGEmBus on Windows, uinput on Linux). |
+| **Virtual gamepad** | Hall-effect travel as Xbox 360 sticks and triggers (ViGEmBus on Windows, uinput on Linux; not available on macOS). |
 | **Tray & mini mode** | Runs from the tray with a small effect panel; optional start-minimized. |
 
 ## Screenshots
@@ -177,19 +178,73 @@ sudo usermod -aG input "$USER"       # then log out and back in
 Build the Flatpak: `flatpak run org.flatpak.Builder --force-clean --user --install --repo=flatpak/repo flatpak/build-dir flatpak/io.github.mrwhosnexus.AetherHE.yml`.
 </details>
 
+## Install: macOS
+
+Apple Silicon (arm64). The build is ad-hoc signed and **not notarized**.
+
+1. Download `AetherHE-macos-arm64.dmg` from the latest release, open it and drag
+   **AetherHE** to **Applications**.
+2. First launch: right-click the app and choose **Open** (a double-click is
+   refused for an unnotarized app).
+
+From source: `python3 -m venv venv-web && venv-web/bin/pip install -r requirements.txt`,
+then `./run.command`. Build the app yourself with `./build_macos.sh` (`--release`
+also produces the DMG and the update zip).
+
+Two things differ on macOS:
+
+- **If the keyboard will not open**, check **System Settings > Privacy & Security >
+  Input Monitoring** and relaunch. The Win60's config interface needs no grant
+  (measured), but macOS reports a permission refusal and "another app holds the
+  device" identically, so Aether names both.
+- **Only one copy runs at a time.** Launching Aether again (or turning on
+  *Start at login*) brings the running copy forward instead of starting a second.
+- **There is no Gamepad tab, and nothing to install.** A virtual controller
+  needs Apple's restricted `com.apple.developer.hid.virtual.device` entitlement,
+  which Apple grants on individual request only. Lighting, actuation, rapid
+  trigger, SOCD and the effects are unaffected.
+
+Hardware-verified on the Aula Win60 HE (macOS 26.5, Apple Silicon): connect,
+firmware lighting, host-streamed effects, per-key RGB read-back, keymap
+snapshot and the live travel stream. Tray residency, game detection and the
+music visualizer are Windows-only.
+
 ## Updates
 
 **Settings → Updates** (or on launch, if enabled) checks GitHub Releases. On
 Windows the installer runs silently and relaunches Aether; on Flatpak the bundle
 is installed on the host, then restart. Downloads come only from this
-repository's releases and are verified against GitHub's SHA-256.
+repository's releases, only move forward to a newer version, and are verified
+against GitHub's SHA-256.
+
+**On macOS** the app is replaced in place when it runs from a writable folder
+such as /Applications:
+
+1. The update zip is unpacked next to the app and checked before anything moves:
+   code signature, bundle id, version and CPU architecture.
+2. Aether quits; a small helper swaps the new app in and reopens it.
+3. The previous version is kept until the new one reports that its window is up
+   (90 s). If it never does, the helper stops it, puts the previous version back
+   and reopens that.
+4. A version that failed to install is not retried automatically; **Settings →
+   Updates** (or *Try again*) retries it by hand. The log is in
+   `~/Library/Caches/AetherHE/updates/update.log`.
+
+If Aether runs from the DMG, a translocated location or a folder it cannot write
+to, it downloads the update and tells you to move the app to /Applications first.
+The build is ad-hoc signed, so macOS may ask for **Input Monitoring** again after
+an update; the Win60's config interface needs no grant.
 
 <details>
 <summary>Cutting a release (maintainer)</summary>
 
 Bump `version.py` (and `installer.iss`, the Flatpak metainfo), then
 `git tag vX.Y.Z && git push origin vX.Y.Z`. `.github/workflows/release.yml`
-builds the Windows installer and the Flatpak and publishes them on the release.
+first checks that the tag is exactly `v` + `version.py` (a mismatch would publish
+a macOS update every client refuses, so every build stops), then builds the
+Windows installer, the Flatpak, and the macOS DMG + update zip
+(`AetherHE-macos-arm64.dmg` / `.zip`, published together or not at all), and
+publishes them on the release.
 </details>
 
 ## Privacy, security and legal
@@ -241,6 +296,12 @@ builds the Windows installer and the Flatpak and publishes them on the release.
   press/release; 0.01 mm units, 0.08–3.4 mm. Travel stream:
   `idx = r[7]*22 + r[8]`, `depth = (r[9] | r[10]<<8) / 100`.
 - **Calibration:** cmd 33 sub `r[6] ∈ {8, 15}`; calibrated-key bitmask in `r[8:30]`.
+  Status `r[7]`: 1 in progress, 0 done, 2 or 4 failed (the vendor's
+  `alertCalibrationFail`); a fail code after done is ignored.
+- **SOCD (PRCS):** the model byte on the wire is zero-based, 0–3; the app's
+  Model 1–4 is converted in the Win60 driver only (MINI 60 and magnet boards
+  take 1–4). Saved profiles from earlier versions are renumbered once so each keeps
+  what it actually did.
 - **Macros (cmd 25):** 10 slots × 256 B; bound to a key through the base keymap.
 </details>
 

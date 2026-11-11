@@ -55,6 +55,12 @@
       socdActive,
       setSocdActive
     } = ctx;
+    // Model numbers and their meaning: components/socd-model.jsx (looked up at
+    // render time; components compile after workspaces).
+    const {
+      SOCD_MODELS,
+      SOCD_MODEL_TEXT
+    } = window.AetherSocd;
     const [editTarget, setEditTarget] = useState("k1"); // "k1" or "k2"
     const cur = socdProfiles.find(p => p.id === socdActive) || socdProfiles[0];
     const updateActive = patch => {
@@ -110,7 +116,7 @@
                          ${editTarget === "k2" ? "border-[var(--accent)]/50 text-[var(--accent)] bg-[var(--accent)]/10 shadow-[0_0_8px_var(--accent-glow)]" : cur?.k2 ? "border-[var(--accent)]/30 text-[var(--accent)] bg-[var(--accent)]/10 hover:shadow-[0_0_8px_var(--accent-glow)]" : "border-[var(--line)] text-[var(--text-faint)] bg-white/[0.02] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`
     }, cur?.k2 || "—"))), /*#__PURE__*/React.createElement("div", {
       className: "grid grid-cols-2 gap-1.5"
-    }, [1, 2, 3, 4].map(m => /*#__PURE__*/React.createElement("button", {
+    }, SOCD_MODELS.map(m => /*#__PURE__*/React.createElement("button", {
       key: m,
       onClick: () => updateActive({
         mode: m
@@ -176,22 +182,18 @@
         className: "rounded-md border border-amber-400/40 bg-amber-400/[0.06] p-3 text-[11.5px] text-amber-200/90 leading-relaxed"
       }, cur.k1, " + ", cur.k2, " is also ", same.id, ". The keyboard uses only the first pair for two keys", first ? `, so this one (${cur.id}) is not written.` : `, so ${same.id} is not written.`, " ", "For whichever-pressed-last-wins in both directions, use one pair on ", /*#__PURE__*/React.createElement("span", {
         className: "text-[var(--accent)]"
-      }, "Model 4"), ".");
+      }, "Model 1"), ".");
     })(), /*#__PURE__*/React.createElement("div", {
       className: "rounded-md border border-[var(--line)] bg-[rgba(5,11,14,0.5)] p-3 text-[11.5px] text-[var(--text-dim)] leading-relaxed"
     }, /*#__PURE__*/React.createElement("div", {
       className: "text-[var(--text)] font-display uppercase tracking-[0.18em] text-[10.5px] mb-2"
     }, "When both Key1 and Key2 fire:"), /*#__PURE__*/React.createElement("div", {
       className: "space-y-1.5 font-mono text-[10px]"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+    }, SOCD_MODELS.map(m => /*#__PURE__*/React.createElement("div", {
+      key: m
+    }, /*#__PURE__*/React.createElement("span", {
       className: "text-[var(--accent)]"
-    }, "Model 1"), " \xB7 First press wins; second is interrupted."), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
-      className: "text-[var(--accent)]"
-    }, "Model 2"), " \xB7 Key1 interrupts Key2."), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
-      className: "text-[var(--accent)]"
-    }, "Model 3"), " \xB7 Key2 interrupts Key1."), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
-      className: "text-[var(--accent)]"
-    }, "Model 4"), " \xB7 Later-triggered key wins (Snap Tap)."))), /*#__PURE__*/React.createElement("div", {
+    }, "Model ", m), " \xB7 ", SOCD_MODEL_TEXT[m])))), /*#__PURE__*/React.createElement("div", {
       className: "flex gap-2"
     }, /*#__PURE__*/React.createElement("button", {
       onClick: addProfile,
