@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Verify a built AetherHE.app actually contains what it needs to boot.
 
-Usage: python tools/verify_macos_bundle.py dist/AetherHE.app
+Usage: python tools/verify_macos_bundle.py dist/AetherHE.app [--skip-selftest]
 
 Structural checks are done here; the import-closure check is delegated to the
 bundle itself (AETHER_SELFTEST=1), because only the frozen binary knows what its
@@ -20,7 +20,9 @@ def fail(msg):
 
 
 def main(argv):
-    app = argv[1] if len(argv) > 1 else "dist/AetherHE.app"
+    args = [a for a in argv[1:] if not a.startswith("--")]
+    skip_selftest = "--skip-selftest" in argv[1:]
+    app = args[0] if args else "dist/AetherHE.app"
     errs = 0
 
     if not os.path.isdir(app):
@@ -64,14 +66,30 @@ def main(argv):
             errs += fail(f"bundle is missing {rel} (looked in Resources/ and Frameworks/)")
 
     # --- signature ----------------------------------------------------------
-    r = subprocess.run(["codesign", "--verify", "--strict", app],
+    # --deep --strict is what updater.py runs on a staged update before it swaps
+    # it in: a bundle that fails here could never be installed by the updater.
+    r = subprocess.run(["codesign", "--verify", "--deep", "--strict", app],
                        capture_output=True)
     if r.returncode != 0:
         errs += fail("codesign --verify failed: "
                      + (r.stderr or b"").decode(errors="replace").strip())
 
     # --- the real one: make the frozen app prove its own import closure -----
-    if os.path.isfile(exe):
+    # The selftest hook lives in app_web.py. Without it the binary ignores
+    # AETHER_SELFTEST and simply opens the GUI, which would hang this script
+    # until the timeout — so check the source for the hook before running.
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    try:
+        with open(os.path.join(root, "app_web.py"), encoding="utf-8") as f:
+            has_hook = "AETHER_SELFTEST" in f.read()
+    except OSError:
+        has_hook = True          # verifying a bundle away from the source tree
+    if skip_selftest:
+        print("warn: --skip-selftest: the bundle's import closure was NOT checked")
+    elif not has_hook:
+        errs += fail("app_web.py has no AETHER_SELFTEST hook, so the bundle cannot "
+                     "prove its import closure (not launching the GUI to find out)")
+    elif os.path.isfile(exe):
         env = dict(os.environ, AETHER_SELFTEST="1")
         r = subprocess.run([exe], capture_output=True, env=env, timeout=120)
         out = ((r.stdout or b"") + (r.stderr or b"")).decode(errors="replace").strip()

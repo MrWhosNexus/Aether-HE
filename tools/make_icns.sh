@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 
 SRC="ui/assets/logo.png"
 OUT="ui/assets/logo.icns"
-SET="$(mktemp -d)/AetherHE.iconset"
+SET="$(mktemp -d "${TMPDIR:-/tmp}/aetherhe.XXXXXX")/AetherHE.iconset"
 mkdir -p "$SET"
 
 # The source is 500x500, so the 512/1024 slots are upscaled. Generate them
