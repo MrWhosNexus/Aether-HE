@@ -1530,8 +1530,11 @@
         // One-shot: whether this OS can host a virtual gamepad at all. Uses
         // platform_info, NOT gamepad_status: the latter probes ViGEmBus, which
         // constructs a real pad on Windows, and shell chrome must not do that.
+        // `gamepad_platform` (can this OS EVER have a pad), not
+        // `gamepad_supported` (is a backend loaded right now): Windows/Linux
+        // without vgamepad/evdev must keep the tab, it holds the install steps.
         apiCall("platform_info").then(p => {
-          if (alive && p && p.ok) setPadSupported(!!p.gamepad_supported);
+          if (alive && p && p.ok && typeof p.gamepad_platform === "boolean") setPadSupported(p.gamepad_platform);
         }).catch(() => {});
         iv = setInterval(() => {
           if (alive && !document.hidden) refreshBoards();

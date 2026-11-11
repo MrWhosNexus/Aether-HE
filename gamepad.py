@@ -116,6 +116,17 @@ def backend_status():
             "installable": True}
 
 
+def platform_capable():
+    """Can THIS PLATFORM ever host a virtual gamepad - with a backend loaded
+    now, or after the user installs one? False only where nothing the user
+    does will change the answer (macOS).
+
+    This, not backend_status()["supported"], is what decides whether the UI
+    shows the Gamepad tab at all: on Windows/Linux without a backend the tab
+    is where the install guidance lives, so hiding it there hides the fix."""
+    return _BACKEND is not None or sys.platform != "darwin"
+
+
 # --- ViGEmBus auto-installer (Windows only) --------------------------------
 #
 # vgamepad imports cleanly even when the ViGEmBus kernel driver isn't present;

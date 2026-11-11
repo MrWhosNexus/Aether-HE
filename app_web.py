@@ -2016,6 +2016,11 @@ class Api:
         backend = gamepad.backend_status()
         return {"ok": True,
                 "platform": sys.platform,
+                # Whether the Gamepad tab exists at all: False only where the
+                # platform can never have a pad (macOS). NOT `supported` -
+                # that is also False on Windows/Linux before the backend is
+                # installed, which is exactly when the tab's guidance is needed.
+                "gamepad_platform": gamepad.platform_capable(),
                 "gamepad_supported": backend["supported"],
                 "gamepad_installable": backend["installable"],
                 "gamepad_reason": backend["reason"]}

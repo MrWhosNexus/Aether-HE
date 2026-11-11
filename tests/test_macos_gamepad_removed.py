@@ -48,6 +48,38 @@ def test_platform_info_reports_supported_where_a_backend_exists(api, monkeypatch
     assert api.platform_info()["gamepad_supported"] is True
 
 
+@pytest.mark.parametrize("platform, backend, tab", [
+    ("darwin", None, False),          # can never have a pad: no tab
+    ("win32", None, True),            # vgamepad/ViGEmBus not installed yet
+    ("linux", None, True),            # evdev/uinput not set up yet
+    ("win32", "vgamepad", True),
+    ("linux", "evdev", True),
+])
+def test_tab_is_hidden_only_where_the_platform_can_never_have_a_pad(
+        api, monkeypatch, platform, backend, tab):
+    """`gamepad_supported` is False on Windows/Linux too until the backend is
+    installed. Hiding the tab on it removed the page that says how to install
+    it; the tab follows the PLATFORM flag instead."""
+    monkeypatch.setattr(gamepad, "_BACKEND", backend)
+    monkeypatch.setattr(gamepad.sys, "platform", platform)
+    info = api.platform_info()
+    assert info["gamepad_platform"] is tab
+    assert gamepad.platform_capable() is tab
+    assert info["gamepad_supported"] is (backend is not None)
+    if backend is None and platform != "darwin":
+        assert info["gamepad_installable"] is True and info["gamepad_reason"]
+
+
+def test_app_jsx_hides_the_tab_on_the_platform_flag_not_on_supported():
+    src = open(APP_JSX, encoding="utf-8").read()
+    assert "setPadSupported(p.gamepad_platform);" in src
+    assert "setPadSupported(!!p.gamepad_supported)" not in src
+    assert 'typeof p.gamepad_platform === "boolean"' in src, \
+        "an older backend without the flag must not hide (or force) the tab"
+    # The synchronous seed is still macOS-only.
+    assert 'const PLATFORM_HINT_PAD = PLATFORM_HINT === "darwin" ? false : null;' in src
+
+
 def test_platform_info_never_probes_vigembus(api, monkeypatch):
     """Building a VX360 pad just to draw a nav bar is the phantom-pad defect.
     platform_info must answer from the backend table alone."""
