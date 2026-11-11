@@ -1,4 +1,5 @@
 import logging
+import sys
 import threading
 import time
 import hid
@@ -80,12 +81,29 @@ def build_lighting(r, g, b, mode=0, brightness=0x04, speed=0x04, direction=0):
     return [VENDOR_REPORT_ID] + data
 
 
+class VendorInterfaceUnresolved(IOError):
+    """The board enumerated, but no vendor interface could be picked *safely*.
+
+    Distinct from "not found": the hardware is present. Raising instead of
+    guessing keeps us honest — a config frame written to the wrong top-level
+    collection is a silent no-op at best.
+    """
+
+
+class HidPermissionError(IOError):
+    """The OS refused the open. On macOS this is the Input Monitoring (TCC) gate."""
+
+
 def enumerate_interfaces(vid=AULA_VID, pid=AULA_PID):
     return hid.enumerate(vid, pid)
 
 
 def find_vendor_interface(vid=AULA_VID, pid=AULA_PID, usage_page=VENDOR_USAGE_PAGE):
     """Pick the vendor-config HID collection for (vid, pid).
+
+    Returns the hidapi enumeration dict, or None if the board isn't present.
+    Raises VendorInterfaceUnresolved when the board IS present but no
+    deterministic choice exists (see the fallback note below).
 
     Preferred: the collection whose usage_page matches (0xFF1B on the Win60).
     Windows and macOS hidapi report usage pages per top-level collection, so
@@ -101,7 +119,36 @@ def find_vendor_interface(vid=AULA_VID, pid=AULA_PID, usage_page=VENDOR_USAGE_PA
         return None
     vendor = [m for m in matches if m.get("usage_page") == usage_page]
     if vendor:
+        # macOS enumerates one entry per top-level COLLECTION, and collections
+        # on one USB interface share a single `path`, so open_path() opens the
+        # interface, not the collection. Harmless for these protocols (every
+        # frame carries its report id, so writes still route), but a read can
+        # surface a sibling collection's reports — say so once.
+        if len(vendor) > 1:
+            log.warning(
+                "%d collections match usage page 0x%04X; using the first. Paths: %s",
+                len(vendor), usage_page, [m.get("path") for m in vendor],
+            )
         return vendor[0]
+
+    # --- fallback: no usage-page match -------------------------------------
+    # "Highest interface_number" only means something where hidapi knows the
+    # interface number. Its macOS backend reports -1 for every non-USB
+    # transport (measured: 27 of 34 entries), and max() over an all-equal key
+    # returns an arbitrary collection dressed up as a deliberate choice.
+    # Refuse instead: a wrong interface fails silently. The one exception is
+    # the legacy Linux case of a single hidraw node whose usage page is
+    # unknown (0) — there is nothing to choose between.
+    numbers = [m.get("interface_number", -1) for m in matches]
+    if len(set(numbers)) <= 1:
+        if len(matches) == 1 and not matches[0].get("usage_page"):
+            return matches[0]
+        raise VendorInterfaceUnresolved(
+            f"{vid:04X}:{pid:04X} is connected but exposes no 0x{usage_page:04X} usage page, "
+            f"and its interface numbers are uninformative ({numbers}) — refusing to guess. "
+            f"Collections seen: "
+            f"{[(hex(m.get('usage_page') or 0), hex(m.get('usage') or 0)) for m in matches]}"
+        )
     log.warning(
         "No 0x%04X usage page found; falling back to highest interface_number. Interfaces: %s",
         usage_page,
@@ -113,6 +160,44 @@ def find_vendor_interface(vid=AULA_VID, pid=AULA_PID, usage_page=VENDOR_USAGE_PA
         return (m.get("interface_number", -1), 0xFF00 <= up <= 0xFFFF, up)
 
     return max(matches, key=rank)
+
+
+# macOS Privacy pane deep link for the Input Monitoring list.
+INPUT_MONITORING_URL = (
+    "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent"
+)
+
+# Usage page macOS always puts behind the Input Monitoring (TCC) gate. A vendor
+# page (0xFF00+) is normally exempt, which is why the config interfaces open
+# without a prompt (measured on the Win60, 0xFF1B) — but a board that exposes
+# its vendor collection on the SAME interface as its keyboard collection
+# inherits the gate.
+_TCC_GATED_USAGE_PAGE = 0x0001  # Generic Desktop (keyboard/keypad/mouse usages)
+
+
+def _translate_open_error(ex, name, info):
+    """Turn hidapi's opaque open failure into something a user can act on.
+
+    hidapi surfaces every macOS open failure as the same bare 'open failed'
+    string — kIOReturnNotPermitted (TCC) and kIOReturnExclusiveAccess (another
+    process owns the device) are indistinguishable from Python. So this does
+    NOT claim which one it was; it names both and gives the one link that
+    fixes the common case. Other platforms get the original exception back.
+    """
+    if sys.platform != "darwin":
+        return ex
+    gated = info.get("usage_page") == _TCC_GATED_USAGE_PAGE
+    return HidPermissionError(
+        f"Could not open {name}. macOS did not say why — the two causes are "
+        f"Input Monitoring permission (Privacy & Security → Input Monitoring → "
+        f"add and enable Aether, then relaunch: {INPUT_MONITORING_URL}) and another "
+        f"process already holding the device exclusively"
+        + (
+            " — and this collection is on the Generic Desktop usage page, which macOS "
+            "always gates, so permission is the likely one."
+            if gated else "."
+        )
+    )
 
 
 class AulaDevice:
@@ -157,6 +242,30 @@ class AulaDevice:
 
     def open(self):
         vid, pid, usage_page, name = self._target()
+
+        # Idempotent re-open. The app auto-connects at launch, so a later Pair
+        # click (or the reconnect watchdog) calls straight back in here on a
+        # device already held. A SECOND open_path() on a held device fails
+        # outright on macOS, so "open the new handle, then close the old one"
+        # can never succeed there and Pair did nothing. While the held
+        # handle's path is still enumerated, keep it. A handle that stopped
+        # answering is not kept alive by this: status() probes it and
+        # mark_dead() drops it, after which this opens a fresh one.
+        with self._lock:
+            if self._dev is not None:
+                held = (self._info or {}).get("path")
+                try:
+                    present = any(m.get("path") == held
+                                  for m in enumerate_interfaces(vid, pid))
+                except Exception:
+                    present = False
+                if present:
+                    return dict(self._info)
+                # The handle outlived the hardware (unplug, or a replug that
+                # issued a new path): fall through and open the new one; the
+                # old handle is closed below once the new one is stored.
+                log.info("%s handle is stale (device re-enumerated); reopening", name)
+
         info = find_vendor_interface(vid, pid, usage_page)
         if info is None:
             raise IOError(f"{name} not found (VID:PID {vid:04X}:{pid:04X})")
@@ -165,17 +274,20 @@ class AulaDevice:
         try:
             dev.open_path(info["path"])
             dev.set_nonblocking(False)
-        except Exception:
+        except Exception as ex:
             # Don't leak the just-opened handle if set_nonblocking (or the
             # open) fails before we store it — a retry would open a second one.
             try:
                 dev.close()
             except Exception:
                 pass
-            raise
+            err = _translate_open_error(ex, name, info)
+            if err is ex:
+                raise
+            raise err from ex
         with self._lock:
-            # Re-opening while a handle is still held (connect() called twice,
-            # e.g. the Pair button racing the auto-reconnect watchdog) must not
+            # A handle can still be held here when its path went away (see
+            # the idempotent re-open above) or when two opens raced: never
             # leak the old hidraw/HID handle.
             old = self._dev
             self._dev = dev
