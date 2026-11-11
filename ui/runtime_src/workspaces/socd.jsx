@@ -49,6 +49,9 @@ const KeyGrid = ({ title, keys, picked, onPick }) => {
 /* ===== Pair Editor Widget ===== */
 const PairEditorWidget = (ctx) => {
   const { socdProfiles, setSocdProfiles, socdActive, setSocdActive } = ctx;
+  // Model numbers and their meaning: components/socd-model.jsx (looked up at
+  // render time; components compile after workspaces).
+  const { SOCD_MODELS, SOCD_MODEL_TEXT } = window.AetherSocd;
   const [editTarget, setEditTarget] = useState("k1"); // "k1" or "k2"
   const cur = socdProfiles.find(p => p.id === socdActive) || socdProfiles[0];
 
@@ -105,7 +108,7 @@ const PairEditorWidget = (ctx) => {
 
       {/* Mode selection */}
       <div className="grid grid-cols-2 gap-1.5">
-        {[1,2,3,4].map(m => (
+        {SOCD_MODELS.map(m => (
           <button key={m} onClick={() => updateActive({ mode: m })}
             className={`flex items-center gap-2 px-3 h-9 rounded-md border font-mono text-[12px] transition-all
                         ${cur?.mode === m
@@ -143,7 +146,7 @@ const PairEditorWidget = (ctx) => {
           <div data-testid="socd-duplicate" className="rounded-md border border-amber-400/40 bg-amber-400/[0.06] p-3 text-[11.5px] text-amber-200/90 leading-relaxed">
             {cur.k1} + {cur.k2} is also {same.id}. The keyboard uses only the first pair for two keys
             {first ? `, so this one (${cur.id}) is not written.` : `, so ${same.id} is not written.`}
-            {" "}For whichever-pressed-last-wins in both directions, use one pair on <span className="text-[var(--accent)]">Model 4</span>.
+            {" "}For whichever-pressed-last-wins in both directions, use one pair on <span className="text-[var(--accent)]">Model 1</span>.
           </div>
         );
       })()}
@@ -152,10 +155,9 @@ const PairEditorWidget = (ctx) => {
       <div className="rounded-md border border-[var(--line)] bg-[rgba(5,11,14,0.5)] p-3 text-[11.5px] text-[var(--text-dim)] leading-relaxed">
         <div className="text-[var(--text)] font-display uppercase tracking-[0.18em] text-[10.5px] mb-2">When both Key1 and Key2 fire:</div>
         <div className="space-y-1.5 font-mono text-[10px]">
-          <div><span className="text-[var(--accent)]">Model 1</span> · First press wins; second is interrupted.</div>
-          <div><span className="text-[var(--accent)]">Model 2</span> · Key1 interrupts Key2.</div>
-          <div><span className="text-[var(--accent)]">Model 3</span> · Key2 interrupts Key1.</div>
-          <div><span className="text-[var(--accent)]">Model 4</span> · Later-triggered key wins (Snap Tap).</div>
+          {SOCD_MODELS.map(m => (
+            <div key={m}><span className="text-[var(--accent)]">Model {m}</span> · {SOCD_MODEL_TEXT[m]}</div>
+          ))}
         </div>
       </div>
 

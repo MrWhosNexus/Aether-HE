@@ -244,7 +244,9 @@ def test_remembered_tab_wins_after_the_one_time_intro():
 
 
 def test_an_unavailable_tab_falls_back_to_the_dashboard():
-    assert 'if (!sectionAllowed(section, board)) setSection("dashboard");' in APP
+    # (padHidden: the Gamepad tab on a platform with no virtual pad, i.e. macOS)
+    assert ('if (!sectionAllowed(section, board) || padHidden(section)) '
+            'setSection("dashboard");') in APP
     assert 'setSection("keymap")' not in APP
 
 

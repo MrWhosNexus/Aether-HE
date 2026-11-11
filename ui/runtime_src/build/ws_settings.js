@@ -812,7 +812,7 @@
         }
         // Windows launches the installer and the app must quit; Flatpak installs
         // in place and needs a manual restart. Say which one happened.
-        const msg = r.quit ? "Installer launched — Aether will close and reopen." : r.restart ? "Update installed — quit and reopen Aether to apply it." : r.path ? `Downloaded to ${r.path}` : "Update complete";
+        const msg = r.quit ? "Installer launched — Aether will close and reopen." : r.restart ? "Update installed — quit and reopen Aether to apply it." : S.updateDownloadedText(r, "Update complete");
         setUpdateState(s => ({
           ...s,
           phase: "installed",

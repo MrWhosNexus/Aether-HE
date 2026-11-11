@@ -35886,6 +35886,16 @@
     }))));
   };
 
+  // apply_update result that neither quit nor asked for a restart: the update was
+  // only downloaded. `message` (macOS) says why it was not installed in place;
+  // show it, and the path too unless the message already names it.
+  const updateDownloadedText = (r, fallback) => {
+    const where = r && r.path ? `Downloaded to ${r.path}` : fallback;
+    const why = r && typeof r.message === "string" ? r.message.trim() : "";
+    if (!why) return where;
+    return r.path && !why.includes(r.path) ? `${why} ${where}` : why;
+  };
+
   /* ===== SOCD SECTION ===== */
   const SOCDSection = ({
     socdMode,
@@ -36013,13 +36023,13 @@
       className: "space-y-1.5 font-mono"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
       className: "text-[var(--accent)]"
-    }, "Model 1"), " \xB7 First press wins; second is interrupted."), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+    }, "Model 1"), " \xB7 Last press wins: the key pressed first is interrupted (Snap Tap)."), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
       className: "text-[var(--accent)]"
-    }, "Model 2"), " \xB7 Key1 interrupts Key2."), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+    }, "Model 2"), " \xB7 Key 1 interrupts Key 2."), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
       className: "text-[var(--accent)]"
-    }, "Model 3"), " \xB7 Key2 interrupts Key1."), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+    }, "Model 3"), " \xB7 Key 2 interrupts Key 1."), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
       className: "text-[var(--accent)]"
-    }, "Model 4"), " \xB7 Later-triggered key wins (Snap Tap).")))), /*#__PURE__*/React.createElement("div", {
+    }, "Model 4"), " \xB7 Neutral: the later key is not sent and interrupts the first.")))), /*#__PURE__*/React.createElement("div", {
       className: "flex flex-col gap-4"
     }, /*#__PURE__*/React.createElement(KeyGrid, {
       title: "Basic Keys",
@@ -36148,7 +36158,7 @@
         }));else setUpd(u => ({
           ...u,
           phase: "done",
-          msg: r.path ? `Downloaded to ${r.path}` : "Downloaded."
+          msg: updateDownloadedText(r, "Downloaded.")
         }));
       } catch (e) {
         setUpd(u => ({
@@ -36573,6 +36583,7 @@
     SubTabs,
     SwitchRender,
     ToolbarButton,
+    updateDownloadedText,
     KeymapSection: React.memo(KeymapSection, (prev, next) => prev.selectedKey === next.selectedKey && prev.selectedCount === next.selectedCount && prev.selectedKeys === next.selectedKeys && prev.connected === next.connected),
     ActuationSection: React.memo(ActuationSection, (prev, next) => prev.actuation === next.actuation && prev.rtPress === next.rtPress && prev.rtRelease === next.rtRelease && prev.rtEnabled === next.rtEnabled && prev.polling === next.polling && prev.travelTest === next.travelTest && prev.calibrating === next.calibrating && prev.deadTop === next.deadTop && prev.deadBottom === next.deadBottom && prev.switchId === next.switchId && prev.liveDepth === next.liveDepth && prev.selectedCount === next.selectedCount && prev.selectedKeys === next.selectedKeys && prev.connected === next.connected),
     LightingSection: React.memo(LightingSection, (prev, next) => prev.colors === next.colors && prev.bgColor === next.bgColor && prev.perKeyColors === next.perKeyColors && prev.pattern === next.pattern && prev.brightness === next.brightness && prev.speed === next.speed && prev.power === next.power && prev.fullColor === next.fullColor && prev.direction === next.direction && prev.striOrient === next.striOrient && prev.bgBright === next.bgBright && prev.zones === next.zones && prev.selectedKeys === next.selectedKeys),
@@ -43435,7 +43446,7 @@
         }
         // Windows launches the installer and the app must quit; Flatpak installs
         // in place and needs a manual restart. Say which one happened.
-        const msg = r.quit ? "Installer launched — Aether will close and reopen." : r.restart ? "Update installed — quit and reopen Aether to apply it." : r.path ? `Downloaded to ${r.path}` : "Update complete";
+        const msg = r.quit ? "Installer launched — Aether will close and reopen." : r.restart ? "Update installed — quit and reopen Aether to apply it." : S.updateDownloadedText(r, "Update complete");
         setUpdateState(s => ({
           ...s,
           phase: "installed",
@@ -43648,6 +43659,12 @@
       socdActive,
       setSocdActive
     } = ctx;
+    // Model numbers and their meaning: components/socd-model.jsx (looked up at
+    // render time; components compile after workspaces).
+    const {
+      SOCD_MODELS,
+      SOCD_MODEL_TEXT
+    } = window.AetherSocd;
     const [editTarget, setEditTarget] = useState("k1"); // "k1" or "k2"
     const cur = socdProfiles.find(p => p.id === socdActive) || socdProfiles[0];
     const updateActive = patch => {
@@ -43703,7 +43720,7 @@
                          ${editTarget === "k2" ? "border-[var(--accent)]/50 text-[var(--accent)] bg-[var(--accent)]/10 shadow-[0_0_8px_var(--accent-glow)]" : cur?.k2 ? "border-[var(--accent)]/30 text-[var(--accent)] bg-[var(--accent)]/10 hover:shadow-[0_0_8px_var(--accent-glow)]" : "border-[var(--line)] text-[var(--text-faint)] bg-white/[0.02] hover:border-[color-mix(in_srgb,var(--accent)_30%,transparent)]"}`
     }, cur?.k2 || "—"))), /*#__PURE__*/React.createElement("div", {
       className: "grid grid-cols-2 gap-1.5"
-    }, [1, 2, 3, 4].map(m => /*#__PURE__*/React.createElement("button", {
+    }, SOCD_MODELS.map(m => /*#__PURE__*/React.createElement("button", {
       key: m,
       onClick: () => updateActive({
         mode: m
@@ -43769,22 +43786,18 @@
         className: "rounded-md border border-amber-400/40 bg-amber-400/[0.06] p-3 text-[11.5px] text-amber-200/90 leading-relaxed"
       }, cur.k1, " + ", cur.k2, " is also ", same.id, ". The keyboard uses only the first pair for two keys", first ? `, so this one (${cur.id}) is not written.` : `, so ${same.id} is not written.`, " ", "For whichever-pressed-last-wins in both directions, use one pair on ", /*#__PURE__*/React.createElement("span", {
         className: "text-[var(--accent)]"
-      }, "Model 4"), ".");
+      }, "Model 1"), ".");
     })(), /*#__PURE__*/React.createElement("div", {
       className: "rounded-md border border-[var(--line)] bg-[rgba(5,11,14,0.5)] p-3 text-[11.5px] text-[var(--text-dim)] leading-relaxed"
     }, /*#__PURE__*/React.createElement("div", {
       className: "text-[var(--text)] font-display uppercase tracking-[0.18em] text-[10.5px] mb-2"
     }, "When both Key1 and Key2 fire:"), /*#__PURE__*/React.createElement("div", {
       className: "space-y-1.5 font-mono text-[10px]"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+    }, SOCD_MODELS.map(m => /*#__PURE__*/React.createElement("div", {
+      key: m
+    }, /*#__PURE__*/React.createElement("span", {
       className: "text-[var(--accent)]"
-    }, "Model 1"), " \xB7 First press wins; second is interrupted."), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
-      className: "text-[var(--accent)]"
-    }, "Model 2"), " \xB7 Key1 interrupts Key2."), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
-      className: "text-[var(--accent)]"
-    }, "Model 3"), " \xB7 Key2 interrupts Key1."), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
-      className: "text-[var(--accent)]"
-    }, "Model 4"), " \xB7 Later-triggered key wins (Snap Tap)."))), /*#__PURE__*/React.createElement("div", {
+    }, "Model ", m), " \xB7 ", SOCD_MODEL_TEXT[m])))), /*#__PURE__*/React.createElement("div", {
       className: "flex gap-2"
     }, /*#__PURE__*/React.createElement("button", {
       onClick: addProfile,
@@ -44856,6 +44869,86 @@
   }
   window.AetherBoardPicker = {
     BoardPicker
+  };
+})();
+</script>
+<script data-mod="comp_socd-model">
+(() => {
+  /* ============================================================
+     SOCD model numbering (Aula Win60 HE family, cmd 0x24 PRCS).
+  
+     The UI and the saved profiles hold the vendor's own number: "Model 1" ..
+     "Model 4" (hed.aulacn.com prcsModel1..4). The WIRE byte is that number
+     minus one, 0..3. CONFIRMED-BY-CAPTURE: picking "Model2" in the vendor
+     driver wrote the entry `01 01 04 07`
+     (docs/context/hed-aulacn-raw/WIN60_CAPTURE_NOTES.md, section 7).
+  
+     What each model does, from the vendor's own strings:
+       Model 1 (wire 0)  the key pressed FIRST is interrupted: last press wins
+       Model 2 (wire 1)  Key 1 interrupts Key 2
+       Model 3 (wire 2)  Key 2 interrupts Key 1
+       Model 4 (wire 3)  the later key is not sent and interrupts the first
+  
+     Until this fix Aether sent the label verbatim (`model: p.mode || 1`), so
+     every pair ran one model later than its label and "Model 4" sent 4, a
+     value the firmware does not implement.
+  
+     SAVED PROFILES. A state written by those builds holds the byte that went
+     to the keyboard. migrateState renumbers it ONCE so the keyboard keeps
+     doing what it did: old 1/2/3 (wire 1/2/3) become Model 2/3/4. Old 4 was
+     never a real model; its label promised "later key wins", which is
+     Model 1. The state is then stamped `socdRev: SOCD_REV`, so running the
+     migration again changes nothing; app.jsx's collectState writes the same
+     stamp on every save and backup.
+  
+     Pure functions, no React: tested in node (tests/test_socd_model.py).
+     Exposes window.AetherSocd.
+     ============================================================ */
+  const SOCD_REV = 2;
+  const SOCD_MODELS = [1, 2, 3, 4];
+  const SOCD_MODEL_TEXT = {
+    1: "Last press wins: the key pressed first is interrupted (Snap Tap).",
+    2: "Key 1 interrupts Key 2.",
+    3: "Key 2 interrupts Key 1.",
+    4: "Neutral: the later key is not sent and interrupts the first."
+  };
+
+  // A stored mode as a valid model number (1..4); anything else is Model 1.
+  const modelOf = mode => {
+    const n = Number(mode);
+    return Number.isInteger(n) && n >= 1 && n <= 4 ? n : 1;
+  };
+
+  // Model number -> the byte set_socd puts on the wire (0..3).
+  const wireModel = mode => modelOf(mode) - 1;
+
+  // The byte a pre-fix build sent for a stored mode -> today's model number.
+  const LEGACY_TO_MODEL = {
+    1: 2,
+    2: 3,
+    3: 4,
+    4: 1
+  };
+  const migrateState = state => {
+    if (!state || typeof state !== "object" || Array.isArray(state)) return state;
+    if (Number(state.socdRev) >= SOCD_REV) return state;
+    if (!Array.isArray(state.socdProfiles)) return state; // nothing stored yet
+    return {
+      ...state,
+      socdProfiles: state.socdProfiles.map(p => p && typeof p === "object" ? {
+        ...p,
+        mode: LEGACY_TO_MODEL[Number(p.mode)] || 1
+      } : p),
+      socdRev: SOCD_REV
+    };
+  };
+  window.AetherSocd = {
+    SOCD_REV,
+    SOCD_MODELS,
+    SOCD_MODEL_TEXT,
+    modelOf,
+    wireModel,
+    migrateState
   };
 })();
 </script>
@@ -46204,10 +46297,17 @@
   // codes). Rows missing a key are skipped; [] clears the board's pairs. A later
   // row over the SAME two keys (either order) is dropped: the firmware only
   // honours the first pair for a key pair (A=D M2 + D=A M2 acted as A=D M2).
+  // `mode` is the vendor's model NUMBER (1..4); the wire byte is that minus one
+  // (components/socd-model.jsx). Converted exactly once, here.
+  const {
+    SOCD_REV,
+    wireModel: socdWireModel,
+    migrateState: migrateSocdState
+  } = window.AetherSocd;
   const socdPairsFrom = rows => {
     const seen = new Set();
     return (rows || []).filter(p => p && p.k1 && p.k2).map(p => ({
-      model: p.mode || 1,
+      model: socdWireModel(p.mode),
       key1: LABEL_TO_CODE[p.k1] || p.k1,
       key2: LABEL_TO_CODE[p.k2] || p.k2
     })).filter(p => {
@@ -46229,7 +46329,7 @@
       rtEnabled: !!s.rtEnabled,
       rtPress: num(s.rtPress) ?? 0.05,
       rtRelease: num(s.rtRelease) ?? 0.05,
-      socd: Array.isArray(s.socdProfiles) ? socdPairsFrom(s.socdProfiles) : null
+      socd: Array.isArray(s.socdProfiles) ? socdPairsFrom(migrateSocdState(s).socdProfiles) : null
     };
   };
 
@@ -46312,7 +46412,18 @@
   // Migrate the old per-key blob shape ({"profile-p1": {...}, "profile-p2": {...}})
   // to the new {profiles:[...], activeProfile, globals} shape so nobody loses
   // their existing settings file.
-  const migrateSettings = raw => {
+  // Every profile's SOCD rows are renumbered once on the way in (see
+  // components/socd-model.jsx): a state without the `socdRev` stamp holds the
+  // byte older builds sent, not the model number.
+  const withSocdMigrated = settings => settings && Array.isArray(settings.profiles) ? {
+    ...settings,
+    profiles: settings.profiles.map(p => p && p.state ? {
+      ...p,
+      state: migrateSocdState(p.state)
+    } : p)
+  } : settings;
+  const migrateSettings = raw => withSocdMigrated(migrateSettingsShape(raw));
+  const migrateSettingsShape = raw => {
     if (!raw || typeof raw !== "object") return null;
     if (Array.isArray(raw.profiles)) return raw; // already new shape
     const profs = [];
@@ -46333,6 +46444,21 @@
       globals: {}
     };
   };
+
+  // Platform passed in the launch URL fragment by app_web.main() (#v=..&pf=darwin).
+  // Read at module scope: this must be known BEFORE the first render, which an
+  // async bridge call cannot guarantee. null when absent (e.g. opened in a plain
+  // browser): the async platform_info result then decides.
+  const PLATFORM_HINT = (() => {
+    try {
+      const m = /[#&]pf=([^&]+)/.exec(window.location.hash || "");
+      return m ? decodeURIComponent(m[1]) : null;
+    } catch {
+      return null;
+    }
+  })();
+  // macOS can never host a virtual gamepad (Apple entitlement, see gamepad.py).
+  const PLATFORM_HINT_PAD = PLATFORM_HINT === "darwin" ? false : null;
   const NAV = [{
     id: "keymap",
     label: "Keymap",
@@ -46821,7 +46947,7 @@
         });else setUpdGate({
           phase: "done",
           info: chk,
-          msg: r.path ? `Downloaded to ${r.path}` : "Downloaded."
+          msg: window.AetherSections.updateDownloadedText(r, "Downloaded.")
         });
       } catch (e) {
         stopPoll();
@@ -47007,6 +47133,10 @@
       direction: 1,
       threshold_mm: 1.0
     }];
+    // Seeded synchronously from the launch URL (#...&pf=darwin) so a section the
+    // platform cannot support never renders even once; platform_info then confirms
+    // it over the bridge. null = genuinely unknown (opened outside the webview).
+    const [padSupported, setPadSupported] = useState(PLATFORM_HINT_PAD);
     const [gamepadOn, setGamepadOn] = useState(false);
     const [gamepadMap, setGamepadMap] = useState(DEFAULT_PAD_MAP);
 
@@ -47071,11 +47201,14 @@
       switchId,
       socdProfiles,
       socdActive,
+      socdRev: SOCD_REV,
       layer,
       gamepadMap
     });
     const applyState = s => {
       if (!s) return;
+      // A profile, backup or wizard import written before the SOCD renumbering.
+      s = migrateSocdState(s);
       applyingRef.current = true;
       const set = (v, fn) => {
         if (v !== undefined) fn(v);
@@ -47359,6 +47492,12 @@
           return;
         }
         refreshBoards();
+        // One-shot: whether this OS can host a virtual gamepad at all. Uses
+        // platform_info, NOT gamepad_status: the latter probes ViGEmBus, which
+        // constructs a real pad on Windows, and shell chrome must not do that.
+        apiCall("platform_info").then(p => {
+          if (alive && p && p.ok) setPadSupported(!!p.gamepad_supported);
+        }).catch(() => {});
         iv = setInterval(() => {
           if (alive && !document.hidden) refreshBoards();
         }, 5000);
@@ -48410,10 +48549,15 @@
     // Capability-gated tabs: filter the section list per board, and if the
     // open section just became unavailable (board switch / first board data)
     // fall back to the (ungated) Dashboard rather than an orphaned workspace.
-    const sectionDefs = useMemo(() => SECTION_DEFS.filter(sdef => sectionAllowed(sdef.id, board)), [board]);
+    // The Gamepad tab is also hidden where the PLATFORM cannot provide a pad
+    // (macOS). padSupported null = not yet known: keep the tab, so the nav does
+    // not reflow on the platforms that do support it. A saved section:"gamepad"
+    // from another machine falls back the same way as a capability-gated tab.
+    const padHidden = id => id === "gamepad" && padSupported === false;
+    const sectionDefs = useMemo(() => SECTION_DEFS.filter(sdef => sectionAllowed(sdef.id, board) && !padHidden(sdef.id)), [board, padSupported]);
     useEffect(() => {
-      if (!sectionAllowed(section, board)) setSection("dashboard");
-    }, [section, board]);
+      if (!sectionAllowed(section, board) || padHidden(section)) setSection("dashboard");
+    }, [section, board, padSupported]);
     const tree = /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(DesktopTopBar, {
       sections: sectionDefs,
       active: section,

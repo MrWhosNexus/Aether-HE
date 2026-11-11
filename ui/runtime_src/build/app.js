@@ -331,10 +331,17 @@
   // codes). Rows missing a key are skipped; [] clears the board's pairs. A later
   // row over the SAME two keys (either order) is dropped: the firmware only
   // honours the first pair for a key pair (A=D M2 + D=A M2 acted as A=D M2).
+  // `mode` is the vendor's model NUMBER (1..4); the wire byte is that minus one
+  // (components/socd-model.jsx). Converted exactly once, here.
+  const {
+    SOCD_REV,
+    wireModel: socdWireModel,
+    migrateState: migrateSocdState
+  } = window.AetherSocd;
   const socdPairsFrom = rows => {
     const seen = new Set();
     return (rows || []).filter(p => p && p.k1 && p.k2).map(p => ({
-      model: p.mode || 1,
+      model: socdWireModel(p.mode),
       key1: LABEL_TO_CODE[p.k1] || p.k1,
       key2: LABEL_TO_CODE[p.k2] || p.k2
     })).filter(p => {
@@ -356,7 +363,7 @@
       rtEnabled: !!s.rtEnabled,
       rtPress: num(s.rtPress) ?? 0.05,
       rtRelease: num(s.rtRelease) ?? 0.05,
-      socd: Array.isArray(s.socdProfiles) ? socdPairsFrom(s.socdProfiles) : null
+      socd: Array.isArray(s.socdProfiles) ? socdPairsFrom(migrateSocdState(s).socdProfiles) : null
     };
   };
 
@@ -439,7 +446,18 @@
   // Migrate the old per-key blob shape ({"profile-p1": {...}, "profile-p2": {...}})
   // to the new {profiles:[...], activeProfile, globals} shape so nobody loses
   // their existing settings file.
-  const migrateSettings = raw => {
+  // Every profile's SOCD rows are renumbered once on the way in (see
+  // components/socd-model.jsx): a state without the `socdRev` stamp holds the
+  // byte older builds sent, not the model number.
+  const withSocdMigrated = settings => settings && Array.isArray(settings.profiles) ? {
+    ...settings,
+    profiles: settings.profiles.map(p => p && p.state ? {
+      ...p,
+      state: migrateSocdState(p.state)
+    } : p)
+  } : settings;
+  const migrateSettings = raw => withSocdMigrated(migrateSettingsShape(raw));
+  const migrateSettingsShape = raw => {
     if (!raw || typeof raw !== "object") return null;
     if (Array.isArray(raw.profiles)) return raw; // already new shape
     const profs = [];
@@ -460,6 +478,21 @@
       globals: {}
     };
   };
+
+  // Platform passed in the launch URL fragment by app_web.main() (#v=..&pf=darwin).
+  // Read at module scope: this must be known BEFORE the first render, which an
+  // async bridge call cannot guarantee. null when absent (e.g. opened in a plain
+  // browser): the async platform_info result then decides.
+  const PLATFORM_HINT = (() => {
+    try {
+      const m = /[#&]pf=([^&]+)/.exec(window.location.hash || "");
+      return m ? decodeURIComponent(m[1]) : null;
+    } catch {
+      return null;
+    }
+  })();
+  // macOS can never host a virtual gamepad (Apple entitlement, see gamepad.py).
+  const PLATFORM_HINT_PAD = PLATFORM_HINT === "darwin" ? false : null;
   const NAV = [{
     id: "keymap",
     label: "Keymap",
@@ -948,7 +981,7 @@
         });else setUpdGate({
           phase: "done",
           info: chk,
-          msg: r.path ? `Downloaded to ${r.path}` : "Downloaded."
+          msg: window.AetherSections.updateDownloadedText(r, "Downloaded.")
         });
       } catch (e) {
         stopPoll();
@@ -1134,6 +1167,10 @@
       direction: 1,
       threshold_mm: 1.0
     }];
+    // Seeded synchronously from the launch URL (#...&pf=darwin) so a section the
+    // platform cannot support never renders even once; platform_info then confirms
+    // it over the bridge. null = genuinely unknown (opened outside the webview).
+    const [padSupported, setPadSupported] = useState(PLATFORM_HINT_PAD);
     const [gamepadOn, setGamepadOn] = useState(false);
     const [gamepadMap, setGamepadMap] = useState(DEFAULT_PAD_MAP);
 
@@ -1198,11 +1235,14 @@
       switchId,
       socdProfiles,
       socdActive,
+      socdRev: SOCD_REV,
       layer,
       gamepadMap
     });
     const applyState = s => {
       if (!s) return;
+      // A profile, backup or wizard import written before the SOCD renumbering.
+      s = migrateSocdState(s);
       applyingRef.current = true;
       const set = (v, fn) => {
         if (v !== undefined) fn(v);
@@ -1486,6 +1526,12 @@
           return;
         }
         refreshBoards();
+        // One-shot: whether this OS can host a virtual gamepad at all. Uses
+        // platform_info, NOT gamepad_status: the latter probes ViGEmBus, which
+        // constructs a real pad on Windows, and shell chrome must not do that.
+        apiCall("platform_info").then(p => {
+          if (alive && p && p.ok) setPadSupported(!!p.gamepad_supported);
+        }).catch(() => {});
         iv = setInterval(() => {
           if (alive && !document.hidden) refreshBoards();
         }, 5000);
@@ -2537,10 +2583,15 @@
     // Capability-gated tabs: filter the section list per board, and if the
     // open section just became unavailable (board switch / first board data)
     // fall back to the (ungated) Dashboard rather than an orphaned workspace.
-    const sectionDefs = useMemo(() => SECTION_DEFS.filter(sdef => sectionAllowed(sdef.id, board)), [board]);
+    // The Gamepad tab is also hidden where the PLATFORM cannot provide a pad
+    // (macOS). padSupported null = not yet known: keep the tab, so the nav does
+    // not reflow on the platforms that do support it. A saved section:"gamepad"
+    // from another machine falls back the same way as a capability-gated tab.
+    const padHidden = id => id === "gamepad" && padSupported === false;
+    const sectionDefs = useMemo(() => SECTION_DEFS.filter(sdef => sectionAllowed(sdef.id, board) && !padHidden(sdef.id)), [board, padSupported]);
     useEffect(() => {
-      if (!sectionAllowed(section, board)) setSection("dashboard");
-    }, [section, board]);
+      if (!sectionAllowed(section, board) || padHidden(section)) setSection("dashboard");
+    }, [section, board, padSupported]);
     const tree = /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(DesktopTopBar, {
       sections: sectionDefs,
       active: section,
