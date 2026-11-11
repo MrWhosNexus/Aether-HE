@@ -9,9 +9,13 @@ Backends:
   (see 99-uinput.rules); join the 'input' group.
 - Windows: vgamepad + ViGEmBus (virtual Xbox 360 pad). Install ViGEmBus from
   https://github.com/nefarius/ViGEmBus once per machine. (Graceful degradation supported if module missing)
+- macOS: NONE, and not for want of code — see MACOS_UNSUPPORTED_REASON. This is a
+  platform gate, not a missing dependency, so the app must not offer the user
+  something to install. It refuses loudly instead of presenting a phantom pad.
 
 Public API (kept stable so app_web.py doesn't need to know the backend):
   EVDEV_AVAILABLE  -> True if ANY backend is usable (legacy name)
+  backend_status() -> {"backend", "supported", "reason", "installable"}
   KeyMap, DEFAULT_DRIVING_MAP
   VirtualGamepad(mappings).open() / .is_open() / .update(depths) / .close()
 """
@@ -55,6 +59,61 @@ if _BACKEND is None and sys.platform.startswith("win"):
 
 # Legacy flag — app_web.py / UI use this to know whether gamepad capture works.
 EVDEV_AVAILABLE = _BACKEND is not None
+
+
+# --- macOS: why there is no backend ----------------------------------------
+#
+# Measured on macOS 26.5.2 / arm64 / SIP on, not inferred:
+#
+#   unsigned binary                              -> HIDVirtualDevice(...) == nil
+#   ad-hoc signed, no entitlements                -> nil
+#   ad-hoc signed + com.apple.security.cs.allow-jit (a NON-restricted
+#     entitlement, as a control)                  -> nil, process runs fine
+#   ad-hoc signed + com.apple.developer.hid.virtual.device
+#                                                 -> SIGKILL by AMFI
+#
+# The control row is the load-bearing one: ad-hoc signing itself is fine, so the
+# kill is caused specifically by claiming the restricted entitlement without an
+# Apple-issued provisioning profile. A real virtual pad therefore needs, in order:
+# paid Apple Developer Program membership, an individually approved entitlement
+# request (developer.apple.com/contact/request/system-extension/), a Developer ID
+# signature + notarization, and a Swift helper process — CoreHID is Swift-only, so
+# pyobjc cannot reach it. Blocked on an Apple grant, not on code.
+#
+# Dead ends, checked: foohid is a kext (cannot load on Apple Silicon), and
+# Karabiner's DriverKit dext exposes keyboard/pointer collections only.
+MACOS_UNSUPPORTED_REASON = (
+    "macOS has no virtual-gamepad path available to this app. The system API "
+    "(CoreHID HIDVirtualDevice, macOS 15+) requires Apple's restricted "
+    "com.apple.developer.hid.virtual.device entitlement, which is granted only by "
+    "individual request to Apple and requires a paid Developer Program membership "
+    "plus notarized signing. Without it the API refuses; claiming it without a "
+    "provisioning profile gets the process killed. Nothing to install."
+)
+
+
+def backend_status():
+    """Structured capability report for the UI.
+
+    `installable` distinguishes 'you can fix this' (Windows without ViGEmBus)
+    from 'the platform will not allow it' (macOS) — the UI must not offer an
+    install button for the second case. Reads the backend table only: it never
+    constructs a pad (unlike vigembus_present()).
+    """
+    if _BACKEND is not None:
+        return {"backend": _BACKEND, "supported": True, "reason": "", "installable": False}
+    if sys.platform == "darwin":
+        return {"backend": None, "supported": False,
+                "reason": MACOS_UNSUPPORTED_REASON, "installable": False}
+    if sys.platform.startswith("win"):
+        return {"backend": None, "supported": False,
+                "reason": "vgamepad is not installed. Install it plus the ViGEmBus "
+                          "driver to enable the virtual gamepad.",
+                "installable": True}
+    return {"backend": None, "supported": False,
+            "reason": "python-evdev is not available, or /dev/uinput is not writable "
+                      "(see 99-uinput.rules; join the 'input' group).",
+            "installable": True}
 
 
 # --- ViGEmBus auto-installer (Windows only) --------------------------------
@@ -192,6 +251,11 @@ class VirtualGamepad:
 
     def __init__(self, mappings=None, max_travel_mm=MAX_TRAVEL_MM):
         if _BACKEND is None:
+            if sys.platform == "darwin":
+                # Don't tell a macOS user to install something — nothing they
+                # can install will help (see MACOS_UNSUPPORTED_REASON).
+                raise RuntimeError(
+                    f"No virtual-gamepad backend available: {MACOS_UNSUPPORTED_REASON}")
             if sys.platform.startswith("win"):
                 hint = ("the 'vgamepad' package is not installed in this build "
                         "(pip install vgamepad), and ViGEmBus must be installed")

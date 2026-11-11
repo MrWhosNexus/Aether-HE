@@ -1,8 +1,9 @@
-# Aether — Aula WIN60 HE controller. Cross-platform (Linux + Windows).
+# Aether — Aula WIN60 HE controller. Cross-platform (Linux + Windows + macOS).
 #   pip install -r requirements.txt
 
 # Native webview UI — GTK/WebKit on Linux, Edge WebView2 on Windows (preinstalled
-# on Win 10/11). This is what app_web.py uses.
+# on Win 10/11), WKWebView via pyobjc on macOS (pywebview declares those
+# dependencies itself on darwin). This is what app_web.py uses.
 pywebview>=6.0
 
 # Keyboard HID I/O (cross-platform).
@@ -11,6 +12,9 @@ hidapi>=0.14
 # Virtual gamepad. Linux uses uinput via python-evdev; Windows uses vgamepad
 # + ViGEmBus (install ViGEmBus driver once from
 # https://github.com/nefarius/ViGEmBus). gamepad.py picks the backend at runtime.
+# macOS has NO entry on purpose: a virtual gamepad needs Apple's restricted
+# com.apple.developer.hid.virtual.device entitlement, which no package can
+# supply (see gamepad.MACOS_UNSUPPORTED_REASON).
 evdev>=1.9;   sys_platform == "linux"
 vgamepad>=0.1; sys_platform == "win32"
 
