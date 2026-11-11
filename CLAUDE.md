@@ -115,7 +115,9 @@ with `AETHER_SELFTEST=1`, which `app_web._selftest` answers: UI payload, every r
 protocol module, `hid.enumerate()`, then exits). Platform differences, all in code:
 - **HID pick** (`aula_device.find_vendor_interface`): hidapi's macOS backend reports
   `interface_number == -1` for non-USB transports, so with no usage-page match and
-  uninformative numbers it raises `VendorInterfaceUnresolved` instead of guessing.
+  uninformative numbers it takes the vendor-defined collection (0xFF00..0xFFFF) only if the
+  usage pages single one out (the Windows several-collections-per-interface case), and
+  otherwise raises `VendorInterfaceUnresolved` instead of guessing.
 - **One handle only**: a second `open_path()` on a held device fails on macOS, so
   `AulaDevice.open()` keeps the held handle while its path is still enumerated.
 - **Open errors**: hidapi says only "open failed"; `_translate_open_error` names both causes

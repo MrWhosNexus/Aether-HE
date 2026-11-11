@@ -64,13 +64,83 @@ def test_informative_interface_numbers_still_use_max(fake_enum):
 # ------------------------------------------------------ the macOS defect
 def test_all_minus_one_refuses_instead_of_guessing(fake_enum):
     """macOS: every interface_number is -1, so max() would pick arbitrarily."""
-    fake_enum([_iface(0x0001, -1), _iface(0x000C, -1), _iface(0xFF00, -1)])
+    fake_enum([_iface(0x0001, -1, path=b"a"), _iface(0x000C, -1, path=b"b"),
+               _iface(0x0001, -1, path=b"c", usage=0x06)])
     with pytest.raises(aula_device.VendorInterfaceUnresolved) as ei:
         aula_device.find_vendor_interface(0x2E3C, 0xC365, 0xFF1B)
     msg = str(ei.value)
     assert "refusing to guess" in msg
     # The error must carry what WAS seen, so a user can file a usable report.
-    assert "0xff00" in msg.lower()
+    assert "0xc" in msg.lower() and "0x6" in msg.lower()
+
+
+def test_result_does_not_depend_on_enumeration_order(fake_enum):
+    """The defect was max() returning whatever came first. Whatever is
+    decided now must be the same for every ordering of the same entries."""
+    import itertools
+    entries = [_iface(0x0001, -1, path=b"kbd"), _iface(0x000C, -1, path=b"consumer"),
+               _iface(0xFF00, -1, path=b"vendor")]
+    for perm in itertools.permutations(entries):
+        fake_enum(perm)
+        assert aula_device.find_vendor_interface(0x2E3C, 0xC365, 0xFF1B)["path"] == b"vendor"
+    tied = [_iface(0xFF00, -1, path=b"v1"), _iface(0xFF00, -1, path=b"v2"),
+            _iface(0x0001, -1, path=b"kbd")]
+    for perm in itertools.permutations(tied):
+        fake_enum(perm)
+        with pytest.raises(aula_device.VendorInterfaceUnresolved):
+            aula_device.find_vendor_interface(0x2E3C, 0xC365, 0xFF1B)
+
+
+# ------------------- Windows: one interface, several top-level collections
+def test_windows_multi_collection_interface_picks_the_vendor_collection(fake_enum):
+    """hidapi on Windows gives every collection of an interface (&Col01,
+    &Col02, ...) the SAME interface_number. A board whose vendor page is not
+    the requested one therefore has all-equal numbers; the pre-port ranking
+    (number, is-vendor-page, page) picked its vendor collection, and raising
+    here made such a board impossible to open."""
+    fake_enum([_iface(0x0001, 0, path=b"hid#vid_2e3c&pid_c365&col01", usage=0x06),
+               _iface(0x000C, 0, path=b"hid#vid_2e3c&pid_c365&col02", usage=0x01),
+               _iface(0xFF60, 0, path=b"hid#vid_2e3c&pid_c365&col03", usage=0x61)])
+    got = aula_device.find_vendor_interface(0x2E3C, 0xC365, 0xFF1B)
+    assert got["usage_page"] == 0xFF60 and got["path"].endswith(b"col03")
+
+
+def test_windows_single_interface_number_minus_one_also_resolves(fake_enum):
+    """Same shape with the -1 hidapi reports when it cannot parse MI_xx."""
+    fake_enum([_iface(0xFF00, -1, path=b"col02"), _iface(0x0001, -1, path=b"col01")])
+    assert aula_device.find_vendor_interface(0x2E3C, 0xC365, 0xFF1B)["path"] == b"col02"
+
+
+def test_several_vendor_collections_on_one_path_are_one_choice(fake_enum):
+    """macOS lists each collection under the interface's path: whichever entry
+    is returned, open_path() opens the same thing."""
+    fake_enum([_iface(0x0001, -1, path=b"shared"),
+               _iface(0xFF00, -1, path=b"shared", usage=1),
+               _iface(0xFF01, -1, path=b"shared", usage=2)])
+    got = aula_device.find_vendor_interface(0x2E3C, 0xC365, 0xFF1B)
+    assert got["path"] == b"shared" and got["usage_page"] == 0xFF01
+
+
+def test_several_vendor_collections_keep_the_old_ranking_when_it_is_unique(fake_enum):
+    """Pre-port behaviour for all-equal numbers: the highest vendor page."""
+    fake_enum([_iface(0xFF00, 0, path=b"a"), _iface(0xFF60, 0, path=b"b"),
+               _iface(0x0001, 0, path=b"c")])
+    assert aula_device.find_vendor_interface(0x2E3C, 0xC365, 0xFF1B)["path"] == b"b"
+
+
+def test_two_vendor_collections_with_the_same_page_on_different_paths_refuse(fake_enum):
+    fake_enum([_iface(0xFF60, 0, path=b"a"), _iface(0xFF60, 0, path=b"b")])
+    with pytest.raises(aula_device.VendorInterfaceUnresolved):
+        aula_device.find_vendor_interface(0x2E3C, 0xC365, 0xFF1B)
+
+
+def test_win60_on_macos_still_takes_its_0xff1b_collection(fake_enum):
+    """The measured macOS shape: all -1, vendor collection 0xFF1B. It matches
+    on the usage page and never reaches the fallback, even with another
+    vendor-defined page beside it."""
+    fake_enum([_iface(0x0001, -1, path=b"kbd"), _iface(0xFFFF, -1, path=b"other"),
+               _iface(0xFF1B, -1, path=b"vendor")])
+    assert aula_device.find_vendor_interface(0x2E3C, 0xC365, 0xFF1B)["path"] == b"vendor"
 
 
 def test_all_equal_numbers_refuse_too(fake_enum):

@@ -113,6 +113,10 @@ def find_vendor_interface(vid=AULA_VID, pid=AULA_PID, usage_page=VENDOR_USAGE_PA
     prefer a vendor-defined usage page (0xFF00..0xFFFF) over a generic one, so
     a platform that DOES split an interface into several collections never
     hands us the keyboard/consumer collection that shares its number.
+
+    When the interface numbers do not discriminate (all equal: macOS's -1, or
+    one Windows interface split into several collections) the vendor-defined
+    page alone decides, and only if it decides uniquely.
     """
     matches = enumerate_interfaces(vid, pid)
     if not matches:
@@ -136,13 +140,28 @@ def find_vendor_interface(vid=AULA_VID, pid=AULA_PID, usage_page=VENDOR_USAGE_PA
     # interface number. Its macOS backend reports -1 for every non-USB
     # transport (measured: 27 of 34 entries), and max() over an all-equal key
     # returns an arbitrary collection dressed up as a deliberate choice.
-    # Refuse instead: a wrong interface fails silently. The one exception is
-    # the legacy Linux case of a single hidraw node whose usage page is
-    # unknown (0) — there is nothing to choose between.
+    # Refuse instead: a wrong interface fails silently. Two cases are NOT a
+    # guess and keep working:
+    #   * the legacy Linux case of a single hidraw node whose usage page is
+    #     unknown (0) — there is nothing to choose between;
+    #   * a vendor-defined collection (0xFF00..0xFFFF) that the usage pages
+    #     single out. Windows reports ONE interface number for every top-level
+    #     collection of an interface (&Col01, &Col02, ...), so a board whose
+    #     vendor page is not the one asked for has all-equal numbers there
+    #     too, and the old ranking (number, is-vendor-page, page) still chose
+    #     its vendor collection. Refusing that was a regression. (The Win60 on
+    #     macOS never gets here: its 0xFF1B collection matches above.)
     numbers = [m.get("interface_number", -1) for m in matches]
     if len(set(numbers)) <= 1:
         if len(matches) == 1 and not matches[0].get("usage_page"):
             return matches[0]
+        pick = _sole_vendor_collection(matches)
+        if pick is not None:
+            log.warning(
+                "No 0x%04X usage page found and interface numbers are uninformative (%s); "
+                "using the only vendor-defined collection, usage page 0x%04X.",
+                usage_page, sorted(set(numbers)), pick.get("usage_page") or 0)
+            return pick
         raise VendorInterfaceUnresolved(
             f"{vid:04X}:{pid:04X} is connected but exposes no 0x{usage_page:04X} usage page, "
             f"and its interface numbers are uninformative ({numbers}) — refusing to guess. "
@@ -160,6 +179,31 @@ def find_vendor_interface(vid=AULA_VID, pid=AULA_PID, usage_page=VENDOR_USAGE_PA
         return (m.get("interface_number", -1), 0xFF00 <= up <= 0xFFFF, up)
 
     return max(matches, key=rank)
+
+
+def _is_vendor_page(m):
+    return 0xFF00 <= (m.get("usage_page") or 0) <= 0xFFFF
+
+
+def _sole_vendor_collection(matches):
+    """The one vendor-defined collection the usage pages single out, or None.
+
+    Deterministic or nothing — never dependent on enumeration order:
+      * exactly one vendor-page entry -> it;
+      * several entries that are the same thing to open (one `path`: macOS
+        lists each collection of an interface under the interface's path) ->
+        the highest usage page, first listed on a tie;
+      * several on different paths -> the highest usage page, as the old
+        ranking chose, but only if no other path carries that same page.
+    """
+    vend = [m for m in matches if _is_vendor_page(m)]
+    if not vend:
+        return None
+    top = max(m.get("usage_page") or 0 for m in vend)
+    best = [m for m in vend if (m.get("usage_page") or 0) == top]
+    if len({m.get("path") for m in best}) > 1:
+        return None
+    return best[0]
 
 
 # macOS Privacy pane deep link for the Input Monitoring list.
