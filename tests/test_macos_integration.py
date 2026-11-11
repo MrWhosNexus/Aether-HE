@@ -161,3 +161,52 @@ def test_bootstrap_failure_still_reports_install_but_not_active(api, monkeypatch
     assert res["active_now"] is False
     assert "next login" in res["note"]
     assert os.path.exists(api._launch_agent_path())
+
+
+# ------------------------------------------- update health report (app side)
+class _Window:
+    def __init__(self, answers):
+        self.answers = list(answers)
+        self.asked = 0
+
+    def evaluate_js(self, js):
+        self.asked += 1
+        a = self.answers.pop(0) if self.answers else False
+        if isinstance(a, Exception):
+            raise a
+        return a
+
+
+def test_health_is_reported_only_once_the_ui_has_rendered(monkeypatch):
+    """The updater's swap helper deletes the previous version on this report,
+    so a process that is merely alive (blank window, bridge missing) must not
+    make it."""
+    import app_web
+    noted = []
+    monkeypatch.setattr(app_web.updater, "macos_health_wanted", lambda: True)
+    monkeypatch.setattr(app_web.updater, "macos_note_healthy",
+                        lambda: noted.append(1) or True)
+    w = _Window([False, RuntimeError("webview not ready"), True])
+    assert app_web._report_update_health(w, tries=5, pause=0) is True
+    assert w.asked == 3 and noted == [1]
+
+    blank = _Window([False] * 5)
+    assert app_web._report_update_health(blank, tries=5, pause=0) is False
+    assert noted == [1], "a UI that never rendered was reported healthy"
+
+
+def test_health_is_not_probed_outside_an_installed_mac_build(monkeypatch):
+    import app_web
+    monkeypatch.setattr(app_web.updater, "macos_health_wanted", lambda: False)
+    monkeypatch.setattr(app_web.updater, "macos_note_healthy",
+                        lambda: pytest.fail("reported health from a non-installed build"))
+    w = _Window([True])
+    assert app_web._report_update_health(w) is False
+    assert w.asked == 0
+
+
+def test_main_records_the_launch_pid_after_the_instance_guard():
+    src = open(os.path.join(ROOT, "app_web.py"), encoding="utf-8").read()
+    main = src[src.index("def main():"):]
+    assert main.index("_selftest()") < main.index("inst.acquire()") \
+        < main.index("updater.macos_note_launch()") < main.index("api = Api()")

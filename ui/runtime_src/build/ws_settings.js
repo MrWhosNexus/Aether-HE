@@ -800,7 +800,9 @@
         }
       };
       try {
-        const r = await api.apply_update(info.asset_url, info.asset_name, info.asset_size, info.asset_sha256);
+        // Last argument: a click, not the launch-time flow (macOS retries an
+        // in-place install that failed before only when the user asks).
+        const r = await api.apply_update(info.asset_url, info.asset_name, info.asset_size, info.asset_sha256, true);
         stop();
         if (!r?.ok) {
           setUpdateState(s => ({

@@ -728,8 +728,10 @@ function AboutWidget(ctx) {
     }
     const stop = () => { if (poll) { clearInterval(poll); poll = null; } };
     try {
+      // Last argument: a click, not the launch-time flow (macOS retries an
+      // in-place install that failed before only when the user asks).
       const r = await api.apply_update(info.asset_url, info.asset_name,
-                                       info.asset_size, info.asset_sha256);
+                                       info.asset_size, info.asset_sha256, true);
       stop();
       if (!r?.ok) {
         setUpdateState(s => ({ ...s, phase: "error", msg: `Installation failed: ${r?.error || "unknown error"}` }));

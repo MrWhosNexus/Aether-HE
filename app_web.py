@@ -2804,13 +2804,17 @@ class Api:
         and without this the window looks frozen for the whole download."""
         return {"ok": True, **updater.get_progress()}
 
-    def apply_update(self, asset_url, asset_name=None, asset_size=None, asset_sha256=None):
+    def apply_update(self, asset_url, asset_name=None, asset_size=None, asset_sha256=None,
+                     manual=False):
         """Download + install the update for this OS. On success the caller
         should quit (Windows) or prompt a restart (Flatpak).
 
         asset_size/asset_sha256 come from check_update(); updater re-fetches them
-        if omitted, so the download is verified either way."""
-        res = updater.apply_update(asset_url, asset_name, asset_size, asset_sha256)
+        if omitted, so the download is verified either way. `manual` is True
+        when the user clicked Update (the launch-time flow leaves it False):
+        macOS retries an in-place install that failed before only on a click."""
+        res = updater.apply_update(asset_url, asset_name, asset_size, asset_sha256,
+                                   manual=bool(manual))
         if res.get("ok") and res.get("quit"):
             # Let the bridge return first, then exit so the installer can replace
             # files that are otherwise locked by the running process.
@@ -3363,6 +3367,34 @@ def _on_start(window):
         log.info("Webview render state: %s", state)
     except Exception as e:
         log.warning("render-state probe failed: %s", e)
+    _report_update_health(window)
+
+
+def _ui_is_up(window):
+    """True once the page has mounted React into #root and the bridge exists."""
+    try:
+        return bool(window.evaluate_js(
+            "!!(window.React && window.pywebview && window.pywebview.api && "
+            "document.getElementById('root') && "
+            "document.getElementById('root').children.length > 0)"))
+    except Exception:
+        return False
+
+
+def _report_update_health(window, tries=30, pause=1.0):
+    """Installed macOS build only: tell the updater's swap helper that THIS
+    version starts. The helper keeps the previous bundle until this marker
+    appears and puts it back if it never does, so it is written only once the
+    UI has really rendered - not merely because the process is alive."""
+    if not updater.macos_health_wanted():
+        return False
+    import time
+    for _ in range(tries):
+        if _ui_is_up(window):
+            return updater.macos_note_healthy()
+        time.sleep(pause)
+    log.warning("UI did not come up; not reporting this build as healthy")
+    return False
 
 
 def _apply_experimental_flags(env=None):
@@ -3457,6 +3489,9 @@ def main():
             log.warning("Aether is already running but could not be reached")
             inst.notify_unreachable(tray.APP_NAME)
         return
+    # After the instance guard: a refused second launch must not overwrite the
+    # pid the update helper would stop.
+    updater.macos_note_launch()
     api = Api()
     # Pass an explicit file:// URI: pywebview only treats a string as a local
     # file when it exists on disk verbatim, and a "?v=" cache-buster query

@@ -349,7 +349,30 @@ def _trusted_asset_url(url):
         and "#" not in rest and "@" not in url
 
 
-def apply_update(asset_url=None, asset_name=None, asset_size=None, asset_sha256=None):
+# One apply_update() at a time, start to finish. Two overlapping calls (the
+# launch-time auto-update and a click in Settings, or a double click) would
+# download into the same .part file and unpack into the staging folder the
+# other is about to hand to the swap helper.
+_apply_lock = threading.Lock()
+_BUSY = "update already in progress"
+
+
+def apply_update(asset_url=None, asset_name=None, asset_size=None, asset_sha256=None,
+                 manual=False):
+    """Serialised entry point: see _apply_update. A call that arrives while
+    another is running (or after the macOS swap helper has been started) is
+    refused, never queued."""
+    if not _apply_lock.acquire(blocking=False):
+        return {"ok": False, "error": _BUSY}
+    try:
+        return _apply_update(asset_url, asset_name, asset_size, asset_sha256,
+                             manual=bool(manual))
+    finally:
+        _apply_lock.release()
+
+
+def _apply_update(asset_url=None, asset_name=None, asset_size=None, asset_sha256=None,
+                  manual=False):
     """Download the asset and install it with the OS-native mechanism.
     Returns {ok, action, ...}. On Windows this spawns the installer and asks
     the caller to quit; on macOS it stages the new bundle, starts the swap
@@ -363,6 +386,10 @@ def apply_update(asset_url=None, asset_name=None, asset_size=None, asset_sha256=
     version.GITHUB_REPO; the URL must be one of that repo's release downloads;
     a caller URL that differs from it (a release cut since the check, or a
     forged one) is refused. The caller's size/sha256 are ignored.
+
+    `manual` says the user clicked Update (as opposed to the update-on-launch
+    flow). It only ever widens ONE thing: a macOS in-place install that already
+    failed for this version is retried on a click, never automatically.
     """
     del asset_name, asset_size, asset_sha256      # bridge input: never trusted
     kind = platform_kind()
@@ -374,6 +401,17 @@ def apply_update(asset_url=None, asset_name=None, asset_size=None, asset_sha256=
         _set_progress(phase="idle", done=0, total=0)
         return {"ok": False, "error": "could not verify the update "
                 f"({chk.get('error') or 'no reply from GitHub'}) - refusing to install"}
+    # Only ever move FORWARD. The latest release can be the version already
+    # running (a stale UI state, a second click) or an older one (a release
+    # pulled after this build shipped); installing either is a reinstall or a
+    # downgrade nobody asked for. Decided from the versions themselves, on
+    # every platform, not from a flag the caller could have cached.
+    latest = str(chk.get("latest") or "").strip().lstrip("vV")
+    if not latest or not is_newer(latest, version.__version__):
+        _set_progress(phase="idle", done=0, total=0)
+        return {"ok": False,
+                "error": f"no newer version to install (running {version.__version__}, "
+                         f"latest release is {latest or 'unknown'})"}
     url = chk.get("asset_url")
     if not url:
         return {"ok": False, "error": "no installable asset for this platform"}
@@ -413,9 +451,10 @@ def apply_update(asset_url=None, asset_name=None, asset_size=None, asset_sha256=
     mac_hint = ("Move AetherHE.app into /Applications and open it from there "
                 "to update automatically.")
     ddir = None
+    mac_clear_failed = False
     if kind == "macos":
         if _macos_swap_started:
-            return {"ok": False, "error": "an update is already being installed"}
+            return {"ok": False, "error": _BUSY}
         mac_app = _macos_running_bundle()
         mac_blocker = _macos_install_blocker(mac_app)
         if not mac_blocker:
@@ -424,16 +463,28 @@ def apply_update(asset_url=None, asset_name=None, asset_size=None, asset_sha256=
             except OSError as e:
                 mac_blocker = f"the update cache could not be created ({e})"
         if not mac_blocker:
-            # The helper rolled this exact version back last time. Trying again
-            # unattended would loop (update on launch -> quit -> fail ->
-            # relaunch -> update ...), so this once the download is handed over.
-            failed = _macos_take_failed_version()
-            if failed and failed == str(chk.get("latest") or ""):
-                mac_blocker = (f"The last automatic install of {failed} did not "
-                               "complete (details in ~/Library/Caches/AetherHE/"
-                               "updates/update.log)")
-                mac_hint = ("Quit Aether, unzip the download and replace "
-                            "AetherHE.app to update by hand.")
+            # The helper rolled a version back earlier. The record PERSISTS:
+            # while that version is still the latest, an unattended attempt
+            # would loop (update on launch -> quit -> fail -> relaunch ->
+            # update ...), and a one-shot record only halves the loop. So it is
+            # never retried automatically - nothing is even downloaded. A click
+            # from the user may retry; the helper removes the record when an
+            # install succeeds, and a newer release supersedes it (cleared
+            # below, once that release's download has verified).
+            failed = _macos_failed_version()
+            if failed and is_newer(latest, failed):
+                mac_clear_failed = True
+            elif failed and _parse(failed) == _parse(latest) and not manual:
+                why = (f"The last automatic install of {latest} did not complete "
+                       "(details in ~/Library/Caches/AetherHE/updates/update.log)")
+                log.info("update: %s is on record as a failed in-place install; "
+                         "not retrying automatically", latest)
+                _set_progress(phase="idle", done=0, total=0)
+                return {"ok": True, "action": "skipped", "manual": True,
+                        "reason": why, "url": chk.get("url") or "",
+                        "message": f"{why}. It will not be retried automatically: "
+                                   "use Check for updates in Settings to try again, "
+                                   "or download it from the release page."}
     if ddir is None:
         ddir = _download_dir(kind)
     try:
@@ -487,7 +538,9 @@ def apply_update(asset_url=None, asset_name=None, asset_size=None, asset_sha256=
                         "manual": True, "reason": mac_blocker,
                         "message": f"{mac_blocker}. {mac_hint} This update "
                                    f"was downloaded to {dest}."}
-            return _macos_install(dest, mac_app, chk.get("latest"))
+            if mac_clear_failed:
+                _macos_clear_failed_version()
+            return _macos_install(dest, mac_app, latest)
         # Bare Linux / source checkout: nothing safe to auto-install.
         return {"ok": True, "action": "downloaded", "path": dest}
     except Exception as e:
@@ -510,6 +563,9 @@ MACOS_BUNDLE_ID = "io.github.mrwhosnexus.AetherHE"
 # How long the helper waits for this process to exit before giving up (and
 # leaving the installed app exactly as it was).
 _MACOS_EXIT_TIMEOUT = 60
+# How long the helper waits, after relaunching, for the NEW app to say it is
+# up (macos_note_healthy) before it puts the previous version back.
+_MACOS_HEALTH_TIMEOUT = 45
 # `open` relaunches the app and reveals a manual download. Tests replace it:
 # they must never start a real app.
 _MACOS_OPENER = "/usr/bin/open"
@@ -517,7 +573,9 @@ _MACOS_STAGE_PREFIX = ".AetherHE-update-"
 
 # Set once the helper has been started; a second apply_update() in the moment
 # before the app quits must not unpack over the bundle the helper is about to
-# move. `_macos_last_helper` is the helper's Popen, kept for the tests.
+# move. Set BEFORE staging begins and cleared on every path that does not end
+# with the helper running. `_macos_last_helper` is the helper's Popen, kept for
+# the tests.
 _macos_swap_started = False
 _macos_last_helper = None
 
@@ -725,32 +783,52 @@ def _macos_verify_staged(staged, expect_version):
 
 
 # usage: swap.sh PID APP NEW BACKUP TIMEOUT LOG OPENER STAGE FAILMARK VERSION
+#                HEALTH HEALTHWAIT PIDFILE
 #
 # POSIX sh on purpose: /bin/sh is always there, and nothing in the app bundle
 # (which is being replaced) may be needed to finish the job.
+#
+# Exit codes: 0 installed; 3 app never exited; 4 staged/installed bundle
+# missing; 5 could not move the old app aside; 6 could not move the update in;
+# 7 update failed verification in place; 8 update could not be opened; 9 the
+# previous version could not be moved back; 10 the update opened but never
+# reported healthy; 11 the rejected update could not be cleared out of the
+# way, so the previous version was deliberately NOT moved back (it is intact
+# in the staging folder).
 _MACOS_SWAP_HELPER = r'''#!/bin/sh
 # AETHER HE update helper - written and started by updater.py, deletes itself.
 PID="$1"; APP="$2"; NEW="$3"; BACKUP="$4"; TIMEOUT="$5"; LOG="$6"; OPENER="$7"; STAGE="$8"
-FAILMARK="$9"; VERSION="${10}"
+FAILMARK="$9"; VERSION="${10}"; HEALTH="${11}"; HEALTHWAIT="${12:-45}"; PIDFILE="${13}"
 exec >>"$LOG" 2>&1
 say() { echo "$(date '+%Y-%m-%d %H:%M:%S') swap[$$]: $*"; }
 relaunch() {
   [ -n "$OPENER" ] || return 0
   "$OPENER" "$APP"
 }
+record_failure() {
+  [ -n "$FAILMARK" ] && echo "$VERSION" > "$FAILMARK"
+}
 finish() {
   rm -rf "$STAGE"
-  # Tell the next launch this version did not install, so an app set to update
-  # on launch does not download, quit, fail and relaunch in a loop.
-  if [ "$1" -ne 0 ] && [ -n "$FAILMARK" ]; then echo "$VERSION" > "$FAILMARK"; fi
+  # A failure is recorded so an app set to update on launch does not download,
+  # quit, fail and relaunch in a loop; a success clears an older record.
+  if [ "$1" -ne 0 ]; then record_failure
+  elif [ -n "$FAILMARK" ]; then rm -f "$FAILMARK"; fi
   say "exit $1"
   exit "$1"
 }
 restore() {
   # Put the previous bundle back. The backup is only ever deleted (by finish)
   # once it is back in place - if it cannot be restored it is left where it is.
-  if [ -e "$APP" ]; then
+  if [ -e "$APP" ] || [ -L "$APP" ]; then
     mv "$APP" "$STAGE/rejected.app" || rm -rf "$APP"
+  fi
+  if [ -e "$APP" ] || [ -L "$APP" ]; then
+    # Something is still at $APP. `mv "$BACKUP" "$APP"` would now move the
+    # previous version INSIDE it instead of replacing it - leave it alone.
+    say "ROLLBACK BLOCKED - $APP could not be moved away or removed; the previous version is intact at $BACKUP"
+    record_failure
+    exit 11
   fi
   if mv "$BACKUP" "$APP"; then
     say "previous version restored"
@@ -758,8 +836,39 @@ restore() {
     finish "$1"
   fi
   say "ROLLBACK FAILED - the previous version is at $BACKUP"
-  [ -n "$FAILMARK" ] && echo "$VERSION" > "$FAILMARK"
+  record_failure
   exit 9
+}
+wait_healthy() {
+  # The new app writes $HEALTH once its window and bridge are up. `open`
+  # returning 0 only says launchd accepted the request - an app that crashes
+  # at import still gets that far. No opener (nothing was launched): nothing
+  # to wait for.
+  [ -n "$OPENER" ] && [ -n "$HEALTH" ] || return 0
+  n=$((HEALTHWAIT * 5)); j=0
+  while [ ! -e "$HEALTH" ]; do
+    [ "$j" -ge "$n" ] && return 1
+    j=$((j + 1)); sleep 0.2
+  done
+  return 0
+}
+stop_new() {
+  # Stop the new app before its bundle is moved away - but only a process we
+  # can name: the pid it wrote itself after this helper cleared the file.
+  NEWPID=""
+  [ -n "$PIDFILE" ] && [ -f "$PIDFILE" ] && NEWPID=$(cat "$PIDFILE" 2>/dev/null)
+  case "$NEWPID" in
+    ''|*[!0-9]*) say "the updated app's pid is not known - leaving any process alone"; return 0 ;;
+  esac
+  [ "$NEWPID" -gt 1 ] || return 0
+  kill "$NEWPID" 2>/dev/null || return 0
+  say "stopped the updated app (pid $NEWPID)"
+  k=0
+  while kill -0 "$NEWPID" 2>/dev/null; do
+    if [ "$k" -ge 25 ]; then kill -9 "$NEWPID" 2>/dev/null; break; fi
+    k=$((k + 1)); sleep 0.2
+  done
+  return 0
 }
 
 say "updating $APP (waiting for pid $PID)"
@@ -791,9 +900,16 @@ if ! /usr/bin/codesign --verify --deep --strict "$APP"; then
   say "the installed update failed verification"
   restore 7
 fi
+[ -n "$HEALTH" ] && rm -f "$HEALTH"
+[ -n "$PIDFILE" ] && rm -f "$PIDFILE"
 if ! relaunch; then
   say "the updated app could not be opened"
   restore 8
+fi
+if ! wait_healthy; then
+  say "the updated app did not report that it started within ${HEALTHWAIT}s"
+  stop_new
+  restore 10
 fi
 say "update installed"
 finish 0
@@ -808,18 +924,96 @@ def _macos_failmark():
     return os.path.join(_macos_cache_dir(), "failed-version")
 
 
-def _macos_take_failed_version():
-    """The version the swap helper last failed to install, or None. Reading it
-    clears it, so one failure costs one manual fallback and the attempt after
-    that tries in place again."""
+def _macos_failed_version():
+    """The version the swap helper last failed to install in place, or None.
+
+    Reading does NOT clear it. The record stays until the helper installs
+    something successfully or a newer release becomes the target - a one-shot
+    record let update-on-launch alternate forever (in place, hand-over, in
+    place, ...) against a version that can never install."""
     try:
-        p = _macos_failmark()
-        with open(p, "r", encoding="utf-8") as f:
-            v = f.read().strip()
-        os.remove(p)
+        with open(_macos_failmark(), "r", encoding="utf-8") as f:
+            v = f.read().strip().lstrip("vV")
         return v or None
     except OSError:
         return None
+
+
+def _macos_clear_failed_version():
+    try:
+        os.remove(_macos_failmark())
+    except OSError:
+        pass
+
+
+def _macos_version_tag(ver):
+    """A version as a filename component: digits, letters, '.', '-', '+', '_'."""
+    v = str(ver or "").strip().lstrip("vV")
+    return "".join(c for c in v if c.isalnum() or c in ".-+_") or "unknown"
+
+
+def _macos_health_marker(ver):
+    """Written by the app of version `ver` once it is up; the swap helper
+    deletes it before relaunching and waits for it to come back."""
+    return os.path.join(_macos_cache_dir(), "healthy-" + _macos_version_tag(ver))
+
+
+def _macos_launch_pidfile(ver):
+    """Written by the app of version `ver` as soon as it starts: the pid the
+    helper may stop if that app never becomes healthy."""
+    return os.path.join(_macos_cache_dir(), "launching-" + _macos_version_tag(ver))
+
+
+def macos_health_wanted():
+    """True in an installed macOS build - the only place a swap helper can be
+    waiting on us. Never in a source checkout, and never in the packaged
+    self-test (it exits before any window exists, so it must not vouch for
+    one)."""
+    return (sys.platform == "darwin" and bool(getattr(sys, "frozen", False))
+            and not os.environ.get("AETHER_SELFTEST"))
+
+
+def _macos_write_marker(path):
+    tmp = f"{path}.{os.getpid()}.part"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(f"{os.getpid()}\n")
+    os.replace(tmp, path)
+
+
+def macos_note_launch():
+    """Call first thing in main(): record this process's pid for the helper.
+    Best effort, never raises; returns True if written."""
+    if not macos_health_wanted():
+        return False
+    try:
+        _macos_write_marker(_macos_launch_pidfile(version.__version__))
+        return True
+    except OSError as e:
+        log.info("update: could not write the launch pid file (%s)", e)
+        return False
+
+
+def macos_note_healthy():
+    """Call once the window and bridge are up: tell a waiting swap helper that
+    this version starts, so it may delete the previous one. Also drops the
+    markers of other versions. Best effort, never raises."""
+    if not macos_health_wanted():
+        return False
+    try:
+        mine = _macos_health_marker(version.__version__)
+        _macos_write_marker(mine)
+        d = os.path.dirname(mine)
+        for n in os.listdir(d):
+            if (n.startswith(("healthy-", "launching-")) and not n.endswith(".part")
+                    and os.path.join(d, n) != mine):
+                try:
+                    os.remove(os.path.join(d, n))
+                except OSError:
+                    pass
+        return True
+    except OSError as e:
+        log.info("update: could not write the health marker (%s)", e)
+        return False
 
 
 def _macos_launch_swap(app, staged, stage, new_version=""):
@@ -837,7 +1031,9 @@ def _macos_launch_swap(app, staged, stage, new_version=""):
     _macos_last_helper = subprocess.Popen(
         ["/bin/sh", script, str(_macos_own_pid()), app, staged, backup,
          str(_MACOS_EXIT_TIMEOUT), logf, _MACOS_OPENER or "", stage,
-         _macos_failmark(), str(new_version or "")],
+         _macos_failmark(), str(new_version or ""),
+         _macos_health_marker(new_version), str(_MACOS_HEALTH_TIMEOUT),
+         _macos_launch_pidfile(new_version)],
         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL, close_fds=True, cwd="/",
         start_new_session=True)
@@ -849,7 +1045,11 @@ def _macos_install(zip_path, app, expect_version):
     """Stage, verify, and hand over to the swap helper. Returns the same
     quit-now action as the Windows installer path, so the caller exits and the
     helper can replace the bundle."""
+    global _macos_swap_started
     stage = None
+    # In progress from here: staging clears and refills the folder the helper
+    # works in. Cleared again on every path that does not start the helper.
+    _macos_swap_started = True
     try:
         try:
             stage, staged = _macos_stage(zip_path, app)
@@ -864,13 +1064,17 @@ def _macos_install(zip_path, app, expect_version):
                 pass
     except UpdateRejected as e:
         log.error("update: staged bundle REJECTED: %s", e)
+        _macos_swap_started = False
         if stage:
             shutil.rmtree(stage, ignore_errors=True)
         _set_progress(phase="idle", done=0, total=0)
         return {"ok": False, "error": f"update refused: {e}"}
-    except Exception as e:
+    except BaseException as e:
+        _macos_swap_started = False
         if stage:
             shutil.rmtree(stage, ignore_errors=True)
         _set_progress(phase="idle", done=0, total=0)
+        if not isinstance(e, Exception):
+            raise
         return {"ok": False, "error": f"could not install the update: {e}"}
     return {"ok": True, "action": "installer_launched", "quit": True}

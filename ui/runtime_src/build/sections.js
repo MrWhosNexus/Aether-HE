@@ -1664,7 +1664,9 @@
         msg: "Downloading…"
       }));
       try {
-        const r = await api.apply_update(upd.info.asset_url, upd.info.asset_name);
+        // 5th argument: this is a click, not the launch-time flow (macOS retries
+        // an in-place install that failed before only when the user asks).
+        const r = await api.apply_update(upd.info.asset_url, upd.info.asset_name, null, null, true);
         if (!r || !r.ok) {
           setUpd(u => ({
             ...u,

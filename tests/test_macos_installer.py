@@ -94,6 +94,23 @@ def leftovers(parent):
             if n.startswith(updater._MACOS_STAGE_PREFIX)]
 
 
+def expect_health(opener_path, marker_path):
+    """Make the `opener` fixture's fake app report healthy at `marker_path`."""
+    if opener_path and os.path.basename(opener_path) == "fake-open.sh":
+        with open(opener_path + ".health", "a") as f:
+            f.write(marker_path + "\n")
+
+
+def silent_opener(tmp_path, body=""):
+    """An `open` that succeeds but whose app never reports healthy. `body` is
+    extra shell run on each call ($1 is the app path)."""
+    logf = tmp_path / "silent-opened.log"
+    script = tmp_path / "silent-open.sh"
+    script.write_text(f'#!/bin/sh\necho "$@" >> "{logf}"\n{body}\n')
+    script.chmod(0o755)
+    return str(script), (lambda: logf.read_text().splitlines() if logf.exists() else [])
+
+
 def dead_pid():
     p = subprocess.Popen(["/usr/bin/true"])
     p.wait()
@@ -120,10 +137,18 @@ def sleeper():
 
 @pytest.fixture
 def opener(tmp_path):
-    """Stand-in for /usr/bin/open: records what it was asked to open."""
+    """Stand-in for /usr/bin/open: records what it was asked to open and then
+    plays a HEALTHY app - it writes every health marker listed in
+    `<script>.health` (Swap/Release add theirs), which is what the real app
+    does once its window is up."""
     logf = tmp_path / "opened.log"
     script = tmp_path / "fake-open.sh"
-    script.write_text(f'#!/bin/sh\necho "$@" >> "{logf}"\n')
+    script.write_text(
+        '#!/bin/sh\n'
+        f'echo "$@" >> "{logf}"\n'
+        f'if [ -f "{script}.health" ]; then\n'
+        f'  while IFS= read -r p; do echo $$ > "$p"; done < "{script}.health"\n'
+        'fi\n')
     script.chmod(0o755)
 
     def opened():
@@ -460,11 +485,16 @@ class Swap:
             f.write(updater._MACOS_SWAP_HELPER)
         self.opener = opener_path
         self.failmark = str(tmp_path / "failed-version")
+        self.health = str(tmp_path / "healthy-9.9.9")
+        self.pidfile = str(tmp_path / "launching-9.9.9")
+        self.health_wait = 2
+        expect_health(opener_path, self.health)
 
     def argv(self, pid, timeout=20):
         return ["/bin/sh", self.script, str(pid), self.app, self.new, self.backup,
                 str(timeout), self.log, self.opener, self.stage,
-                self.failmark, "9.9.9"]
+                self.failmark, "9.9.9", self.health, str(self.health_wait),
+                self.pidfile]
 
     def failed_version(self):
         if not os.path.exists(self.failmark):
@@ -658,6 +688,9 @@ class Release:
         monkeypatch.setattr(updater.urllib.request, "urlopen", urlopen)
         monkeypatch.setattr(updater, "_macos_own_pid", lambda: self.app_proc.pid)
         monkeypatch.setattr(updater, "_MACOS_OPENER", opener_path)
+        monkeypatch.setattr(updater, "_MACOS_HEALTH_TIMEOUT", 2)
+        expect_health(opener_path, os.path.join(
+            os.path.expanduser("~/Library/Caches/AetherHE/updates"), "healthy-" + tag))
         # What a PyInstaller .app looks like from the inside.
         monkeypatch.setattr(sys, "frozen", True, raising=False)
         monkeypatch.setattr(sys, "executable",
@@ -761,33 +794,68 @@ def test_second_apply_while_a_swap_is_pending_is_refused(
     assert app_version(rel.app) == "9.9.9"
 
 
+def _record_failure(rel, ver):
+    os.makedirs(rel.cache(), exist_ok=True)
+    with open(os.path.join(rel.cache(), "failed-version"), "w") as f:
+        f.write(ver + "\n")                     # what the helper leaves behind
+
+
+def _failure_record(rel):
+    p = os.path.join(rel.cache(), "failed-version")
+    return open(p).read().strip() if os.path.exists(p) else None
+
+
 @mac_only
-def test_a_rolled_back_version_is_not_retried_in_a_loop(
+def test_a_rolled_back_version_is_never_retried_automatically(
         tmp_path, monkeypatch, opener, sleeper):
     """Update-on-launch + a version that always rolls back must not become
-    download -> quit -> fail -> relaunch -> download ... forever. After a
-    rollback the next attempt hands the zip over instead; the one after that
-    may try in place again."""
+    download -> quit -> fail -> relaunch -> download ... The record used to be
+    consumed by the first read, so every OTHER launch tried in place again."""
     path, opened = opener
     rel = Release(tmp_path, monkeypatch, path, sleeper)
-    revealed = []
-    monkeypatch.setattr(updater, "_macos_reveal", revealed.append)
-    os.makedirs(rel.cache())
-    with open(os.path.join(rel.cache(), "failed-version"), "w") as f:
-        f.write("9.9.9\n")                      # what the helper leaves behind
+    _record_failure(rel, "9.9.9")
 
-    res = updater.apply_update(rel.url)
-    assert res["ok"] is True and res["action"] == "downloaded" and "quit" not in res
-    assert "did not complete" in res["reason"]
-    assert updater._macos_last_helper is None
-    assert len(revealed) == 1
+    for launch in range(3):                      # three launches, same answer
+        res = updater.apply_update(rel.url)
+        assert res["ok"] is True and res["action"] == "skipped", (launch, res)
+        assert "quit" not in res and "did not complete" in res["reason"]
+        assert "Settings" in res["message"]
+        assert updater._macos_last_helper is None
+        assert rel.requested == [], "an install that will not happen must not download"
+        assert _failure_record(rel) == "9.9.9", "the record was consumed"
     assert app_version(rel.app) == "1.0.0"
+    assert updater.get_progress()["phase"] == "idle"
 
-    res = updater.apply_update(rel.url)          # the marker was consumed
+
+@mac_only
+def test_a_click_may_retry_a_rolled_back_version_and_success_clears_the_record(
+        tmp_path, monkeypatch, opener, sleeper):
+    path, opened = opener
+    rel = Release(tmp_path, monkeypatch, path, sleeper)
+    _record_failure(rel, "9.9.9")
+    res = updater.apply_update(rel.url, manual=True)
     assert res == {"ok": True, "action": "installer_launched", "quit": True}
+    assert _failure_record(rel) == "9.9.9", "cleared before the install succeeded"
     rel.quit_app()
     assert updater._macos_last_helper.wait(timeout=30) == 0
     assert app_version(rel.app) == "9.9.9"
+    assert _failure_record(rel) is None, "a successful install must clear the record"
+
+
+@mac_only
+def test_a_failed_download_does_not_consume_the_record(
+        tmp_path, monkeypatch, opener, sleeper):
+    path, opened = opener
+    rel = Release(tmp_path, monkeypatch, path, sleeper)
+    _record_failure(rel, "9.9.8")                # older: 9.9.9 supersedes it ...
+    rel.chk["asset_sha256"] = "0" * 64           # ... but its download is bad
+    res = updater.apply_update(rel.url)
+    assert res["ok"] is False and "integrity" in res["error"]
+    assert _failure_record(rel) == "9.9.8"
+    _record_failure(rel, "9.9.9")                # same story for a manual retry
+    res = updater.apply_update(rel.url, manual=True)
+    assert res["ok"] is False
+    assert _failure_record(rel) == "9.9.9"
 
 
 @mac_only
@@ -795,13 +863,319 @@ def test_a_failure_of_an_older_version_does_not_block_a_newer_one(
         tmp_path, monkeypatch, opener, sleeper):
     path, opened = opener
     rel = Release(tmp_path, monkeypatch, path, sleeper)
-    os.makedirs(rel.cache())
-    with open(os.path.join(rel.cache(), "failed-version"), "w") as f:
-        f.write("9.9.8\n")
+    _record_failure(rel, "9.9.8")
     assert updater.apply_update(rel.url).get("quit") is True
+    assert _failure_record(rel) is None, "a newer target supersedes the old record"
     rel.quit_app()
     assert updater._macos_last_helper.wait(timeout=30) == 0
     assert app_version(rel.app) == "9.9.9"
+
+
+@mac_only
+def test_a_rollback_is_recorded_until_something_installs(tmp_path, opener):
+    """The helper's side of the record: written on failure, kept by a later
+    failure, removed by a success."""
+    path, opened = opener
+    s = Swap(tmp_path, path)
+    with open(os.path.join(s.new, "Contents", "Resources", "marker.txt"), "a") as f:
+        f.write("corrupt")
+    assert s.run(dead_pid()) == 7
+    assert s.failed_version() == "9.9.9"
+    # A second, good attempt against the same record.
+    os.makedirs(os.path.join(s.stage, "payload"))
+    s.new = make_app(os.path.join(s.stage, "payload"), "9.9.9")
+    with open(s.script, "w") as f:
+        f.write(updater._MACOS_SWAP_HELPER)
+    assert s.run(dead_pid()) == 0, s.logtext()
+    assert s.failed_version() is None
+
+
+# ------------------------------------------- health: the new app must start --
+@mac_only
+def test_helper_keeps_the_backup_until_the_new_app_reports_healthy(tmp_path):
+    """`open` exiting 0 is not proof of anything: the backup must still exist
+    while the helper waits, and go only after the marker appears."""
+    path, opened = silent_opener(tmp_path)
+    s = Swap(tmp_path, path)
+    s.health_wait = 20
+    with open(s.health, "w") as f:
+        f.write("stale marker from an earlier run\n")
+    helper = subprocess.Popen(s.argv(dead_pid()))
+    try:
+        deadline = time.time() + 15
+        while not opened() and time.time() < deadline:
+            time.sleep(0.1)
+        assert opened() == [s.app]
+        time.sleep(1.0)
+        assert helper.poll() is None, "helper finished without a health report"
+        assert not os.path.exists(s.health), "a stale marker must not count"
+        assert app_version(s.backup) == "1.0.0", "backup deleted before the app proved itself"
+        assert app_version(s.app) == "9.9.9"
+        with open(s.health, "w") as f:           # the new app comes up
+            f.write("123\n")
+        assert helper.wait(timeout=30) == 0, s.logtext()
+    finally:
+        if helper.poll() is None:
+            helper.kill()
+            helper.wait()
+    assert app_version(s.app) == "9.9.9"
+    assert not os.path.exists(s.stage)
+    assert s.failed_version() is None
+
+
+@mac_only
+def test_helper_rolls_back_when_the_new_app_never_reports_healthy(tmp_path):
+    path, opened = silent_opener(tmp_path)
+    s = Swap(tmp_path, path)
+    s.health_wait = 1
+    assert s.run(dead_pid()) == 10, s.logtext()
+    assert app_version(s.app) == "1.0.0" and marker(s.app) == "1.0.0"
+    assert signature_ok(s.app)
+    assert opened() == [s.app, s.app], "open the update, then the restored app"
+    assert os.listdir(str(s.parent)) == ["AetherHE.app"]
+    assert s.failed_version() == "9.9.9"
+    log = s.logtext()
+    assert "did not report" in log and "previous version restored" in log
+    assert "pid is not known" in log
+
+
+@mac_only
+def test_helper_stops_the_unhealthy_new_app_when_it_knows_its_pid(tmp_path):
+    """The new app got far enough to write its pid, then hung. It is stopped
+    before its bundle is moved away; nothing else is ever signalled."""
+    pidfile = tmp_path / "launching-9.9.9"
+    path, opened = silent_opener(
+        tmp_path,
+        # Only the FIRST call (the update) starts the hung "app".
+        f'if [ ! -e "{tmp_path}/started" ]; then : > "{tmp_path}/started"; '
+        f'/bin/sleep 120 >/dev/null 2>&1 & echo $! > "{pidfile}"; fi')
+    s = Swap(tmp_path, path)
+    s.health_wait = 1
+    assert s.pidfile == str(pidfile)
+    pidfile.write_text("1\n")                    # stale: must be cleared, never used
+    try:
+        assert s.run(dead_pid()) == 10, s.logtext()
+        hung = int(pidfile.read_text())
+        assert hung > 1
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            try:
+                os.kill(hung, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.1)
+        else:
+            raise AssertionError("the hung new app was left running")
+    finally:
+        try:
+            os.kill(int(pidfile.read_text()), 9)
+        except (OSError, ValueError):
+            pass
+    assert "stopped the updated app" in s.logtext()
+    assert app_version(s.app) == "1.0.0" and signature_ok(s.app)
+
+
+@mac_only
+def test_helper_ignores_a_pid_file_that_is_not_a_pid(tmp_path):
+    pidfile = tmp_path / "launching-9.9.9"
+    path, opened = silent_opener(tmp_path, f'echo "-1; rm -rf /" > "{pidfile}"')
+    s = Swap(tmp_path, path)
+    s.health_wait = 1
+    assert s.run(dead_pid()) == 10, s.logtext()
+    assert "pid is not known" in s.logtext()
+    assert app_version(s.app) == "1.0.0"
+
+
+@mac_only
+def test_end_to_end_rolls_back_an_update_that_never_comes_up(
+        tmp_path, monkeypatch, sleeper):
+    path, opened = silent_opener(tmp_path)
+    rel = Release(tmp_path, monkeypatch, path, sleeper)
+    assert updater.apply_update(rel.url).get("quit") is True
+    rel.quit_app()
+    assert updater._macos_last_helper.wait(timeout=40) == 10
+    assert app_version(rel.app) == "1.0.0" and signature_ok(rel.app)
+    assert os.listdir(str(rel.parent)) == ["AetherHE.app"]
+    assert _failure_record(rel) == "9.9.9"
+    # ... and the next launch's auto-update leaves it alone.
+    monkeypatch.setattr(updater, "_macos_swap_started", False)
+    assert updater.apply_update(rel.url)["action"] == "skipped"
+
+
+def _frozen_mac(monkeypatch, selftest=False):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    if selftest:
+        monkeypatch.setenv("AETHER_SELFTEST", "1")
+    else:
+        monkeypatch.delenv("AETHER_SELFTEST", raising=False)
+
+
+def test_app_writes_its_pid_then_the_health_marker(monkeypatch):
+    _frozen_mac(monkeypatch)
+    cache = os.path.expanduser("~/Library/Caches/AetherHE/updates")
+    assert updater.macos_note_launch() is True
+    pidfile = updater._macos_launch_pidfile(version.__version__)
+    assert os.path.dirname(pidfile) == cache
+    assert open(pidfile).read().strip() == str(os.getpid())
+    stale = os.path.join(cache, "healthy-0.0.1")
+    open(stale, "w").close()
+    assert updater.macos_note_healthy() is True
+    want = os.path.join(cache, "healthy-" + version.__version__)
+    assert updater._macos_health_marker("v" + version.__version__) == want
+    assert sorted(os.listdir(cache)) == [os.path.basename(want)], \
+        "other versions' markers and the pid file are dropped once healthy"
+
+
+@pytest.mark.parametrize("case", ["source", "selftest", "not-mac"])
+def test_no_health_marker_outside_an_installed_mac_build(monkeypatch, case):
+    if case == "source":
+        monkeypatch.setattr(sys, "platform", "darwin")
+        monkeypatch.delattr(sys, "frozen", raising=False)
+    elif case == "selftest":
+        _frozen_mac(monkeypatch, selftest=True)
+    else:
+        _frozen_mac(monkeypatch)
+        monkeypatch.setattr(sys, "platform", "linux")
+    assert updater.macos_health_wanted() is False
+    assert updater.macos_note_launch() is False
+    assert updater.macos_note_healthy() is False
+    assert not os.path.exists(os.path.expanduser("~/Library/Caches/AetherHE"))
+
+
+def test_health_marker_path_cannot_escape_the_cache():
+    p = updater._macos_health_marker("../../etc/x y")
+    assert os.path.dirname(p) == os.path.expanduser("~/Library/Caches/AetherHE/updates")
+    assert "/" not in os.path.basename(p) and " " not in os.path.basename(p)
+
+
+# ------------------------------------------------ restore must never nest ----
+@mac_only
+@not_root
+def test_restore_never_moves_the_backup_inside_a_bundle_it_could_not_remove(tmp_path):
+    """The update is in place, will not open, and cannot be moved away or
+    removed (the folder turned read-only). `mv backup app` would then put the
+    old app INSIDE the bad one. The helper must stop and leave the backup."""
+    parent = tmp_path / "Applications"
+    path, opened = silent_opener(tmp_path, f'chmod 555 "{parent}"; exit 1')
+    s = Swap(tmp_path, path)
+    try:
+        rc = s.run(dead_pid())
+    finally:
+        os.chmod(str(parent), 0o755)
+    assert rc == 11, s.logtext()
+    assert os.path.isdir(s.app), "precondition: something is still at the app path"
+    assert not os.path.exists(os.path.join(s.app, "previous.app")), "NESTED"
+    assert not os.path.exists(os.path.join(s.app, "Contents", "Info.plist")) \
+        or app_version(s.app) == "9.9.9"
+    assert app_version(s.backup) == "1.0.0" and signature_ok(s.backup), \
+        "the previous version must be left intact where it is"
+    assert "ROLLBACK BLOCKED" in s.logtext()
+    assert s.failed_version() == "9.9.9"
+    assert len(opened()) == 1, "nothing may be relaunched from a half-restored state"
+
+
+# ------------------------------------------------------- strictly newer ----
+@pytest.mark.parametrize("latest", ["1.0.0", "0.9.0", "v1.0.0", "", None])
+@pytest.mark.parametrize("kind", ["windows", "macos", "flatpak", "linux"])
+def test_apply_refuses_anything_that_is_not_newer(monkeypatch, kind, latest):
+    """Same version = reinstall, older = downgrade. Neither is an update, on
+    any platform, whatever URL the caller holds."""
+    url = ("https://github.com/%s/releases/download/v1.0.0/AetherHE-Setup.exe"
+           % version.GITHUB_REPO)
+    chk = {"ok": True, "update": True, "newer": True,      # flags lie; versions do not
+           "latest": latest, "asset_url": url, "asset_name": "AetherHE-Setup.exe",
+           "asset_size": 3, "asset_sha256": hashlib.sha256(b"abc").hexdigest()}
+    monkeypatch.setattr(version, "__version__", "1.0.0")
+    monkeypatch.setattr(updater, "platform_kind", lambda: kind)
+    monkeypatch.setattr(updater, "check_for_update", lambda *a, **k: dict(chk))
+
+    def no_network(*a, **k):
+        raise AssertionError("downloaded something that is not an update")
+    monkeypatch.setattr(updater.urllib.request, "urlopen", no_network)
+    monkeypatch.setattr(updater.subprocess, "Popen", no_network)
+    monkeypatch.setattr(updater.subprocess, "run", no_network)
+
+    res = updater.apply_update(url, manual=True)
+    assert res["ok"] is False and "no newer version" in res["error"]
+    assert "quit" not in res
+    assert updater.get_progress()["phase"] == "idle"
+
+
+def test_apply_accepts_a_strictly_newer_release(tmp_path, monkeypatch):
+    url, data, revealed = _fallback_release(tmp_path, monkeypatch)
+    monkeypatch.setattr(version, "__version__", "9.9.8")
+    assert updater.apply_update(url)["ok"] is True
+
+
+# ------------------------------------------------------------ one at a time --
+def test_concurrent_apply_is_refused_while_one_is_running(tmp_path, monkeypatch):
+    import threading
+    url, data, revealed = _fallback_release(tmp_path, monkeypatch)
+    entered, go = threading.Event(), threading.Event()
+
+    def slow(req, timeout=None):
+        entered.set()
+        assert go.wait(10)
+        return _FakeResp(data)
+    monkeypatch.setattr(updater.urllib.request, "urlopen", slow)
+
+    out = {}
+    t = threading.Thread(target=lambda: out.update(first=updater.apply_update(url)))
+    t.start()
+    try:
+        assert entered.wait(10)
+        second = updater.apply_update(url)
+        assert second == {"ok": False, "error": "update already in progress"}
+    finally:
+        go.set()
+        t.join(10)
+    assert out["first"]["ok"] is True and out["first"]["action"] == "downloaded"
+    assert len(revealed) == 1, "the refused call must not have downloaded too"
+    # ... and the lock is released for the next attempt.
+    monkeypatch.setattr(updater.urllib.request, "urlopen",
+                        lambda req, timeout=None: _FakeResp(data))
+    assert updater.apply_update(url)["ok"] is True
+
+
+def test_lock_is_released_when_apply_fails_or_raises(tmp_path, monkeypatch):
+    url, data, revealed = _fallback_release(tmp_path, monkeypatch)
+
+    def boom(*a, **k):
+        raise RuntimeError("network down")
+    monkeypatch.setattr(updater.urllib.request, "urlopen", boom)
+    assert "download failed" in updater.apply_update(url)["error"]
+    monkeypatch.setattr(updater, "platform_kind", boom)
+    with pytest.raises(RuntimeError):
+        updater.apply_update(url)
+    assert updater._apply_lock.acquire(blocking=False), "lock leaked"
+    updater._apply_lock.release()
+
+
+@mac_only
+def test_in_progress_flag_is_cleared_when_staging_or_verification_fails(
+        tmp_path, monkeypatch, opener, sleeper):
+    """Set before staging; a rejected bundle must not leave every later
+    attempt answering 'already in progress' until the app restarts."""
+    path, opened = opener
+    rel = Release(tmp_path, monkeypatch, path, sleeper, zip_ver="9.9.8", tag="9.9.9")
+    seen = []
+    real_stage = updater._macos_stage
+
+    def stage(*a, **k):
+        seen.append(updater._macos_swap_started)
+        return real_stage(*a, **k)
+    monkeypatch.setattr(updater, "_macos_stage", stage)
+    assert updater.apply_update(rel.url)["ok"] is False          # version mismatch
+    assert seen == [True], "the flag must be up BEFORE staging starts"
+    assert updater._macos_swap_started is False
+
+    def broken(*a, **k):
+        raise OSError("disk full")
+    monkeypatch.setattr(updater, "_macos_stage", broken)
+    res = updater.apply_update(rel.url)
+    assert res["ok"] is False and "disk full" in res["error"]
+    assert updater._macos_swap_started is False
 
 
 # ----------------------------------- fallback: download and reveal instead --
@@ -809,7 +1183,8 @@ def _fallback_release(tmp_path, monkeypatch):
     data = b"PK-not-really-a-zip" * 100
     url = ("https://github.com/%s/releases/download/v9.9.9/"
            "AetherHE-macos-arm64.zip" % version.GITHUB_REPO)
-    chk = {"ok": True, "latest": "9.9.9", "asset_url": url,
+    chk = {"ok": True, "latest": "9.9.9", "url": "https://example.invalid/rel",
+           "asset_url": url,
            "asset_name": "AetherHE-macos-arm64.zip", "asset_size": len(data),
            "asset_sha256": hashlib.sha256(data).hexdigest()}
     monkeypatch.setattr(updater, "platform_kind", lambda: "macos")
@@ -884,6 +1259,20 @@ def test_reveal_never_raises_and_is_skipped_without_an_opener(monkeypatch, tmp_p
         raise OSError("no open here")
     monkeypatch.setattr(updater.subprocess, "Popen", boom)
     updater._macos_reveal(str(tmp_path / "x.zip"))        # must not raise
+
+
+def test_only_the_click_surfaces_ask_for_a_manual_retry():
+    """`manual` is what lets a failed in-place install be retried. The two
+    Update buttons pass it; the launch-time flow must not."""
+    src = os.path.join(ROOT, "ui", "runtime_src")
+    read = lambda *rel: open(os.path.join(src, *rel), encoding="utf-8").read()
+    assert "upd.info.asset_name, null, null, true)" in read("src", "sections.jsx")
+    assert "info.asset_size, info.asset_sha256, true)" in read("workspaces", "settings.jsx")
+    app = read("src", "app.jsx")
+    assert "chk.asset_size, chk.asset_sha256);" in app
+    assert app.count("api.apply_update(") == 1
+    api = open(os.path.join(ROOT, "app_web.py"), encoding="utf-8").read()
+    assert "manual=bool(manual))" in api
 
 
 # ------------------------------------------------------ the helper's text ----
