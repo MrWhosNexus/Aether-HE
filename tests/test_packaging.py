@@ -221,3 +221,67 @@ def test_scripts_are_committed_executable(rel):
     assert mode[0] == "100755", (
         f"{rel} is committed as {mode[0]}; a fresh clone cannot run it. "
         f"Fix with: git update-index --chmod=+x {rel}")
+
+
+# ------------------------------------------------ release tag == version.py --
+WORKFLOW = os.path.join(ROOT, ".github", "workflows", "release.yml")
+CHECK_TAG = os.path.join(ROOT, "tools", "check_release_tag.py")
+
+
+def _run_check(tag=None, env_tag=None):
+    import sys
+    env = dict(os.environ)
+    env.pop("RELEASE_TAG", None)
+    if env_tag is not None:
+        env["RELEASE_TAG"] = env_tag
+    argv = [sys.executable, CHECK_TAG] + ([tag] if tag is not None else [])
+    return subprocess.run(argv, capture_output=True, text=True, env=env)
+
+
+def test_release_tag_check_passes_only_for_the_exact_version():
+    import version
+    v = version.__version__
+    assert _run_check(f"v{v}").returncode == 0
+    assert _run_check(env_tag=f"v{v}").returncode == 0, "CI passes it as $RELEASE_TAG"
+    for bad in (v, f"v{v}.1", f"v{v}-rc1", "v0.0.0", f"V{v}", f" v{v}x"):
+        r = _run_check(env_tag=bad)
+        assert r.returncode == 1, f"{bad!r} was accepted for version {v}"
+        assert "::error::" in r.stdout and v in r.stdout
+
+
+def test_release_tag_check_lets_a_build_only_run_through():
+    """Manual dispatch without a tag publishes nothing: nothing to compare."""
+    assert _run_check(env_tag="").returncode == 0
+    assert _run_check().returncode == 0
+
+
+def test_release_workflow_gates_every_build_on_the_tag_check():
+    """A tag that is not v<version.py> must fail BEFORE a build or a publish:
+    the Mac updater refuses a zip whose bundle version is not the release tag,
+    so such a release is one no Mac can ever install."""
+    y = open(WORKFLOW, encoding="utf-8").read()
+    expr = ("RELEASE_TAG: ${{ inputs.tag || (startsWith(github.ref, 'refs/tags/') "
+            "&& github.ref_name) || '' }}")
+    assert y.count(expr) == 2, "the gate job and the macOS job both take the tag"
+    assert "${{" not in "".join(l for l in y.splitlines() if "check_release_tag" in l), \
+        "the tag must reach the script through the environment, not interpolation"
+    jobs = y.split("\njobs:\n", 1)[1]
+    assert jobs.lstrip().splitlines()[0].startswith("#") and "\n  version:\n" in jobs
+    for job in ("windows", "linux", "macos"):
+        body = jobs.split(f"\n  {job}:\n", 1)[1]
+        assert body.lstrip().startswith("needs: version"), f"{job} does not wait for the gate"
+    mac = jobs.split("\n  macos:\n", 1)[1].split("\n  release:\n", 1)[0]
+    assert mac.index("check_release_tag.py") < mac.index("Run tests") \
+        < mac.index("build_macos.sh"), "the macOS job must check before it builds"
+    rel = jobs.split("\n  release:\n", 1)[1]
+    assert "needs: [version, windows, linux, macos]" in rel
+    assert "needs.version.result == 'success'" in rel
+
+
+def test_build_script_does_not_overclaim_tcc_persistence():
+    """An ad-hoc signature's designated requirement is the cdhash, so a grant
+    may reset per update; only the no-grant vendor interface was measured."""
+    s = open(os.path.join(ROOT, "build_macos.sh"), encoding="utf-8").read()
+    assert "so the grant sticks" not in s
+    assert "cdhash" in s and "MAY be reset" in s
+    assert "0xFF1B" in s and "WITHOUT any grant" in s

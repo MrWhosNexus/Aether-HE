@@ -22,8 +22,31 @@ permissions:
   contents: write           # create releases + upload assets
 
 jobs:
+  # ----------------------------------------------------------- version gate --
+  # The release tag must be v<version.py>. Every build job needs this one, so a
+  # mismatch fails BEFORE anything is built or published: a Mac asset built
+  # from a mismatched tree is one every client refuses (the updater checks the
+  # bundle's version against the release tag), and a Windows/Linux one keeps
+  # offering itself as an update forever. A manual build-only run has no tag
+  # and passes.
+  version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Release tag must match version.py
+        env:
+          # Same expression the release job publishes under. Passed through
+          # the environment, never interpolated into the script.
+          RELEASE_TAG: ${{ inputs.tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}
+        run: python tools/check_release_tag.py
+
   # ----------------------------------------------------------------- Windows --
   windows:
+    needs: version
     runs-on: windows-latest
     timeout-minutes: 30        # vgamepad's MSI popup once hung CI for 6h; fail fast.
     steps:
@@ -81,6 +104,7 @@ jobs:
   # failure from failing the run, and the release job below publishes whatever
   # assets actually exist.
   linux:
+    needs: version
     runs-on: ubuntu-latest
     continue-on-error: true
     timeout-minutes: 45
@@ -122,6 +146,7 @@ jobs:
   #                             swaps in place. Its name is what the updater
   #                             matches on — do not rename one without the other.
   macos:
+    needs: version
     runs-on: macos-14
     continue-on-error: true
     timeout-minutes: 30
@@ -130,6 +155,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Release tag must match version.py
+        # Asserted again HERE, in the job whose asset depends on it most: the
+        # updater rejects a zip whose bundle version is not the release tag,
+        # and this job is continue-on-error, so it must fail on its own
+        # account rather than rely on the gate job staying wired up.
+        env:
+          RELEASE_TAG: ${{ inputs.tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}
+        run: python3 tools/check_release_tag.py
       - name: Create venv + install deps
         run: |
           set -euo pipefail
@@ -161,9 +194,9 @@ jobs:
 
   # ----------------------------------------------------------------- Release --
   release:
-    needs: [windows, linux, macos]
+    needs: [version, windows, linux, macos]
     runs-on: ubuntu-latest
-    # Publish as long as WINDOWS succeeded. always() is required because `needs`
+    # Publish as long as the version gate and WINDOWS succeeded. always() is required because `needs`
     # would otherwise skip this job when linux failed; the explicit windows
     # check keeps the Windows installer a hard requirement rather than
     # degrading the whole gate.
@@ -171,7 +204,8 @@ jobs:
     # action-gh-release then creates that tag at the built commit itself, so
     # a release can be cut from an environment that can't push tags.
     if: >-
-      always() && needs.windows.result == 'success' &&
+      always() && needs.version.result == 'success' &&
+      needs.windows.result == 'success' &&
       (startsWith(github.ref, 'refs/tags/') ||
        (github.event_name == 'workflow_dispatch' && inputs.tag != ''))
     steps:
