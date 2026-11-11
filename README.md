@@ -47,7 +47,7 @@ them.
 | **Status on keys** | CPU, RAM and GPU load and a Pomodoro timer as bars on the key rows. |
 | **Game profiles** | Detects a running game and switches to the profile you picked for it, then back when you quit. |
 | **SOCD, remap, macros** | SOCD pairs (incl. last-input-wins), key remaps and firmware macros that work with the app closed. |
-| **Virtual gamepad** | Hall-effect travel as Xbox 360 sticks and triggers (ViGEmBus on Windows, uinput on Linux). |
+| **Virtual gamepad** | Hall-effect travel as Xbox 360 sticks and triggers (ViGEmBus on Windows, uinput on Linux; not available on macOS). |
 | **Tray & mini mode** | Runs from the tray with a small effect panel; optional start-minimized. |
 
 ## Screenshots
@@ -177,11 +177,42 @@ sudo usermod -aG input "$USER"       # then log out and back in
 Build the Flatpak: `flatpak run org.flatpak.Builder --force-clean --user --install --repo=flatpak/repo flatpak/build-dir flatpak/io.github.mrwhosnexus.AetherHE.yml`.
 </details>
 
+## Install: macOS
+
+Apple Silicon (arm64). The build is ad-hoc signed and **not notarized**.
+
+1. Download `AetherHE-macos-arm64.dmg` from the latest release, open it and drag
+   **AetherHE** to **Applications**.
+2. First launch: right-click the app and choose **Open** (a double-click is
+   refused for an unnotarized app).
+
+From source: `python3 -m venv venv-web && venv-web/bin/pip install -r requirements.txt`,
+then `./run.command`. Build the app yourself with `./build_macos.sh`.
+
+Two things differ on macOS:
+
+- **If the keyboard will not open**, check **System Settings > Privacy & Security >
+  Input Monitoring** and relaunch. The Win60's config interface needs no grant
+  (measured), but macOS reports a permission refusal and "another app holds the
+  device" identically, so Aether names both.
+- **There is no Gamepad tab, and nothing to install.** A virtual controller
+  needs Apple's restricted `com.apple.developer.hid.virtual.device` entitlement,
+  which Apple grants on individual request only. Lighting, actuation, rapid
+  trigger, SOCD and the effects are unaffected.
+
+Hardware-verified on the Aula Win60 HE (macOS 26.5, Apple Silicon): connect,
+firmware lighting, host-streamed effects, per-key RGB read-back, keymap
+snapshot and the live travel stream. Tray residency, game detection and the
+music visualizer are Windows-only.
+
 ## Updates
 
 **Settings → Updates** (or on launch, if enabled) checks GitHub Releases. On
 Windows the installer runs silently and relaunches Aether; on Flatpak the bundle
-is installed on the host, then restart. Downloads come only from this
+is installed on the host, then restart; on macOS the app is replaced in place
+and reopened when it runs from a writable folder such as /Applications
+(otherwise the update is downloaded and Aether says what to move first).
+Downloads come only from this
 repository's releases and are verified against GitHub's SHA-256.
 
 <details>
