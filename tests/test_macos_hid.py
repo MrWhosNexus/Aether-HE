@@ -111,9 +111,21 @@ def test_windows_single_interface_number_minus_one_also_resolves(fake_enum):
     assert aula_device.find_vendor_interface(0x2E3C, 0xC365, 0xFF1B)["path"] == b"col02"
 
 
-def test_several_vendor_collections_on_one_path_are_one_choice(fake_enum):
-    """macOS lists each collection under the interface's path: whichever entry
-    is returned, open_path() opens the same thing."""
+NOT_MAC = ["win32", "linux"]
+
+
+@pytest.fixture
+def on(monkeypatch):
+    def _set(platform):
+        monkeypatch.setattr(aula_device.sys, "platform", platform)
+    return _set
+
+
+@pytest.mark.parametrize("platform", NOT_MAC)
+def test_several_vendor_collections_on_one_path_are_one_choice(fake_enum, on, platform):
+    """Windows/Linux, unchanged: entries under one path open the same thing,
+    and the ranking takes the highest page."""
+    on(platform)
     fake_enum([_iface(0x0001, -1, path=b"shared"),
                _iface(0xFF00, -1, path=b"shared", usage=1),
                _iface(0xFF01, -1, path=b"shared", usage=2)])
@@ -121,11 +133,67 @@ def test_several_vendor_collections_on_one_path_are_one_choice(fake_enum):
     assert got["path"] == b"shared" and got["usage_page"] == 0xFF01
 
 
-def test_several_vendor_collections_keep_the_old_ranking_when_it_is_unique(fake_enum):
-    """Pre-port behaviour for all-equal numbers: the highest vendor page."""
+@pytest.mark.parametrize("platform", NOT_MAC)
+def test_several_vendor_collections_keep_the_old_ranking_when_it_is_unique(
+        fake_enum, on, platform):
+    """Pre-port behaviour for all-equal numbers on Windows/Linux: the highest
+    vendor page."""
+    on(platform)
     fake_enum([_iface(0xFF00, 0, path=b"a"), _iface(0xFF60, 0, path=b"b"),
                _iface(0x0001, 0, path=b"c")])
     assert aula_device.find_vendor_interface(0x2E3C, 0xC365, 0xFF1B)["path"] == b"b"
+
+
+# ------------------------------------- macOS: no "highest page" guess
+@pytest.mark.parametrize("entries", [
+    # distinct vendor pages on different paths
+    [_iface(0xFF00, -1, path=b"a"), _iface(0xFF60, -1, path=b"b"), _iface(0x0001, -1, path=b"c")],
+    # distinct vendor pages under ONE path: still two candidates, still no
+    # evidence which is the config collection
+    [_iface(0x0001, -1, path=b"shared"), _iface(0xFF00, -1, path=b"shared", usage=1),
+     _iface(0xFF01, -1, path=b"shared", usage=2)],
+])
+def test_macos_refuses_several_distinct_vendor_pages(fake_enum, on, entries):
+    """None is the board's configured page, and "the highest one" is a guess
+    about firmware nobody measured on macOS."""
+    on("darwin")
+    fake_enum(entries)
+    with pytest.raises(aula_device.VendorInterfaceUnresolved) as ei:
+        aula_device.find_vendor_interface(0x2E3C, 0xC365, 0xFF1B)
+    assert "refusing to guess" in str(ei.value)
+
+
+def test_macos_takes_the_only_vendor_page(fake_enum, on):
+    on("darwin")
+    fake_enum([_iface(0x0001, -1, path=b"kbd"), _iface(0x000C, -1, path=b"media"),
+               _iface(0xFF60, -1, path=b"vendor")])
+    got = aula_device.find_vendor_interface(0x2E3C, 0xC365, 0xFF1B)
+    assert got["path"] == b"vendor" and got["usage_page"] == 0xFF60
+
+
+def test_macos_one_vendor_page_listed_twice_under_one_path_is_one_choice(fake_enum, on):
+    on("darwin")
+    fake_enum([_iface(0x0001, -1, path=b"shared"),
+               _iface(0xFF60, -1, path=b"shared", usage=1),
+               _iface(0xFF60, -1, path=b"shared", usage=2)])
+    got = aula_device.find_vendor_interface(0x2E3C, 0xC365, 0xFF1B)
+    assert got["path"] == b"shared" and got["usage"] == 1
+
+
+def test_macos_configured_page_still_wins_among_several_vendor_pages(fake_enum, on):
+    """Several vendor pages are fine when one of them IS the configured one."""
+    on("darwin")
+    fake_enum([_iface(0xFF00, -1, path=b"a"), _iface(0xFF60, -1, path=b"b"),
+               _iface(0xFFFF, -1, path=b"c")])
+    assert aula_device.find_vendor_interface(0x2E3C, 0xC365, 0xFF60)["path"] == b"b"
+
+
+@pytest.mark.parametrize("platform", NOT_MAC + ["darwin"])
+def test_strict_flag_follows_the_platform(on, platform):
+    on(platform)
+    two = [_iface(0xFF00, 0, path=b"a"), _iface(0xFF60, 0, path=b"b")]
+    got = aula_device._sole_vendor_collection(two)
+    assert (got is None) if platform == "darwin" else (got["path"] == b"b")
 
 
 def test_two_vendor_collections_with_the_same_page_on_different_paths_refuse(fake_enum):

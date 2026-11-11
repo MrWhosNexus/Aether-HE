@@ -116,7 +116,9 @@ def find_vendor_interface(vid=AULA_VID, pid=AULA_PID, usage_page=VENDOR_USAGE_PA
 
     When the interface numbers do not discriminate (all equal: macOS's -1, or
     one Windows interface split into several collections) the vendor-defined
-    page alone decides, and only if it decides uniquely.
+    page alone decides, and only if it decides uniquely. On macOS "uniquely"
+    is strict - exactly one vendor-defined page, no "highest page" ranking
+    (see _sole_vendor_collection).
     """
     matches = enumerate_interfaces(vid, pid)
     if not matches:
@@ -185,20 +187,34 @@ def _is_vendor_page(m):
     return 0xFF00 <= (m.get("usage_page") or 0) <= 0xFFFF
 
 
-def _sole_vendor_collection(matches):
+def _sole_vendor_collection(matches, strict=None):
     """The one vendor-defined collection the usage pages single out, or None.
 
-    Deterministic or nothing — never dependent on enumeration order:
+    Deterministic or nothing - never dependent on enumeration order.
+
+    macOS (`strict`, the default there): only when exactly ONE vendor-defined
+    usage page is present, on one path. Several distinct vendor pages, none of
+    them the page the board is configured for, is not a choice we can make:
+    "the highest page" is a guess about someone else's firmware, and nothing
+    measured on macOS backs it. The caller raises VendorInterfaceUnresolved.
+
+    Windows/Linux keep the ranking they have always had:
       * exactly one vendor-page entry -> it;
-      * several entries that are the same thing to open (one `path`: macOS
-        lists each collection of an interface under the interface's path) ->
-        the highest usage page, first listed on a tie;
+      * several entries that are the same thing to open (one `path`) -> the
+        highest usage page, first listed on a tie;
       * several on different paths -> the highest usage page, as the old
         ranking chose, but only if no other path carries that same page.
     """
+    if strict is None:
+        strict = sys.platform == "darwin"
     vend = [m for m in matches if _is_vendor_page(m)]
     if not vend:
         return None
+    if strict:
+        if (len({m.get("usage_page") for m in vend}) != 1
+                or len({m.get("path") for m in vend}) != 1):
+            return None
+        return vend[0]
     top = max(m.get("usage_page") or 0 for m in vend)
     best = [m for m in vend if (m.get("usage_page") or 0) == top]
     if len({m.get("path") for m in best}) > 1:
