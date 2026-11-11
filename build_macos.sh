@@ -10,12 +10,21 @@
 #   CODESIGN_IDENTITY="Developer ID Application: ..." ./build_macos.sh
 #                                 -> sign with a real identity (for distribution)
 #
-# WHY THE SIGNATURE MATTERS HERE (it is not ceremony):
-# macOS keys an Input Monitoring (TCC) grant to the app's code-signing identity.
-# An UNSIGNED bundle is identified by a hash of its contents, so every rebuild
-# looks like a different app and the user has to re-approve it — and stale
-# entries pile up in System Settings. Ad-hoc signing with a STABLE identifier
-# (-i below) keeps one identity across rebuilds, so the grant sticks.
+# WHY THE APP IS SIGNED (and what the signature does NOT buy):
+# Apple Silicon refuses to run unsigned code at all, and the updater checks the
+# bundle's seal (`codesign --verify --deep --strict`) before it swaps one in.
+# The identifier (-i below) keeps the bundle id in the signature stable.
+#
+# It does NOT make privacy (TCC) grants survive a rebuild. macOS matches a
+# grant such as Input Monitoring against the app's designated requirement, and
+# for an AD-HOC signature that requirement is the cdhash - a hash of the code -
+# not the identifier. Every build has a new cdhash, so an Input Monitoring
+# grant MAY be reset by each update, and the user asked again. Only a real
+# Developer ID identity (CODESIGN_IDENTITY) gives a requirement that outlives
+# a rebuild.
+# What has actually been verified: the Win60's vendor interface (usage page
+# 0xFF1B) opens WITHOUT any grant (measured 2026-07-24), so that board is not
+# affected. Nothing has been measured for a board that does need the grant.
 set -euo pipefail
 cd "$(dirname "$0")"
 
