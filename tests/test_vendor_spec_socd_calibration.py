@@ -331,6 +331,28 @@ def test_failure_codes_are_terminal(sub, code):
     assert "calibration failed" in r["aborted"] and str(code) in r["aborted"]
 
 
+@pytest.mark.parametrize("sub", [8, 15])
+@pytest.mark.parametrize("code", [2, 4])
+def test_a_fail_code_after_done_does_not_undo_a_completed_calibration(sub, code):
+    """The reader keeps draining after `done` until the Api stops it. A frame
+    with 2/4 in that window used to set `failed`, and read_calibrated then
+    reported a finished calibration as aborted."""
+    tail = [0] * 22
+    tail[3] = 1
+    rd = _run([_frame(sub, 1, tail), _frame(sub, 0), _frame(sub, code)])
+    assert rd.done is True
+    assert rd.failed is False and rd.fail_code is None
+    assert rd.calibrated == {"k3"}
+    r = _api_with(rd).read_calibrated()
+    assert r["done"] is True
+    assert "aborted" not in r and "fail_code" not in r
+
+
+def test_done_after_a_failure_does_not_revive_the_session():
+    rd = _run([_frame(8, 2), _frame(8, 0)])
+    assert rd.failed is True and rd.fail_code == 2 and rd.done is False
+
+
 def test_link_loss_is_not_reported_as_a_firmware_failure():
     """`failed` without a code is upstream's 'reads keep failing' case."""
     rd = device_state.CalibrationReader(None, _FakeKM())

@@ -570,7 +570,10 @@ class CalibrationReader:
                             pass
                 elif r[7] == 0:                    # firmware: calibration complete
                     self.done = True
-                elif r[7] in self.FAIL_CODES:
+                elif r[7] in self.FAIL_CODES and not self.done:
+                    # (Not after `done`: the session already completed, and a
+                    # late frame carrying 2/4 must not turn that success into
+                    # "aborted" - the loop keeps draining until it is stopped.)
                     # The firmware gave up on the session. This used to be
                     # ignored, so `done` never came and the UI waited on a
                     # session the board had already abandoned. Not `done`:
