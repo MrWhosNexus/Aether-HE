@@ -133,7 +133,7 @@ jobs:
   # a macOS failure from failing the run, and the release job publishes whatever
   # was actually built.
   #
-  # macos-14 is the Apple Silicon runner, so this produces an ARM64 slice. That
+  # macos-latest is an Apple Silicon runner, so this produces an ARM64 slice. That
   # is deliberate rather than universal2: hidapi and the pyobjc wheels are
   # arch-specific, and stitching a universal build from two wheel sets buys
   # nothing for a keyboard utility. Intel Macs are not served by this job — the
@@ -147,7 +147,7 @@ jobs:
   #                             matches on — do not rename one without the other.
   macos:
     needs: version
-    runs-on: macos-14
+    runs-on: macos-latest      # Apple Silicon; pinned images get retired (macos-14 was, 2026-11)
     continue-on-error: true
     timeout-minutes: 30
     steps:
