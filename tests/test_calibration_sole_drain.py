@@ -118,7 +118,10 @@ def test_persistent_read_errors_mark_the_link_dead():
     cr = device_state.CalibrationReader(dev, _Km())
     cr.start()
     try:
-        assert _wait(lambda: cr.failed, 5.0)
+        # The reader gives up after 51 failed reads 50 ms apart (~2.6 s here).
+        # Hosted macOS runners stretch short sleeps a lot, so allow 15 s: the
+        # wait still returns the moment `failed` flips.
+        assert _wait(lambda: cr.failed, 15.0)
         assert dev.dead
     finally:
         cr.stop()
