@@ -495,7 +495,7 @@ const HeroCard = ({ children, badge, breadcrumb }) => (
    ============================================================ */
 // Startup update gate: first-run opt-out prompt + the auto-install overlay.
 // Driven by App's `updGate` state machine (idle | firstrun | updating | done | error).
-function UpdateGate({ gate, onChoose, onDismiss }) {
+function UpdateGate({ gate, onChoose, onDismiss, onRetry }) {
   if (!gate || gate.phase === "idle") return null;
   // Above the setup wizard (zIndex 9999): on a true first run the update
   // decision is asked first, then dismisses to reveal onboarding underneath.
@@ -535,7 +535,12 @@ function UpdateGate({ gate, onChoose, onDismiss }) {
           </div>
         )}
         {dismissable && (
-          <div className="mt-4 flex justify-end">
+          <div className="mt-4 flex justify-end gap-2">
+            {/* The launch flow declined to retry an install that failed before
+                (macOS). Only a click may retry it — so offer the click here. */}
+            {gate.retry && onRetry && (
+              <button onClick={onRetry} className={btnPrimary}>Try again</button>
+            )}
             <button onClick={onDismiss} className={btnGhost}>{gate.phase === "done" ? "OK" : "Dismiss"}</button>
           </div>
         )}
@@ -564,7 +569,9 @@ function App() {
   const [updGate, setUpdGate] = useState({ phase: "idle", info: null, msg: "" });
   const updRan = useRef(false);
   const dismissUpdate = () => setUpdGate({ phase: "idle", info: null, msg: "" });
-  const runUpdateFlow = async (api, showChecking) => {
+  // `manual` is true only when the user asked (the Try again button below):
+  // the launch-time flow never passes it, so it never retries a failed install.
+  const runUpdateFlow = async (api, showChecking, manual) => {
     if (showChecking) setUpdGate({ phase: "updating", info: null, msg: "Checking for updates…" });
     let chk;
     try { chk = await api.check_update(); }
@@ -592,14 +599,19 @@ function App() {
     const stopPoll = () => { if (poll) { clearInterval(poll); poll = null; } };
     try {
       const r = await api.apply_update(chk.asset_url, chk.asset_name,
-                                       chk.asset_size, chk.asset_sha256);
+                                       chk.asset_size, chk.asset_sha256, !!manual);
       stopPoll();
       if (!r || !r.ok) { setUpdGate({ phase: "error", info: chk, msg: r?.error || "update failed" }); return; }
       if (r.quit) setUpdGate({ phase: "done", info: chk, msg: "Installer launched — Aether will close and reopen." });
       else if (r.restart) setUpdGate({ phase: "done", info: chk, msg: "Update installed — quit and reopen Aether to apply it." });
-      else setUpdGate({ phase: "done", info: chk, msg: window.AetherSections.updateDownloadedText(r, "Downloaded.") });
+      else setUpdGate({ phase: "done", info: chk,
+                        // Skipped because this version failed to install before:
+                        // nothing was downloaded, and a click may retry it.
+                        retry: r.action === "skipped" && !!r.manual,
+                        msg: window.AetherSections.updateDownloadedText(r, "Downloaded.") });
     } catch (e) { stopPoll(); setUpdGate({ phase: "error", info: chk, msg: String(e) }); }
   };
+  const retryUpdate = () => { const api = getApi(); if (api) runUpdateFlow(api, true, true); };
   const chooseAutoUpdate = async (yes) => {
     const api = getApi();
     try { await api?.set_auto_update?.(yes); } catch {}
@@ -1860,7 +1872,7 @@ function App() {
       {BoardSubmit && <BoardSubmit open={submitOpen} onClose={() => setSubmitOpen(false)} />}
 
       {/* Auto-update gate: first-run opt-out prompt + auto-install overlay. */}
-      <UpdateGate gate={updGate} onChoose={chooseAutoUpdate} onDismiss={dismissUpdate}/>
+      <UpdateGate gate={updGate} onChoose={chooseAutoUpdate} onDismiss={dismissUpdate} onRetry={retryUpdate}/>
     </>
   );
 

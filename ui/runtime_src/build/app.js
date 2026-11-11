@@ -824,7 +824,8 @@
   function UpdateGate({
     gate,
     onChoose,
-    onDismiss
+    onDismiss,
+    onRetry
   }) {
     if (!gate || gate.phase === "idle") return null;
     // Above the setup wizard (zIndex 9999): on a true first run the update
@@ -869,8 +870,11 @@
         width: "40%"
       }
     })), dismissable && /*#__PURE__*/React.createElement("div", {
-      className: "mt-4 flex justify-end"
-    }, /*#__PURE__*/React.createElement("button", {
+      className: "mt-4 flex justify-end gap-2"
+    }, gate.retry && onRetry && /*#__PURE__*/React.createElement("button", {
+      onClick: onRetry,
+      className: btnPrimary
+    }, "Try again"), /*#__PURE__*/React.createElement("button", {
       onClick: onDismiss,
       className: btnGhost
     }, gate.phase === "done" ? "OK" : "Dismiss"))));
@@ -909,7 +913,9 @@
       info: null,
       msg: ""
     });
-    const runUpdateFlow = async (api, showChecking) => {
+    // `manual` is true only when the user asked (the Try again button below):
+    // the launch-time flow never passes it, so it never retries a failed install.
+    const runUpdateFlow = async (api, showChecking, manual) => {
       if (showChecking) setUpdGate({
         phase: "updating",
         info: null,
@@ -961,7 +967,7 @@
         }
       };
       try {
-        const r = await api.apply_update(chk.asset_url, chk.asset_name, chk.asset_size, chk.asset_sha256);
+        const r = await api.apply_update(chk.asset_url, chk.asset_name, chk.asset_size, chk.asset_sha256, !!manual);
         stopPoll();
         if (!r || !r.ok) {
           setUpdGate({
@@ -982,6 +988,9 @@
         });else setUpdGate({
           phase: "done",
           info: chk,
+          // Skipped because this version failed to install before:
+          // nothing was downloaded, and a click may retry it.
+          retry: r.action === "skipped" && !!r.manual,
           msg: window.AetherSections.updateDownloadedText(r, "Downloaded.")
         });
       } catch (e) {
@@ -992,6 +1001,10 @@
           msg: String(e)
         });
       }
+    };
+    const retryUpdate = () => {
+      const api = getApi();
+      if (api) runUpdateFlow(api, true, true);
     };
     const chooseAutoUpdate = async yes => {
       const api = getApi();
@@ -2644,7 +2657,8 @@
     }), /*#__PURE__*/React.createElement(UpdateGate, {
       gate: updGate,
       onChoose: chooseAutoUpdate,
-      onDismiss: dismissUpdate
+      onDismiss: dismissUpdate,
+      onRetry: retryUpdate
     }));
 
     // Provide the capability context for the next wave of workspaces. When the

@@ -205,6 +205,21 @@ def test_health_is_not_probed_outside_an_installed_mac_build(monkeypatch):
     assert w.asked == 0
 
 
+def test_launch_pid_is_recorded_before_the_heavy_imports():
+    """An update that hangs importing hid/webview must already have its pid on
+    record (the helper also finds it by path; this is the cheap half)."""
+    src = open(os.path.join(ROOT, "app_web.py"), encoding="utf-8").read()
+    head = src[:src.index("\nimport hid\n")]
+    assert "_updater_early.macos_note_launch()" in head
+    assert head.index('if __name__ == "__main__":') < head.index("macos_note_launch()")
+    for heavy in ("import hid", "import webview", "from aula_device"):
+        assert heavy not in head
+    # updater itself must stay importable without any of them.
+    upd = open(os.path.join(ROOT, "updater.py"), encoding="utf-8").read()
+    for heavy in ("import hid", "import webview"):
+        assert heavy not in upd
+
+
 def test_main_records_the_launch_pid_after_the_instance_guard():
     src = open(os.path.join(ROOT, "app_web.py"), encoding="utf-8").read()
     main = src[src.index("def main():"):]

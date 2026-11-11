@@ -42,16 +42,35 @@ not_root = pytest.mark.skipif(hasattr(os, "geteuid") and os.geteuid() == 0,
                               reason="root ignores directory permissions")
 
 
+def _ps_usable():
+    """The helper identifies a process by asking /bin/ps for its executable.
+    A Seatbelt sandbox refuses to run ps at all (it is setuid), and then the
+    helper - correctly - signals nothing, so the tests that expect a process
+    to be stopped can only run where ps does."""
+    try:
+        cp = subprocess.run(["/bin/ps", "-p", str(os.getpid()), "-o", "comm="],
+                            capture_output=True, timeout=10)
+        return cp.returncode == 0 and bool(cp.stdout.strip())
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+needs_ps = pytest.mark.skipif(not (IS_MAC and _ps_usable()),
+                              reason="/bin/ps is not runnable here (sandbox)")
+
+
 # ------------------------------------------------------------------ helpers --
-def make_app(parent, ver, bundle_id=BUNDLE_ID, name="AetherHE.app", sign=True):
+def make_app(parent, ver, bundle_id=BUNDLE_ID, name="AetherHE.app", sign=True,
+             exe_src="/usr/bin/true"):
     """A minimal but REAL bundle: a genuine Mach-O executable (a copy of
-    /usr/bin/true), an Info.plist and a resource, ad-hoc signed the way
-    build_macos.sh signs the shipping app."""
+    /usr/bin/true - or of /bin/sleep for an app that must keep running), an
+    Info.plist and a resource, ad-hoc signed the way build_macos.sh signs the
+    shipping app."""
     app = os.path.join(str(parent), name)
     os.makedirs(os.path.join(app, "Contents", "MacOS"))
     os.makedirs(os.path.join(app, "Contents", "Resources"))
     exe = os.path.join(app, "Contents", "MacOS", "AetherHE")
-    shutil.copyfile("/usr/bin/true", exe)
+    shutil.copyfile(exe_src, exe)
     os.chmod(exe, 0o755)
     with open(os.path.join(app, "Contents", "Resources", "marker.txt"), "w") as f:
         f.write(ver)
@@ -163,6 +182,7 @@ def _clean_state(monkeypatch, tmp_path):
     monkeypatch.setattr(updater, "_MACOS_OPENER", "")
     monkeypatch.setattr(updater, "_macos_swap_started", False)
     monkeypatch.setattr(updater, "_macos_last_helper", None)
+    monkeypatch.setattr(updater, "_installer_proc", None)
     home = tmp_path / "home"
     (home / "Downloads").mkdir(parents=True)
     monkeypatch.setenv("HOME", str(home))
@@ -471,13 +491,14 @@ def test_stage_clears_leftovers_from_an_earlier_attempt(tmp_path):
 # Run for real: /bin/sh, the script text updater.py ships, real renames, real
 # codesign. Layout mirrors what _macos_stage/_macos_launch_swap produce.
 class Swap:
-    def __init__(self, tmp_path, opener_path, new_ver="9.9.9"):
+    def __init__(self, tmp_path, opener_path, new_ver="9.9.9", new_exe="/usr/bin/true"):
         self.parent = tmp_path / "Applications"
         self.parent.mkdir()
         self.app = make_app(self.parent, "1.0.0")
         self.stage = str(self.parent / (updater._MACOS_STAGE_PREFIX + "test"))
         os.makedirs(os.path.join(self.stage, "payload"))
-        self.new = make_app(os.path.join(self.stage, "payload"), new_ver)
+        self.new = make_app(os.path.join(self.stage, "payload"), new_ver,
+                            exe_src=new_exe)
         self.backup = os.path.join(self.stage, "previous.app")
         self.log = str(tmp_path / "update.log")
         self.script = os.path.join(self.stage, "swap.sh")
@@ -556,6 +577,8 @@ def test_helper_gives_up_if_the_app_never_exits(tmp_path, opener, sleeper):
     assert opened() == [], "the app is still running — must not open a second copy"
     assert not os.path.exists(s.stage)
     assert "nothing was changed" in s.logtext()
+    assert s.failed_version() is None, \
+        "nothing was attempted: this version did not FAIL to install"
 
 
 @mac_only
@@ -612,6 +635,7 @@ def test_helper_changes_nothing_when_the_old_bundle_cannot_be_moved(tmp_path, op
         assert rc == 5, s.logtext()
         assert app_version(s.app) == "1.0.0" and signature_ok(s.app)
         assert opened() == [s.app]
+        assert s.failed_version() is None, "nothing was changed: no failure record"
     finally:
         os.chmod(str(s.parent), 0o755)
 
@@ -624,6 +648,7 @@ def test_helper_changes_nothing_when_the_staged_bundle_is_gone(tmp_path, opener)
     assert s.run(dead_pid()) == 4
     assert app_version(s.app) == "1.0.0" and signature_ok(s.app)
     assert opened() == [s.app]
+    assert s.failed_version() is None, "nothing was changed: no failure record"
 
 
 @mac_only
@@ -936,42 +961,164 @@ def test_helper_rolls_back_when_the_new_app_never_reports_healthy(tmp_path):
     assert s.failed_version() == "9.9.9"
     log = s.logtext()
     assert "did not report" in log and "previous version restored" in log
-    assert "pid is not known" in log
+    assert "nothing to stop" in log
+
+
+def _alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
+def _wait_dead(pid, seconds=5):
+    deadline = time.time() + seconds
+    while time.time() < deadline:
+        if not _alive(pid):
+            return True
+        time.sleep(0.1)
+    return False
+
+
+def _hung_app_opener(tmp_path, write_pid=True, ignore_term=False):
+    """An `open` whose FIRST call (the update) starts the bundle's own
+    executable - a copy of /bin/sleep, so it runs from INSIDE the bundle, as
+    the real app does - and never reports healthy. Later calls (the restored
+    app) only record: whether the hung process is still alive at that moment,
+    and what the failure record says."""
+    pidfile = tmp_path / "launching-9.9.9"
+    realpid = tmp_path / "hung.pid"
+    run = '"$1/Contents/MacOS/AetherHE" 120 >/dev/null 2>&1'
+    if ignore_term:
+        run = "(trap '' TERM; exec " + run + ")"       # ignored across exec
+    body = (
+        f'if [ ! -e "{tmp_path}/started" ]; then : > "{tmp_path}/started"\n'
+        f'  {run} &\n'
+        f'  echo $! > "{realpid}"\n'
+        + (f'  echo $! > "{pidfile}"\n' if write_pid else '')
+        + 'else\n'
+        f'  if kill -0 "$(cat "{realpid}")" 2>/dev/null; then echo alive; else echo gone; fi '
+        f'>> "{tmp_path}/at-reopen"\n'
+        'fi')
+    path, opened = silent_opener(tmp_path, body)
+    return path, opened, pidfile, realpid
+
+
+def _kill_file_pid(f):
+    try:
+        os.kill(int(f.read_text()), 9)
+    except (OSError, ValueError):
+        pass
 
 
 @mac_only
+@needs_ps
 def test_helper_stops_the_unhealthy_new_app_when_it_knows_its_pid(tmp_path):
     """The new app got far enough to write its pid, then hung. It is stopped
-    before its bundle is moved away; nothing else is ever signalled."""
-    pidfile = tmp_path / "launching-9.9.9"
-    path, opened = silent_opener(
-        tmp_path,
-        # Only the FIRST call (the update) starts the hung "app".
-        f'if [ ! -e "{tmp_path}/started" ]; then : > "{tmp_path}/started"; '
-        f'/bin/sleep 120 >/dev/null 2>&1 & echo $! > "{pidfile}"; fi')
-    s = Swap(tmp_path, path)
+    before its bundle is moved away, and is GONE before the previous version
+    is reopened."""
+    path, opened, pidfile, realpid = _hung_app_opener(tmp_path)
+    s = Swap(tmp_path, path, new_exe="/bin/sleep")
     s.health_wait = 1
     assert s.pidfile == str(pidfile)
     pidfile.write_text("1\n")                    # stale: must be cleared, never used
     try:
         assert s.run(dead_pid()) == 10, s.logtext()
-        hung = int(pidfile.read_text())
-        assert hung > 1
-        deadline = time.time() + 5
-        while time.time() < deadline:
-            try:
-                os.kill(hung, 0)
-            except ProcessLookupError:
-                break
-            time.sleep(0.1)
-        else:
-            raise AssertionError("the hung new app was left running")
+        hung = int(realpid.read_text())
+        assert hung > 1 and int(pidfile.read_text()) == hung
+        assert _wait_dead(hung), "the hung new app was left running"
     finally:
-        try:
-            os.kill(int(pidfile.read_text()), 9)
-        except (OSError, ValueError):
-            pass
-    assert "stopped the updated app" in s.logtext()
+        _kill_file_pid(realpid)
+    assert f"stopped the updated app (pid {hung})" in s.logtext()
+    assert (tmp_path / "at-reopen").read_text().split() == ["gone"], \
+        "the previous version was reopened while the update was still running"
+    assert app_version(s.app) == "1.0.0" and signature_ok(s.app)
+
+
+@mac_only
+def test_helper_never_signals_a_pid_that_is_not_this_app(tmp_path, sleeper):
+    """The pid file names a live process - but one that is NOT running from
+    the bundle (a recycled pid, a stale file). It must not be touched."""
+    bystander = sleeper()                        # /bin/sleep: not inside $APP
+    pidfile = tmp_path / "launching-9.9.9"
+    path, opened = silent_opener(tmp_path, f'echo {bystander.pid} > "{pidfile}"')
+    s = Swap(tmp_path, path)
+    s.health_wait = 1
+    assert s.run(dead_pid()) == 10, s.logtext()
+    time.sleep(0.5)
+    assert bystander.poll() is None, "the helper killed a process that is not ours"
+    log = s.logtext()
+    assert f"pid {bystander.pid} from the launch file is not a running copy" in log
+    assert "stopped the updated app" not in log and "killed the updated app" not in log
+    assert app_version(s.app) == "1.0.0" and signature_ok(s.app)
+
+
+@mac_only
+@needs_ps
+def test_identity_is_the_executable_path_not_the_name(tmp_path):
+    """A process with the right executable NAME but from another bundle (a
+    second copy of the app elsewhere) is not ours either."""
+    other = make_app(tmp_path / "elsewhere", "1.0.0", exe_src="/bin/sleep")
+    stranger = subprocess.Popen([os.path.join(other, "Contents", "MacOS", "AetherHE"), "120"])
+    pidfile = tmp_path / "launching-9.9.9"
+    path, opened = silent_opener(tmp_path, f'echo {stranger.pid} > "{pidfile}"')
+    try:
+        s = Swap(tmp_path, path)
+        s.health_wait = 1
+        assert s.run(dead_pid()) == 10, s.logtext()
+        time.sleep(0.5)
+        assert stranger.poll() is None, "another copy of the app was killed"
+        assert "is not a running copy" in s.logtext()
+    finally:
+        stranger.kill()
+        stranger.wait()
+
+
+@mac_only
+@needs_ps
+def test_helper_finds_an_app_that_hung_before_writing_its_pid(tmp_path):
+    """No pid file at all: the app hung during import. It still holds the
+    single-instance lock, so the restored app would exit on it - the helper
+    finds the process by its executable path instead."""
+    path, opened, pidfile, realpid = _hung_app_opener(tmp_path, write_pid=False)
+    s = Swap(tmp_path, path, new_exe="/bin/sleep")
+    s.health_wait = 1
+    try:
+        assert s.run(dead_pid()) == 10, s.logtext()
+        assert not pidfile.exists()
+        hung = int(realpid.read_text())
+        assert _wait_dead(hung), "the hung new app was left running"
+    finally:
+        _kill_file_pid(realpid)
+    assert f"stopped the updated app (pid {hung})" in s.logtext()
+    assert (tmp_path / "at-reopen").read_text().split() == ["gone"]
+    assert app_version(s.app) == "1.0.0" and signature_ok(s.app)
+    assert opened() == [s.app, s.app]
+
+
+@mac_only
+@needs_ps
+def test_helper_waits_for_a_kill_9_to_take_effect_before_reopening(tmp_path):
+    """The hung app ignores SIGTERM. kill -9 is asynchronous: the helper must
+    see the process gone before it moves bundles and calls `open`, or
+    LaunchServices just activates the dying app."""
+    path, opened, pidfile, realpid = _hung_app_opener(tmp_path, ignore_term=True)
+    s = Swap(tmp_path, path, new_exe="/bin/sleep")
+    s.health_wait = 1
+    try:
+        assert s.run(dead_pid()) == 10, s.logtext()
+        hung = int(realpid.read_text())
+        assert _wait_dead(hung), "the hung new app survived"
+    finally:
+        _kill_file_pid(realpid)
+    log = s.logtext()
+    assert f"killed the updated app (pid {hung})" in log
+    assert log.index("killed the updated app") < log.index("the updated app has exited") \
+        < log.index("previous version restored"), "restored without seeing it gone"
+    assert (tmp_path / "at-reopen").read_text().split() == ["gone"]
     assert app_version(s.app) == "1.0.0" and signature_ok(s.app)
 
 
@@ -982,8 +1129,209 @@ def test_helper_ignores_a_pid_file_that_is_not_a_pid(tmp_path):
     s = Swap(tmp_path, path)
     s.health_wait = 1
     assert s.run(dead_pid()) == 10, s.logtext()
-    assert "pid is not known" in s.logtext()
+    assert "nothing to stop" in s.logtext()
     assert app_version(s.app) == "1.0.0"
+
+
+# --------------------------------- the record is written before the reopen --
+def _recording_opener(tmp_path, failmark):
+    """An `open` that never reports healthy and notes, on every call, what the
+    failure record says at that moment."""
+    seen = tmp_path / "record-at-open"
+    path, opened = silent_opener(
+        tmp_path,
+        f'if [ -f "{failmark}" ]; then cat "{failmark}"; else echo none; fi >> "{seen}"')
+    return path, opened, (lambda: seen.read_text().split() if seen.exists() else [])
+
+
+@mac_only
+def test_failure_is_on_record_before_the_restored_app_is_reopened(tmp_path):
+    """The restored app checks for updates as it starts. If the record were
+    written after `open`, it could find none and retry the same update."""
+    path, opened, seen = _recording_opener(tmp_path, tmp_path / "failed-version")
+    s = Swap(tmp_path, path)
+    s.health_wait = 1
+    assert s.run(dead_pid()) == 10, s.logtext()
+    assert opened() == [s.app, s.app]
+    assert seen() == ["none", "9.9.9"], \
+        "open #1 is the update (no record yet); open #2 must already see the record"
+
+
+@mac_only
+def test_failure_is_on_record_before_reopening_after_a_failed_verification(tmp_path):
+    path, opened, seen = _recording_opener(tmp_path, tmp_path / "failed-version")
+    s = Swap(tmp_path, path)
+    with open(os.path.join(s.new, "Contents", "Resources", "marker.txt"), "a") as f:
+        f.write("corrupt")
+    assert s.run(dead_pid()) == 7, s.logtext()
+    assert opened() == [s.app] and seen() == ["9.9.9"]
+
+
+# --------------------------------------------- "nothing was changed" exits --
+@mac_only
+def test_nothing_changed_exits_keep_an_existing_record_untouched(tmp_path, opener, sleeper):
+    """They neither write a record nor clear one that an earlier, real
+    rollback left."""
+    path, opened = opener
+    s = Swap(tmp_path, path)
+    with open(s.failmark, "w") as f:
+        f.write("9.9.8\n")
+    assert s.run(sleeper().pid, timeout=1) == 3
+    assert s.failed_version() == "9.9.8"
+
+
+@mac_only
+def test_a_slow_quit_does_not_block_or_poison_the_next_attempt(
+        tmp_path, monkeypatch, opener, sleeper):
+    """Exit 3: the app did not quit in time, the helper gave up and nothing
+    was changed. The app is STILL RUNNING with its in-progress flag set, and
+    the helper cannot reach into it - a later click must still work, and no
+    failure may be on record (auto-update may try again too)."""
+    path, opened = opener
+    rel = Release(tmp_path, monkeypatch, path, sleeper)
+    monkeypatch.setattr(updater, "_MACOS_EXIT_TIMEOUT", 1)
+    assert updater.apply_update(rel.url).get("quit") is True
+    first = updater._macos_last_helper
+    # While the helper is still waiting, a second call is refused ...
+    assert updater.apply_update(rel.url, manual=True) == \
+        {"ok": False, "error": "update already in progress"}
+    assert first.wait(timeout=30) == 3            # ... the app never quit
+    assert updater._macos_swap_started is True, "precondition: the flag is stale"
+    assert _failure_record(rel) is None, "nothing was changed: not a failed install"
+    assert app_version(rel.app) == "1.0.0" and leftovers(rel.parent) == []
+
+    monkeypatch.setattr(updater, "_MACOS_EXIT_TIMEOUT", 60)
+    res = updater.apply_update(rel.url, manual=True)
+    assert res == {"ok": True, "action": "installer_launched", "quit": True}, res
+    assert updater._macos_last_helper is not first
+    rel.quit_app()
+    assert updater._macos_last_helper.wait(timeout=30) == 0
+    assert app_version(rel.app) == "9.9.9"
+
+
+@mac_only
+def test_a_slow_quit_lets_the_next_launch_auto_update_again(
+        tmp_path, monkeypatch, opener, sleeper):
+    path, opened = opener
+    rel = Release(tmp_path, monkeypatch, path, sleeper)
+    monkeypatch.setattr(updater, "_MACOS_EXIT_TIMEOUT", 1)
+    assert updater.apply_update(rel.url).get("quit") is True
+    assert updater._macos_last_helper.wait(timeout=30) == 3
+    monkeypatch.setattr(updater, "_MACOS_EXIT_TIMEOUT", 60)
+    res = updater.apply_update(rel.url)                    # NOT manual
+    assert res.get("quit") is True and res.get("action") != "skipped", res
+    rel.quit_app()
+    assert updater._macos_last_helper.wait(timeout=30) == 0
+
+
+def test_swap_pending_is_true_only_while_something_is_in_hand(monkeypatch):
+    class Helper:
+        def __init__(self, rc):
+            self.returncode = rc
+
+        def poll(self):
+            return self.returncode
+
+    assert updater._macos_swap_pending() is False
+    # Staging: flag set, no helper yet.
+    monkeypatch.setattr(updater, "_macos_swap_started", True)
+    assert updater._macos_swap_pending() is True
+    # Helper running.
+    monkeypatch.setattr(updater, "_macos_last_helper", Helper(None))
+    assert updater._macos_swap_pending() is True
+    # Helper gone, we are still here: stale.
+    monkeypatch.setattr(updater, "_macos_last_helper", Helper(3))
+    assert updater._macos_swap_pending() is False
+    assert updater._macos_swap_started is False
+
+
+@mac_only
+def test_the_skipped_launch_result_offers_a_manual_retry_that_works(
+        tmp_path, monkeypatch, opener, sleeper):
+    """What the launch gate does: the automatic call is skipped and says a
+    manual retry is possible; the SAME session then retries with manual=True
+    and the install goes ahead."""
+    path, opened = opener
+    rel = Release(tmp_path, monkeypatch, path, sleeper)
+    _record_failure(rel, "9.9.9")
+    auto = updater.apply_update(rel.url, None, None, None, False)
+    assert auto["ok"] is True and auto["action"] == "skipped" and auto["manual"] is True
+    assert "quit" not in auto and "restart" not in auto and auto["message"]
+    retry = updater.apply_update(rel.url, None, None, None, True)
+    assert retry == {"ok": True, "action": "installer_launched", "quit": True}
+    rel.quit_app()
+    assert updater._macos_last_helper.wait(timeout=30) == 0
+    assert app_version(rel.app) == "9.9.9" and _failure_record(rel) is None
+
+
+def test_the_launch_gate_wires_a_try_again_button_to_a_manual_apply():
+    src = os.path.join(ROOT, "ui", "runtime_src")
+    app = open(os.path.join(src, "src", "app.jsx"), encoding="utf-8").read()
+    # The skipped result turns the retry on ...
+    assert 'retry: r.action === "skipped" && !!r.manual' in app
+    # ... the gate shows a button for it ...
+    assert "{gate.retry && onRetry && (" in app and ">Try again</button>" in app
+    assert "onRetry={retryUpdate}" in app
+    # ... and the button runs the flow with manual=true, which reaches the API.
+    assert "runUpdateFlow(api, true, true)" in app
+    assert "chk.asset_size, chk.asset_sha256, !!manual);" in app
+    # The shipped (compiled) UI carries it too.
+    built = open(os.path.join(src, "build", "app.js"), encoding="utf-8").read()
+    assert "Try again" in built and "retryUpdate" in built and "!!manual" in built
+    shipped = open(os.path.join(ROOT, "ui", "index_runtime.html"), encoding="utf-8").read()
+    assert "retryUpdate" in shipped and "!!manual" in shipped
+
+
+# ------------------------------------------------------------ health wait --
+def test_health_wait_is_ninety_seconds(tmp_path, monkeypatch):
+    """A healthy start measured 4 s; 45 s left too little room for a slow but
+    working one. Both the value passed to the helper and the helper's own
+    default are 90."""
+    assert updater._MACOS_HEALTH_TIMEOUT == 90
+    assert 'HEALTHWAIT="${12:-90}"' in updater._MACOS_SWAP_HELPER
+    seen = {}
+
+    class P:
+        pid = 4242
+
+        def __init__(self, argv, **kw):
+            seen["argv"] = argv
+
+        def poll(self):
+            return 0
+
+    monkeypatch.setattr(updater.subprocess, "Popen", P)
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    updater._macos_launch_swap("/Applications/AetherHE.app", str(stage / "new.app"),
+                               str(stage), "9.9.9")
+    argv = seen["argv"]
+    assert argv[:2] == ["/bin/sh", str(stage / "swap.sh")]
+    assert argv[2 + 11] == "90", "argument 12 is the health wait"
+    assert argv[2 + 10].endswith("healthy-9.9.9") and argv[2 + 12].endswith("launching-9.9.9")
+
+
+@mac_only
+def test_helper_defaults_to_a_long_health_wait_when_none_is_given(tmp_path):
+    """Run for real with the argument empty: after 3 s (well past the old
+    test value) the helper must still be waiting, not rolling back."""
+    path, opened = silent_opener(tmp_path)
+    s = Swap(tmp_path, path)
+    s.health_wait = ""
+    helper = subprocess.Popen(s.argv(dead_pid()))
+    try:
+        deadline = time.time() + 15
+        while not opened() and time.time() < deadline:
+            time.sleep(0.1)
+        time.sleep(3)
+        assert helper.poll() is None and app_version(s.app) == "9.9.9"
+        with open(s.health, "w") as f:
+            f.write("1\n")
+        assert helper.wait(timeout=30) == 0, s.logtext()
+    finally:
+        if helper.poll() is None:
+            helper.kill()
+            helper.wait()
 
 
 @mac_only
@@ -1138,6 +1486,64 @@ def test_concurrent_apply_is_refused_while_one_is_running(tmp_path, monkeypatch)
     assert updater.apply_update(url)["ok"] is True
 
 
+def _windows_release(tmp_path, monkeypatch):
+    """A Windows release whose Setup.exe is 'spawned' into a recording fake."""
+    data = b"MZ-not-really-an-installer" * 50
+    url = ("https://github.com/%s/releases/download/v9.9.9/AetherHE-Setup.exe"
+           % version.GITHUB_REPO)
+    chk = {"ok": True, "latest": "9.9.9", "asset_url": url,
+           "asset_name": "AetherHE-Setup.exe", "asset_size": len(data),
+           "asset_sha256": hashlib.sha256(data).hexdigest()}
+    downloads, spawned = [], []
+
+    def urlopen(req, timeout=None):
+        downloads.append(req.full_url)
+        return _FakeResp(data)
+
+    class Installer:
+        def __init__(self, argv, **kw):
+            self.argv, self.returncode = argv, None
+            spawned.append(self)
+
+        def poll(self):
+            return self.returncode
+
+    monkeypatch.setattr(updater, "platform_kind", lambda: "windows")
+    monkeypatch.setattr(updater, "check_for_update", lambda *a, **k: dict(chk))
+    monkeypatch.setattr(updater.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(updater.tempfile, "gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(updater.subprocess, "Popen", Installer)
+    return url, downloads, spawned
+
+
+def test_windows_second_apply_before_quit_does_not_start_a_second_installer(
+        tmp_path, monkeypatch):
+    """apply_update returns - and releases its lock - once Setup.exe is
+    spawned, about half a second before the app quits. A second call in that
+    gap used to download again and run a second installer over the first."""
+    url, downloads, spawned = _windows_release(tmp_path, monkeypatch)
+    first = updater.apply_update(url)
+    assert first == {"ok": True, "action": "installer_launched", "quit": True}
+    assert len(spawned) == 1 and spawned[0].argv[1:] == ["/SILENT", "/NOCANCEL"]
+
+    for manual in (False, True):
+        again = updater.apply_update(url, manual=manual)
+        assert again == {"ok": False, "error": "update already in progress"}
+    assert len(spawned) == 1, "a second installer was started"
+    assert len(downloads) == 1, "the refused call must not download either"
+
+
+def test_windows_installer_that_exited_without_replacing_us_allows_a_retry(
+        tmp_path, monkeypatch):
+    """Same staleness rule as the macOS helper: an installer that has exited
+    while this process is still alive did not update anything."""
+    url, downloads, spawned = _windows_release(tmp_path, monkeypatch)
+    assert updater.apply_update(url)["quit"] is True
+    spawned[0].returncode = 1
+    assert updater.apply_update(url)["quit"] is True
+    assert len(spawned) == 2
+
+
 def test_lock_is_released_when_apply_fails_or_raises(tmp_path, monkeypatch):
     url, data, revealed = _fallback_release(tmp_path, monkeypatch)
 
@@ -1269,8 +1675,15 @@ def test_only_the_click_surfaces_ask_for_a_manual_retry():
     assert "upd.info.asset_name, null, null, true)" in read("src", "sections.jsx")
     assert "info.asset_size, info.asset_sha256, true)" in read("workspaces", "settings.jsx")
     app = read("src", "app.jsx")
-    assert "chk.asset_size, chk.asset_sha256);" in app
+    # One call site; whether it is a click is decided by its caller ...
+    assert "chk.asset_size, chk.asset_sha256, !!manual);" in app
     assert app.count("api.apply_update(") == 1
+    # ... and only the gate's Try again button says it is. The two launch-time
+    # entries (saved preference, first-run "yes") never do.
+    assert "runUpdateFlow(api, false);" in app
+    assert "if (yes) await runUpdateFlow(api, true);" in app
+    assert app.count("runUpdateFlow(") == 3          # exactly three callers
+    assert app.count("runUpdateFlow(api, true, true)") == 1
     api = open(os.path.join(ROOT, "app_web.py"), encoding="utf-8").read()
     assert "manual=bool(manual))" in api
 
@@ -1281,7 +1694,18 @@ def test_helper_script_is_posix_sh_and_self_contained():
     assert s.startswith("#!/bin/sh\n")
     # Nothing from the bundle being replaced, and no interpreter that may be
     # missing on a stock Mac.
-    for forbidden in ("python", "bash", "osascript", "Contents/MacOS"):
+    for forbidden in ("python", "bash", "osascript"):
         assert forbidden not in s, f"helper must not depend on {forbidden}"
+    # The bundle's executable folder is named exactly once - to COMPARE a
+    # process's executable path against. It is never run.
+    assert s.count("Contents/MacOS") == 1
+    assert 'EXEDIR="$APP/Contents/MacOS/"' in s
+    for line in s.splitlines():
+        if "EXEDIR" in line and "EXEDIR=" not in line and not line.lstrip().startswith("#"):
+            assert line.strip() == '"$EXEDIR"*) return 0 ;;' \
+                or line.strip() == '"$EXEDIR"*) echo "$p" ;;', line
+    # Every signal is preceded by the identity check: the only pids ever put
+    # in $TARGETS come from our_pids or passed is_ours.
+    assert "is_ours \"$NEWPID\"" in s and "kill \"$NEWPID\"" not in s
     if os.path.exists("/bin/sh"):
         assert subprocess.run(["/bin/sh", "-n", "-c", s]).returncode == 0

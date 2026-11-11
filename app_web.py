@@ -22,6 +22,14 @@ import boot
 from boot import user_data_dir
 if __name__ == "__main__":
     boot.install_file_logging()
+    # Installed macOS build: put this process's pid on record for the update
+    # helper NOW, before the third-party imports below. An update that hangs
+    # in one of them would otherwise never be nameable by pid (the helper also
+    # looks it up by executable path, so this is the fast path, not the only
+    # one). updater is stdlib-only; this never raises.
+    import updater as _updater_early
+    _updater_early.macos_note_launch()
+    del _updater_early
 
 import hid
 import webview
@@ -3495,8 +3503,10 @@ def main():
             log.warning("Aether is already running but could not be reached")
             inst.notify_unreachable(tray.APP_NAME)
         return
-    # After the instance guard: a refused second launch must not overwrite the
-    # pid the update helper would stop.
+    # Again once the instance guard is held: a refused second launch wrote its
+    # own (now dead) pid at import time; this puts the surviving one back for
+    # a first instance, and is a no-op rewrite otherwise. The helper checks
+    # any pid it reads before signalling it, so a stale one is never acted on.
     updater.macos_note_launch()
     api = Api()
     # Pass an explicit file:// URI: pywebview only treats a string as a local

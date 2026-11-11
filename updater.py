@@ -359,6 +359,31 @@ def _trusted_asset_url(url):
 _apply_lock = threading.Lock()
 _BUSY = "update already in progress"
 
+# Windows: the Setup.exe this process started. apply_update() returns (and
+# releases _apply_lock) as soon as the installer is spawned, a moment before
+# the app quits; a second call in that moment would download again and start a
+# second installer over the first. Same rule as the macOS swap helper: while
+# it runs, later calls are told an update is in progress.
+_installer_proc = None
+
+
+def _installer_pending():
+    """True while an installer started by this process is still running. One
+    that has exited while we are still here did not replace us (it failed, or
+    was dismissed), so a new attempt is allowed."""
+    global _installer_proc
+    p = _installer_proc
+    if p is None:
+        return False
+    try:
+        gone = p.poll() is not None
+    except Exception:
+        gone = False
+    if gone:
+        _installer_proc = None
+        return False
+    return True
+
 
 def apply_update(asset_url=None, asset_name=None, asset_size=None, asset_sha256=None,
                  manual=False):
@@ -395,7 +420,10 @@ def _apply_update(asset_url=None, asset_name=None, asset_size=None, asset_sha256
     failed for this version is retried on a click, never automatically.
     """
     del asset_name, asset_size, asset_sha256      # bridge input: never trusted
+    global _installer_proc
     kind = platform_kind()
+    if _installer_pending():
+        return {"ok": False, "error": _BUSY}
     try:
         chk = check_for_update()
     except Exception as e:
@@ -456,7 +484,7 @@ def _apply_update(asset_url=None, asset_name=None, asset_size=None, asset_sha256
     ddir = None
     mac_clear_failed = False
     if kind == "macos":
-        if _macos_swap_started:
+        if _macos_swap_pending():
             return {"ok": False, "error": _BUSY}
         mac_app = _macos_running_bundle()
         mac_blocker = _macos_install_blocker(mac_app)
@@ -507,8 +535,8 @@ def _apply_update(asset_url=None, asset_name=None, asset_size=None, asset_sha256
         if kind == "windows":
             # Inno Setup: /SILENT shows a progress bar but no wizard; it stops
             # the running app, upgrades, and (per installer.iss) relaunches.
-            subprocess.Popen([dest, "/SILENT", "/NOCANCEL"],
-                             close_fds=True)
+            _installer_proc = subprocess.Popen([dest, "/SILENT", "/NOCANCEL"],
+                                               close_fds=True)
             return {"ok": True, "action": "installer_launched", "quit": True}
         if kind == "flatpak":
             # The sandbox can't install flatpaks itself; run it on the host
@@ -568,8 +596,11 @@ MACOS_BUNDLE_ID = "io.github.mrwhosnexus.AetherHE"
 # leaving the installed app exactly as it was).
 _MACOS_EXIT_TIMEOUT = 60
 # How long the helper waits, after relaunching, for the NEW app to say it is
-# up (macos_note_healthy) before it puts the previous version back.
-_MACOS_HEALTH_TIMEOUT = 45
+# up (macos_note_healthy) before it puts the previous version back. Generous
+# on purpose: a healthy start was measured at 4 s on the built bundle, and a
+# slow one (cold disk, first launch after a reboot, Gatekeeper's check of the
+# new bundle) must not be mistaken for a broken one and rolled back.
+_MACOS_HEALTH_TIMEOUT = 90
 # `open` relaunches the app and reveals a manual download. Tests replace it:
 # they must never start a real app.
 _MACOS_OPENER = "/usr/bin/open"
@@ -582,6 +613,32 @@ _MACOS_STAGE_PREFIX = ".AetherHE-update-"
 # the tests.
 _macos_swap_started = False
 _macos_last_helper = None
+
+
+def _macos_swap_pending():
+    """True while a swap is in hand: staging is running, or the helper is
+    waiting for this process to quit.
+
+    The helper cannot reach back into this process, so a helper that gave up
+    (exit 3: we were too slow to quit, nothing was changed) would otherwise
+    leave the flag set for as long as the app keeps running, and every later
+    click would be told "update already in progress". The helper is our child:
+    if it has exited while we are still here, nothing is in progress."""
+    global _macos_swap_started
+    if not _macos_swap_started:
+        return False
+    h = _macos_last_helper
+    if h is not None:
+        try:
+            gone = h.poll() is not None
+        except Exception:
+            gone = False
+        if gone:
+            log.info("update: the swap helper exited (%s) and the app is still "
+                     "running - a new attempt is allowed", h.returncode)
+            _macos_swap_started = False
+            return False
+    return True
 
 
 class UpdateRejected(Exception):
@@ -799,10 +856,19 @@ def _macos_verify_staged(staged, expect_version):
 # reported healthy; 11 the rejected update could not be cleared out of the
 # way, so the previous version was deliberately NOT moved back (it is intact
 # in the staging folder).
+#
+# 3, 4 and 5 are "nothing was changed": no swap was attempted, so they leave
+# no failure record - the version did not fail to install, it was never tried.
+# Every other non-zero exit is a swap that was rolled back (or could not be),
+# and the record is written BEFORE the previous version is reopened, so that
+# app can never start, find no record and try the same update again.
 _MACOS_SWAP_HELPER = r'''#!/bin/sh
 # AETHER HE update helper - written and started by updater.py, deletes itself.
 PID="$1"; APP="$2"; NEW="$3"; BACKUP="$4"; TIMEOUT="$5"; LOG="$6"; OPENER="$7"; STAGE="$8"
-FAILMARK="$9"; VERSION="${10}"; HEALTH="${11}"; HEALTHWAIT="${12:-45}"; PIDFILE="${13}"
+FAILMARK="$9"; VERSION="${10}"; HEALTH="${11}"; HEALTHWAIT="${12:-90}"; PIDFILE="${13}"
+# Where the app's own executables live. Only ever COMPARED against (see
+# is_ours) - nothing in the bundle is run from here.
+EXEDIR="$APP/Contents/MacOS/"
 exec >>"$LOG" 2>&1
 say() { echo "$(date '+%Y-%m-%d %H:%M:%S') swap[$$]: $*"; }
 relaunch() {
@@ -811,6 +877,14 @@ relaunch() {
 }
 record_failure() {
   [ -n "$FAILMARK" ] && echo "$VERSION" > "$FAILMARK"
+}
+unchanged() {
+  # No swap was attempted and the installed app is exactly as it was. That is
+  # not a failed install of $VERSION: no record, so the next attempt (on
+  # launch or on a click) is free to try.
+  rm -rf "$STAGE"
+  say "exit $1"
+  exit "$1"
 }
 finish() {
   rm -rf "$STAGE"
@@ -836,6 +910,9 @@ restore() {
   fi
   if mv "$BACKUP" "$APP"; then
     say "previous version restored"
+    # On record BEFORE the previous version starts: it checks for updates as
+    # it launches, and must already find this one marked as failed.
+    record_failure
     relaunch
     finish "$1"
   fi
@@ -856,23 +933,75 @@ wait_healthy() {
   done
   return 0
 }
+is_ours() {
+  # True only for a LIVE process whose executable is inside the bundle at
+  # $APP. A pid read from a file proves nothing by itself: the file can be
+  # stale, and the number may by now belong to something else entirely.
+  kill -0 "$1" 2>/dev/null || return 1
+  exe=$(/bin/ps -p "$1" -o comm= 2>/dev/null) || return 1
+  case "$exe" in
+    "$EXEDIR"*) return 0 ;;
+  esac
+  return 1
+}
+our_pids() {
+  # Every process running from inside the bundle, found by executable path.
+  # This is what finds an app that hung before it could write its pid.
+  /bin/ps -axo pid=,comm= 2>/dev/null | while read -r p exe; do
+    case "$exe" in
+      "$EXEDIR"*) echo "$p" ;;
+    esac
+  done
+}
+wait_gone() {
+  # Wait up to $1 ticks of 0.2s for every pid in $TARGETS to be gone.
+  k=0
+  while :; do
+    alive=""
+    for t in $TARGETS; do
+      kill -0 "$t" 2>/dev/null && alive="$alive $t"
+    done
+    [ -z "$alive" ] && return 0
+    [ "$k" -ge "$1" ] && return 1
+    k=$((k + 1)); sleep 0.2
+  done
+}
 stop_new() {
-  # Stop the new app before its bundle is moved away - but only a process we
-  # can name: the pid it wrote itself after this helper cleared the file.
+  # Stop the new app before its bundle is moved away, and wait until it is
+  # really gone: it holds the single-instance lock, and `open` on a bundle
+  # whose process is still dying just activates that process. Only processes
+  # that ARE this app (is_ours) are ever signalled.
+  TARGETS=""
+  for t in $(our_pids); do TARGETS="$TARGETS $t"; done
   NEWPID=""
   [ -n "$PIDFILE" ] && [ -f "$PIDFILE" ] && NEWPID=$(cat "$PIDFILE" 2>/dev/null)
   case "$NEWPID" in
-    ''|*[!0-9]*) say "the updated app's pid is not known - leaving any process alone"; return 0 ;;
+    ''|*[!0-9]*) NEWPID="" ;;
   esac
-  [ "$NEWPID" -gt 1 ] || return 0
-  kill "$NEWPID" 2>/dev/null || return 0
-  say "stopped the updated app (pid $NEWPID)"
-  k=0
-  while kill -0 "$NEWPID" 2>/dev/null; do
-    if [ "$k" -ge 25 ]; then kill -9 "$NEWPID" 2>/dev/null; break; fi
-    k=$((k + 1)); sleep 0.2
+  if [ -n "$NEWPID" ]; then
+    if [ "$NEWPID" -gt 1 ] 2>/dev/null && is_ours "$NEWPID"; then
+      case " $TARGETS " in
+        *" $NEWPID "*) ;;
+        *) TARGETS="$TARGETS $NEWPID" ;;
+      esac
+    else
+      say "pid $NEWPID from the launch file is not a running copy of this app - not signalling it"
+    fi
+  fi
+  if [ -z "$TARGETS" ]; then
+    say "no running copy of the updated app was found - nothing to stop"
+    return 0
+  fi
+  for t in $TARGETS; do
+    kill "$t" 2>/dev/null && say "stopped the updated app (pid $t)"
   done
-  return 0
+  if wait_gone 25; then say "the updated app has exited"; return 0; fi
+  for t in $TARGETS; do
+    if is_ours "$t"; then kill -9 "$t" 2>/dev/null; say "killed the updated app (pid $t)"; fi
+  done
+  if wait_gone 25; then say "the updated app has exited"; return 0; fi
+  say "the updated app is still running after kill -9 (pids:$TARGETS)"
+  return 1
 }
 
 say "updating $APP (waiting for pid $PID)"
@@ -880,7 +1009,7 @@ ticks=$((TIMEOUT * 5)); i=0
 while kill -0 "$PID" 2>/dev/null; do
   if [ "$i" -ge "$ticks" ]; then
     say "the app is still running after ${TIMEOUT}s - update abandoned, nothing was changed"
-    finish 3
+    unchanged 3
   fi
   i=$((i + 1)); sleep 0.2
 done
@@ -888,13 +1017,13 @@ done
 if [ ! -d "$NEW" ] || [ ! -d "$APP" ]; then
   say "the staged update or the installed app is missing - nothing was changed"
   relaunch
-  finish 4
+  unchanged 4
 fi
 rm -rf "$BACKUP"
 if ! mv "$APP" "$BACKUP"; then
   say "could not move the installed app aside - nothing was changed"
   relaunch
-  finish 5
+  unchanged 5
 fi
 if ! mv "$NEW" "$APP"; then
   say "could not move the update into place"
@@ -985,7 +1114,11 @@ def _macos_write_marker(path):
 
 
 def macos_note_launch():
-    """Call first thing in main(): record this process's pid for the helper.
+    """Record this process's pid for the swap helper. Called as early as the
+    entry script can (before the heavy third-party imports) and again once the
+    single-instance guard is held. Only a hint: the helper signals the pid
+    only after checking it is a live process running from the bundle, and
+    finds the app by executable path when the file is missing or stale.
     Best effort, never raises; returns True if written."""
     if not macos_health_wanted():
         return False
