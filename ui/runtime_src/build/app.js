@@ -331,17 +331,18 @@
   // codes). Rows missing a key are skipped; [] clears the board's pairs. A later
   // row over the SAME two keys (either order) is dropped: the firmware only
   // honours the first pair for a key pair (A=D M2 + D=A M2 acted as A=D M2).
-  // `mode` is the vendor's model NUMBER (1..4); the wire byte is that minus one
-  // (components/socd-model.jsx). Converted exactly once, here.
+  // `mode` is the vendor's model NUMBER (1..4) and is what the bridge takes:
+  // each board's driver turns it into its own wire byte (the Win60 subtracts
+  // one, the others send it as is). See components/socd-model.jsx.
   const {
     SOCD_REV,
-    wireModel: socdWireModel,
+    modelOf: socdModelOf,
     migrateState: migrateSocdState
   } = window.AetherSocd;
   const socdPairsFrom = rows => {
     const seen = new Set();
     return (rows || []).filter(p => p && p.k1 && p.k2).map(p => ({
-      model: socdWireModel(p.mode),
+      model: socdModelOf(p.mode),
       key1: LABEL_TO_CODE[p.k1] || p.k1,
       key2: LABEL_TO_CODE[p.k2] || p.k2
     })).filter(p => {

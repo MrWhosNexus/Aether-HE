@@ -129,13 +129,14 @@ def test_vendor_capture_writes_model2_as_wire_value_1():
     assert list(ours[1:1 + len(body)]) == body
 
 
-def test_ui_converts_the_model_number_exactly_once():
-    """The UI shows and stores 'Model 1'..'Model 4'; the wire carries 0..3.
-    The arithmetic itself is tested in node (tests/test_socd_model.py); this
-    pins that app.jsx routes every pair through it."""
+def test_ui_sends_the_model_number_and_leaves_the_wire_byte_to_the_driver():
+    """The UI shows, stores and SENDS 'Model 1'..'Model 4'. Only the Win60
+    driver knows its frame is zero-based; a conversion in the shared UI also
+    reached the MINI 60 (which raises on 0) and the magnet board (which sent
+    it straight to the keyboard)."""
     src = open(APP_JSX, encoding="utf-8").read()
-    assert "model: socdWireModel(p.mode)" in src, \
-        "app.jsx no longer converts the model number to the wire value"
+    assert "model: socdModelOf(p.mode)" in src
+    assert "socdWireModel" not in src and "wireModel" not in src
 
 
 def test_ui_does_not_default_the_mode_with_or():
@@ -159,24 +160,98 @@ def _win60_api():
     return a
 
 
-@pytest.mark.parametrize("bad", [-1, 4, 5, 99])
+@pytest.mark.parametrize("bad", [-1, 0, 5, 99])
 def test_api_refuses_out_of_range_model(bad):
-    """Model 4 was reaching the firmware, which accepts and ignores it. The
-    range belongs to the Win60 PRCS frame (other boards' set_socd take their
-    own byte), so protocol.build_prcs enforces it and NOTHING is written."""
+    """The bridge takes the model NUMBER 1..4. Wire 4 was reaching the
+    firmware, which accepts and ignores it. The range belongs to the Win60
+    (other boards' set_socd take their own byte), so Win60Driver enforces it
+    and NOTHING is written."""
     api = _win60_api()
     r = api.set_socd([{"model": bad, "key1": "A", "key2": "D"}])
     assert r["ok"] is False and "out of range" in r["error"]
     assert api.dev.writes == [], "a refused model must not put a frame on the wire"
 
 
-@pytest.mark.parametrize("good", [0, 1, 2, 3])
-def test_api_accepts_every_valid_model(good):
+@pytest.mark.parametrize("number", [1, 2, 3, 4])
+def test_win60_writes_model_number_minus_one(number):
     api = _win60_api()
-    r = api.set_socd([{"model": good, "key1": "A", "key2": "D"}])
+    r = api.set_socd([{"model": number, "key1": "A", "key2": "D"}])
     assert r["ok"] is True
     data = [w for w in api.dev.writes if w[1] == 0x24 and w[2] == 0x00]
-    assert data and data[0][6] == 1 and data[0][7] == good
+    assert data and data[0][6] == 1 and data[0][7] == number - 1
+
+
+def test_win60_model_2_reproduces_the_vendor_capture():
+    """End to end from the bridge: 'Model 2' for A + D is `01 01 04 07`."""
+    api = _win60_api()
+    assert api.set_socd([{"model": 2, "key1": "A", "key2": "D"}])["ok"]
+    data = [w for w in api.dev.writes if w[1] == 0x24 and w[2] == 0x00]
+    assert list(data[0][6:10]) == [1, 1, 0x04, 0x07]
+
+
+def test_game_switch_spec_defaults_to_model_1_and_keeps_the_number():
+    import app_web
+    a = app_web.Api.__new__(app_web.Api)
+    spec = a._board_spec({"socd": [{"key1": "A", "key2": "D"},
+                                   {"key1": "W", "key2": "S", "model": 4}]})
+    assert [p["model"] for p in spec["socd"]] == [1, 4]
+
+
+# ------------------- the numbering must not leak into other boards' drivers
+def _socd_api(driver):
+    import threading
+
+    import app_web
+    a = app_web.Api.__new__(app_web.Api)
+    a._lock = threading.RLock()
+    a.km = device_state.KeyMap()
+    a.driver = driver
+    return a
+
+
+@pytest.mark.parametrize("number", [1, 2, 3, 4])
+def test_magnet_receives_the_model_number_unchanged(number):
+    """drivers/magnet.py passes `model` straight into the frame. It got 1..4
+    before the Win60 fix and must still: a zero-based value shifted it."""
+    import protocol_magnet as pm
+    from drivers.magnet import MagnetDriver
+
+    sent = []
+    d = MagnetDriver.__new__(MagnetDriver)
+    d.experimental = True
+    d._send_all = lambda frames: sent.extend(frames)
+    d._require_experimental = lambda feature: None
+    api = _socd_api(d)
+    assert api.set_socd([{"model": number, "key1": "A", "key2": "D"}])["ok"]
+    assert sent == [pm.build_socd(0x04, 0x07, number)]
+
+
+@pytest.mark.parametrize("number", [1, 2, 3, 4])
+def test_mini60_record_takes_every_model_number(number):
+    """protocol_mini60 raises on 0 (SOCD_MODES_KNOWN = 1..4): every value the
+    UI can send must be one it accepts, unchanged."""
+    import protocol_mini60 as p60
+    assert p60.key_record_socd(0x04, 0x07, number)[1] == number
+    with pytest.raises(ValueError):
+        p60.key_record_socd(0x04, 0x07, 0)
+
+
+def test_mini60_never_took_a_model_from_the_bridge():
+    """Why the profile renumbering may assume a Win60: the MINI 60 driver
+    refuses the bridge's pairs outright (no key-table index), so no saved
+    model was ever written to that board through set_socd."""
+    import threading
+
+    import boards
+    from drivers.mini60 import Mini60Driver
+    from test_keyboard_review import ReadableDevice
+    dev = ReadableDevice()
+    d = Mini60Driver(boards.load_registry().by_slug("aula-mini60he-pro"), dev,
+                     threading.RLock())
+    api = _socd_api(d)
+    r = api.set_socd([{"model": 1, "key1": "A", "key2": "D"}])
+    assert r["ok"] is False and "key1_index" in r["error"]
+    assert dev.writes == []
 
 
 # --------------------------------------------------- calibration

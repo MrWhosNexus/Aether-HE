@@ -648,8 +648,8 @@ def build_prcs(prcs_list):
     two packets of 10. Returns a list of payloads.
 
     `model` is the ZERO-based wire value (0..PRCS_MODEL_MAX), not the UI's
-    "Model N" number. Anything else is refused here, before a frame exists,
-    so a 1-based label can never reach the firmware again."""
+    "Model N" number - Win60Driver.set_socd converts (N - 1) before calling
+    this. Anything else is refused here, before a frame exists."""
     if len(prcs_list) > 20:
         # The vendor table is exactly 2 pages x 10 entries; anything past
         # that would be dropped silently while the UI reported success.

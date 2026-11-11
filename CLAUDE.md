@@ -131,13 +131,19 @@ protocol module, `hid.enumerate()`, then exits). Platform differences, all in co
 - Windows-only and inert here: tray, games, music.
 - `ui/assets/logo.icns` is generated (`tools/make_icns.sh`), never committed.
 
-## SOCD model numbering (all boards on the Win60 PRCS path)
-UI and saved profiles hold the vendor's model NUMBER 1..4; the wire byte is number - 1
-(`ui/runtime_src/src/components/socd-model.jsx`, `protocol.PRCS_MODEL_MAX`; capture:
-"Model2" wrote `01 01 04 07`). Builds up to 0.6.4 sent the number verbatim, so profile
-states without `socdRev: 2` are renumbered once on load/import (old 1/2/3 -> 2/3/4, old 4
--> 1) so the keyboard keeps its behaviour. Model meanings (vendor strings): 1 last press
-wins, 2 Key 1 wins, 3 Key 2 wins, 4 neutral.
+## SOCD model numbering
+UI, saved profiles AND the bridge (`set_socd` / `apply_profile_to_board` `model`) hold the
+vendor's model NUMBER 1..4 (`ui/runtime_src/src/components/socd-model.jsx`). The wire byte
+is each DRIVER's business: `Win60Driver.set_socd` sends number - 1 and refuses anything
+outside 1..4 (`protocol.PRCS_MODEL_MAX`; capture: "Model2" wrote `01 01 04 07`); the
+MINI 60 and magnet drivers take the number unchanged (1..4, as before). Never convert in
+shared UI/API code: that leaked the Win60's zero-basing into the other boards.
+Builds up to 0.6.4 sent the stored value verbatim, so profile states without `socdRev: 2`
+are renumbered once on load/import (old 1/2/3 -> 2/3/4, old 4 -> 1, no mode/0 -> 2) so a
+Win60 keeps its behaviour. Profiles are global (no board recorded), so the renumbering
+assumes the Win60 PRCS path, the only one a saved model reached in a normal build (the
+MINI 60 driver refuses the bridge's pairs; magnet SOCD needs `AETHER_EXPERIMENTAL=magnet`).
+Model meanings (vendor strings): 1 last press wins, 2 Key 1 wins, 3 Key 2 wins, 4 neutral.
 
 ## Porting to Windows (current focus)
 Reference repo for the Windows build: https://github.com/MrWhosNexus/WIN60-HE-Mod.git
