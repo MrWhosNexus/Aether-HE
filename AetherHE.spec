@@ -32,6 +32,16 @@ hidden = [
     # which PyInstaller's static analysis can't follow — bundle it explicitly
     # (with tools/ on pathex so the module is resolvable at build time).
     "validate_keymap",
+    # Resolved by NAME from data/board_registry.json's `protocol` field. Nothing
+    # in the tree imports protocol_sonix or protocol_sayo, so PyInstaller's
+    # static analysis cannot see them and the frozen build would silently drop
+    # boards the Flatpak (which copies them explicitly) still supports. Pinned by
+    # tests/test_packaging.py. Same bug class as the 0.3.0 Linux boot-crash.
+    "protocol",
+    "protocol_mini60",
+    "protocol_magnet",
+    "protocol_sonix",
+    "protocol_sayo",
     # pystray picks its backend by name at import time; PyInstaller can't see it.
     "pystray._win32",
     "PIL.Image", "PIL.PngImagePlugin", "PIL.IcoImagePlugin",
