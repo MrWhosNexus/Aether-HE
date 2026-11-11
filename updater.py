@@ -855,10 +855,19 @@ def _macos_verify_staged(staged, expect_version):
 # previous version could not be moved back; 10 the update opened but never
 # reported healthy; 11 the rejected update could not be cleared out of the
 # way, so the previous version was deliberately NOT moved back (it is intact
-# in the staging folder).
+# in the staging folder); 12 the update never reported healthy and a copy of
+# it could not be stopped (or could not be confirmed gone), so NO bundle was
+# moved: the update stays installed and running, and the previous version is
+# intact in the staging folder.
 #
-# 3, 4 and 5 are "nothing was changed": no swap was attempted, so they leave
-# no failure record - the version did not fail to install, it was never tried.
+# 3, 4 and 5 are "nothing was changed": no swap was attempted and the
+# installed app is exactly as it was. 3 and 4 leave no failure record - the
+# version did not fail to install, it was never tried. 5 DOES leave one: a
+# bundle that cannot be moved aside is what a standing refusal looks like
+# (macOS App Management, a permission os.access cannot predict), and without
+# a record an app set to update on launch would download, quit, be refused
+# and relaunch for ever. The record stops the unattended flow only; a click
+# still retries.
 # Every other non-zero exit is a swap that was rolled back (or could not be),
 # and the record is written BEFORE the previous version is reopened, so that
 # app can never start, find no record and try the same update again.
@@ -879,9 +888,10 @@ record_failure() {
   [ -n "$FAILMARK" ] && echo "$VERSION" > "$FAILMARK"
 }
 unchanged() {
-  # No swap was attempted and the installed app is exactly as it was. That is
-  # not a failed install of $VERSION: no record, so the next attempt (on
-  # launch or on a click) is free to try.
+  # No swap was attempted and the installed app is exactly as it was. This
+  # writes no record itself: for exits 3 and 4 that is not a failed install
+  # of $VERSION, so the next attempt (on launch or on a click) is free to
+  # try. Exit 5 records its own failure before coming here.
   rm -rf "$STAGE"
   say "exit $1"
   exit "$1"
@@ -970,7 +980,10 @@ stop_new() {
   # Stop the new app before its bundle is moved away, and wait until it is
   # really gone: it holds the single-instance lock, and `open` on a bundle
   # whose process is still dying just activates that process. Only processes
-  # that ARE this app (is_ours) are ever signalled.
+  # that ARE this app (is_ours) are ever signalled. Returns non-zero when a
+  # process it identified as ours is still there after the bounded waits -
+  # including when ps stopped answering and it can no longer be told apart.
+  # Nothing identified returns 0.
   TARGETS=""
   for t in $(our_pids); do TARGETS="$TARGETS $t"; done
   NEWPID=""
@@ -1022,6 +1035,9 @@ fi
 rm -rf "$BACKUP"
 if ! mv "$APP" "$BACKUP"; then
   say "could not move the installed app aside - nothing was changed"
+  # Likely to be refused again next time: on record (before the app is
+  # reopened) so update-on-launch does not loop on it.
+  record_failure
   relaunch
   unchanged 5
 fi
@@ -1041,7 +1057,14 @@ if ! relaunch; then
 fi
 if ! wait_healthy; then
   say "the updated app did not report that it started within ${HEALTHWAIT}s"
-  stop_new
+  if ! stop_new; then
+    # Its bundle must not be moved out from under a running copy, and the
+    # previous version cannot start while that copy holds the instance lock.
+    say "ROLLBACK NOT ATTEMPTED - the updated app could not be stopped; no bundle was moved, the previous version is intact at $BACKUP"
+    record_failure
+    say "exit 12"
+    exit 12
+  fi
   restore 10
 fi
 say "update installed"

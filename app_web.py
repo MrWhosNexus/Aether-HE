@@ -3503,10 +3503,12 @@ def main():
             log.warning("Aether is already running but could not be reached")
             inst.notify_unreachable(tray.APP_NAME)
         return
-    # Again once the instance guard is held: a refused second launch wrote its
-    # own (now dead) pid at import time; this puts the surviving one back for
-    # a first instance, and is a no-op rewrite otherwise. The helper checks
-    # any pid it reads before signalling it, so a stale one is never acted on.
+    # Again once the instance guard is held, so the file names the instance
+    # that actually runs. It is not kept truthful after that: a later, refused
+    # second launch overwrites it at import time with its own soon-dead pid,
+    # and nothing here rewrites it (macOS delivers no poke to this process).
+    # That is safe - the helper checks any pid it reads before signalling it
+    # and otherwise finds the app by executable path.
     updater.macos_note_launch()
     api = Api()
     # Pass an explicit file:// URI: pywebview only treats a string as a local

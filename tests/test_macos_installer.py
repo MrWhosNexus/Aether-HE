@@ -635,9 +635,38 @@ def test_helper_changes_nothing_when_the_old_bundle_cannot_be_moved(tmp_path, op
         assert rc == 5, s.logtext()
         assert app_version(s.app) == "1.0.0" and signature_ok(s.app)
         assert opened() == [s.app]
-        assert s.failed_version() is None, "nothing was changed: no failure record"
+        assert s.failed_version() == "9.9.9", \
+            "a refused move is likely to be refused again: it must be on record"
+        assert "nothing was changed" in s.logtext()
     finally:
         os.chmod(str(s.parent), 0o755)
+
+
+@mac_only
+@not_root
+def test_a_refused_move_is_on_record_before_the_app_is_reopened(tmp_path):
+    """Exit 5 reopens the existing app, which checks for updates as it
+    starts: the record must already be there, or update-on-launch loops."""
+    path, opened, seen = _recording_opener(tmp_path, tmp_path / "failed-version")
+    s = Swap(tmp_path, path)
+    os.chmod(str(s.parent), 0o555)
+    try:
+        assert s.run(dead_pid()) == 5, s.logtext()
+    finally:
+        os.chmod(str(s.parent), 0o755)
+    assert opened() == [s.app]
+    assert seen() == ["9.9.9"]
+    assert app_version(s.app) == "1.0.0" and signature_ok(s.app)
+
+
+@mac_only
+def test_a_missing_staged_bundle_leaves_no_record(tmp_path, opener):
+    """Exit 4 stays record-free: that version was never tried."""
+    path, opened = opener
+    s = Swap(tmp_path, path)
+    shutil.rmtree(s.new)
+    assert s.run(dead_pid()) == 4, s.logtext()
+    assert s.failed_version() is None
 
 
 @mac_only
@@ -1120,6 +1149,56 @@ def test_helper_waits_for_a_kill_9_to_take_effect_before_reopening(tmp_path):
         < log.index("previous version restored"), "restored without seeing it gone"
     assert (tmp_path / "at-reopen").read_text().split() == ["gone"]
     assert app_version(s.app) == "1.0.0" and signature_ok(s.app)
+
+
+def _fake_ps(tmp_path, app, realpid):
+    """Stands in for /bin/ps (which a sandbox may refuse to run). Listing
+    every process works and reports the hung app at its real bundle path;
+    asking about ONE pid fails - ps has stopped answering."""
+    script = tmp_path / "fake-ps.sh"
+    script.write_text(
+        '#!/bin/sh\n'
+        'case "$1" in\n'
+        f'  -axo) echo "$(cat "{realpid}") {app}/Contents/MacOS/AetherHE" ;;\n'
+        '  *) exit 1 ;;\n'
+        'esac\n')
+    script.chmod(0o755)
+    return str(script)
+
+
+@mac_only
+def test_helper_moves_nothing_when_the_updated_app_cannot_be_stopped(tmp_path):
+    """The update never reports healthy, ignores SIGTERM, and by the time
+    kill -9 is due the helper can no longer confirm the pid is ours - so it
+    is still running. Moving its bundle away and reopening the previous
+    version would leave two copies fighting; the helper must stop instead,
+    with the previous version untouched in the staging folder."""
+    path, opened, pidfile, realpid = _hung_app_opener(
+        tmp_path, write_pid=False, ignore_term=True)
+    s = Swap(tmp_path, path, new_exe="/bin/sleep")
+    s.health_wait = 1
+    helper = updater._MACOS_SWAP_HELPER
+    assert helper.count("/bin/ps") == 2
+    with open(s.script, "w") as f:
+        f.write(helper.replace("/bin/ps", _fake_ps(tmp_path, s.app, realpid)))
+    try:
+        rc = s.run(dead_pid())
+        hung = int(realpid.read_text())
+        assert rc == 12, s.logtext()
+        assert _alive(hung), "precondition: the updated app is still running"
+    finally:
+        _kill_file_pid(realpid)
+    log = s.logtext()
+    assert f"is still running after kill -9 (pids: {hung})" in log
+    assert "ROLLBACK NOT ATTEMPTED" in log and "exit 12" in log
+    assert "previous version restored" not in log
+    assert app_version(s.app) == "9.9.9" and signature_ok(s.app), \
+        "the running update's bundle must not be moved"
+    assert app_version(s.backup) == "1.0.0" and signature_ok(s.backup), \
+        "the previous version must be left intact in the staging folder"
+    assert not os.path.exists(os.path.join(s.stage, "rejected.app"))
+    assert s.failed_version() == "9.9.9"
+    assert opened() == [s.app], "nothing may be reopened"
 
 
 @mac_only
