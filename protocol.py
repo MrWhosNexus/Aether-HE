@@ -636,13 +636,30 @@ def build_prcs_power(on):
     return _wrap(d)
 
 
+#: Highest PRCS model byte. The vendor UI's "Model1".."Model4" are the wire
+#: values 0..3 (CONFIRMED-BY-CAPTURE: "Model2" wrote `01 01 04 07`, see
+#: docs/context/hed-aulacn-raw/WIN60_CAPTURE_NOTES.md section 7). There is no
+#: model 4: the firmware takes the frame and does nothing with the pair.
+PRCS_MODEL_MAX = 3
+
+
 def build_prcs(prcs_list):
     """prcs_list: list of dicts {model, key1_hid, key2_hid}. Up to 20, sent as
-    two packets of 10. Returns a list of payloads."""
+    two packets of 10. Returns a list of payloads.
+
+    `model` is the ZERO-based wire value (0..PRCS_MODEL_MAX), not the UI's
+    "Model N" number. Anything else is refused here, before a frame exists,
+    so a 1-based label can never reach the firmware again."""
     if len(prcs_list) > 20:
         # The vendor table is exactly 2 pages x 10 entries; anything past
         # that would be dropped silently while the UI reported success.
         raise ValueError("at most 20 SOCD/PRCS pairs (got %d)" % len(prcs_list))
+    for p in prcs_list:
+        model = int(p["model"])
+        if not 0 <= model <= PRCS_MODEL_MAX:
+            raise ValueError(
+                "SOCD model %d out of range 0..%d (the UI's 'Model N' is "
+                "1-based; the wire value is N-1)" % (model, PRCS_MODEL_MAX))
     out = []
     for page in range(2):
         d = _pkt(36); d[1] = 0; d[2] = (page >> 8) & 0xFF; d[3] = page & 0xFF; d[4] = 40
@@ -651,7 +668,7 @@ def build_prcs(prcs_list):
             if idx < len(prcs_list):
                 p = prcs_list[idx]
                 d[j * 4 + 5] = 1
-                d[j * 4 + 6] = p["model"] & 0xFF
+                d[j * 4 + 6] = int(p["model"]) & 0xFF
                 d[j * 4 + 7] = p["key1_hid"] & 0xFF
                 d[j * 4 + 8] = p["key2_hid"] & 0xFF
         out.append(_wrap(d))

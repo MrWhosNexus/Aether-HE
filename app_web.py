@@ -1834,7 +1834,12 @@ class Api:
 
 
     def set_socd(self, pairs):
-        """pairs: [{model, key1, key2}] using design codes."""
+        """pairs: [{model, key1, key2}] using design codes.
+
+        `model` is the board's WIRE value, not the UI's "Model N" number: on
+        the Win60 family that is 0..3 (the UI converts once, in
+        socdPairsFrom), and protocol.build_prcs refuses anything else before
+        a frame is written."""
         if not self.km:
             return {"ok": False, "error": "no keymap"}
         try:
@@ -2293,7 +2298,9 @@ class Api:
             for p in pairs:
                 if not isinstance(p, dict):
                     raise ValueError("invalid SOCD pair")
-                k1, k2, model = p.get("key1"), p.get("key2"), int(p.get("model", 1))
+                # model = the wire value (Win60: 0..3, range-checked by the
+                # driver's frame builder); 0 is the vendor's Model 1.
+                k1, k2, model = p.get("key1"), p.get("key2"), int(p.get("model", 0))
                 if not (isinstance(k1, str) and isinstance(k2, str) and 0 < len(k1) <= 32
                         and 0 < len(k2) <= 32 and 0 <= model <= 255):
                     raise ValueError("invalid SOCD pair")

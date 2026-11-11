@@ -602,8 +602,11 @@ class Win60Driver(BoardDriver):
 
     # ---- SOCD / PRCS (cmd 36) ----
     def set_socd(self, prcs_list):
+        # Build first: build_prcs refuses a bad list (too many pairs, a model
+        # outside 0..3), and that must happen before ANY frame is written.
+        pkts = protocol.build_prcs(list(prcs_list))
         self._write(protocol.build_prcs_power(True))
-        for pkt in protocol.build_prcs(list(prcs_list)):
+        for pkt in pkts:
             self._write(pkt)
 
     # ---- calibration ----
