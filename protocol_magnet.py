@@ -18,10 +18,18 @@ PROVENANCE (markers as in data/board_registry.json):
     * payload byte 0 is the operation: 0x00 read, 0x01 write;
     * 0x18 lighting write (59 frames), 0x2A single-key colour write (135),
       and the read requests 0x18/0x19/0x23/0x29/0x2A/0x2B/0x00/0x01.
-  SOURCE-ONLY — from the contributor fork (nieruuu19/Aether-HE
-  protocol_sparkplay.py), never seen in a capture, so drivers/magnet.py only
-  sends them in its experimental mode: 0x23 WRITES (per-key mode/actuation/
-  rapid trigger), 0x12 live travel matrix, 0x2C SOCD.
+  COMMUNITY-TESTED (nieruuu19) — adapted from the contributor fork
+  (nieruuu19/Aether-HE protocol_sparkplay.py @ 7de05f2). The fork's author
+  ran these on their own WIN 68 HE Max (issue #7); no capture of them
+  exists, so they are an owner's report, not a byte-for-byte proof:
+  0x23 WRITES (per-key mode / actuation / rapid trigger / dead band), the
+  0x2C SOCD frame, palette edits inside the 0x18 write, the batched 0x2A
+  colour write, and the layout of every REPLY (the capture holds only what
+  the driver sent). drivers/magnet.py sends them by default.
+  SOURCE-ONLY — read from the fork's code and nothing else: the firmware
+  effect NAMES (bytes 1..20 are captured, their names are not), and the
+  0x12 live travel matrix, which drivers/magnet.py only polls with
+  AETHER_EXPERIMENTAL=magnet.
 
 KEY IDENTITY: the board names a key by its vendor key id, which is the key's
 default HID usage (Esc 0x29, 1 0x1E, ..., Fn 0x01) = the layout's hidCode.
@@ -62,11 +70,13 @@ KEY_ORDER = (
 )
 
 # ---- lighting (0x18) ---------------------------------------------------- CAPTURED
-# Write payload (44 bytes): [0]=0x01, [1:37]=LIGHT_BLOCK, [37]=flags,
+# Write payload (44 bytes): [0]=0x01, [1:37]=palette block, [37]=flags,
 # [38]=brightness 0-4, [39]=mode 0-21, [40]=speed 0-4, [41]=sleep minutes,
-# [42]=static sub-mode, [43]=colour slot. LIGHT_BLOCK is byte-identical in all
-# 59 captured writes (the fork reads it as a 28-byte colour palette at [7:35];
-# not decoded here, sent as captured).
+# [42]=static colour (0-6 = palette slot, 7 = spectrum), [43]=effect colour
+# (0 = spectrum, 1-7 = palette slot 0-6). The block is byte-identical in all
+# 59 captured writes: 4 zero bytes, 7 palette slots of (B, G, R, 0xFF), 4 zero
+# bytes. LIGHT_BLOCK decodes to red, green, yellow, blue, magenta, cyan, white
+# (the capture's values; the slot layout is the fork's reading of it).
 LIGHT_BLOCK = bytes.fromhex(
     "000000000000"
     "ffff00ff00ff007f7fffff0000ff7f007fff7f7f00ff7f7f7fff0000"
@@ -79,6 +89,41 @@ LIGHT_MODE_CUSTOM = 21                 # per-key colours (driver reads RGB after
 LIGHT_MODE_MAX = 21
 LIGHT_LEVEL_MAX = 4
 LIGHT_READ_PAYLOAD = bytes([0] * 5) + b"\xff" * 28 + bytes([0] * 10)   # CAPTURED (len 43)
+LIGHT_BLOCK_LEN = 36
+LIGHT_SLEEP_CAPTURED = 2               # what the frame carries when the board's state is unknown
+PALETTE_SLOTS = 7
+PALETTE_OFFSET = 4                     # first slot inside the block (payload byte 5)
+STATIC_SPECTRUM = 7                    # payload[42]: CAPTURED value, meaning from the fork
+EFFECT_SPECTRUM = 0                    # payload[43]: CAPTURED value, meaning from the fork
+
+# Firmware effects. The mode BYTES are CONFIRMED-BY-CAPTURE (the vendor driver
+# selected every mode 0..21). The NAMES are SOURCE-ONLY: they are the fork's
+# list (its registry entry, from the vendor bundle's effect order) and nobody
+# has matched a name to what a board shows. (byte, registry id, name).
+LIGHT_EFFECTS = (
+    (1, "fw-rippling-water", "Rippling Water"),
+    (2, "fw-tide-flux", "Tide Flux"),
+    (3, "fw-soft-ripples", "Soft Ripples"),
+    (4, "fw-spinning-storm", "Spinning Storm"),
+    (5, "fw-lucky-rainbow", "Lucky Rainbow"),
+    (6, "fw-glowing-rainbow", "Glowing Rainbow"),
+    (7, "fw-radiant-glow", "Radiant Glow"),
+    (8, "fw-shifting-panes", "Shifting Panes"),
+    (9, "fw-wave-shift", "Wave Shift"),
+    (10, "fw-shape-shift", "Shape Shift"),
+    (11, "fw-sine-wave", "Sine Wave"),
+    (12, "fw-smooth-flow", "Smooth Flow"),
+    (13, "fw-blooming-flowers", "Blooming Flowers"),
+    (14, "fw-colorful-pattern", "Colorful Pattern"),
+    (15, "fw-heavy-rain", "Heavy Rain"),
+    (16, "fw-eternal-pulse", "Eternal Pulse"),
+    (17, "fw-traceless-steps", "Traceless Steps"),
+    (18, "fw-snow-blossoms", "Snow Blossoms"),
+    (19, "fw-laser-beam", "Laser Beam"),
+    (20, "fw-water-ripples", "Water Ripples"),
+)
+LIGHT_EFFECT_MIN = 1
+LIGHT_EFFECT_MAX = 20
 
 
 def checksum(pkt):
@@ -120,16 +165,54 @@ def _clamp(v, lo, hi):
 
 
 def build_lighting(mode, brightness=4, speed=3, power=True, direction=False,
-                   sleep_min=2, static_mode=0, color_slot=0, super_response=False):
-    """CAPTURED lighting write."""
+                   sleep_min=None, static_mode=0, color_slot=0, super_response=False,
+                   block=None):
+    """CAPTURED lighting write.
+
+    `block` is the 36-byte palette block to send; None sends the capture's
+    (LIGHT_BLOCK). `sleep_min` None sends the capture's 2 minutes. A caller
+    that has read the board's state passes both back so a write does not
+    reset them. `color_slot` None leaves payload byte 43 out (a board whose
+    own reply is 43 bytes long has no such field)."""
+    block = bytes(LIGHT_BLOCK if block is None else block)
+    if len(block) != LIGHT_BLOCK_LEN:
+        raise ValueError(f"palette block must be {LIGHT_BLOCK_LEN} bytes, got {len(block)}")
     flags = ((LIGHT_FLAG_POWER if power else 0)
              | (LIGHT_FLAG_DIRECTION if direction else 0)
              | (LIGHT_FLAG_SUPER_RESPONSE if super_response else 0))
-    payload = ([OP_WRITE] + list(LIGHT_BLOCK)
+    payload = ([OP_WRITE] + list(block)
                + [flags, _clamp(brightness, 0, LIGHT_LEVEL_MAX), _clamp(mode, 0, LIGHT_MODE_MAX),
-                  _clamp(speed, 0, LIGHT_LEVEL_MAX), _clamp(sleep_min, 0, 255),
-                  _clamp(static_mode, 0, 255), _clamp(color_slot, 0, 255)])
+                  _clamp(speed, 0, LIGHT_LEVEL_MAX),
+                  _clamp(LIGHT_SLEEP_CAPTURED if sleep_min is None else sleep_min, 0, 255),
+                  _clamp(static_mode, 0, 255)])
+    if color_slot is not None:
+        payload.append(_clamp(color_slot, 0, 255))
     return frame(CMD_LIGHTING, payload)
+
+
+def palette_from_block(block):
+    """The 7 stored colours of a palette block as (r, g, b). Layout from the
+    fork; it decodes the captured block to R, G, Y, B, M, C, W."""
+    block = bytes(block)
+    out = []
+    for i in range(PALETTE_SLOTS):
+        o = PALETTE_OFFSET + 4 * i
+        out.append((block[o + 2], block[o + 1], block[o]))
+    return out
+
+
+def block_with_palette_slot(block, slot, rgb):
+    """COMMUNITY-TESTED (nieruuu19): `block` with one palette slot replaced.
+    Every other byte is kept as it was."""
+    if not 0 <= int(slot) < PALETTE_SLOTS:
+        raise ValueError(f"palette slot must be 0..{PALETTE_SLOTS - 1}")
+    out = bytearray(block)
+    if len(out) != LIGHT_BLOCK_LEN:
+        raise ValueError(f"palette block must be {LIGHT_BLOCK_LEN} bytes, got {len(out)}")
+    r, g, b = (int(v) & 0xFF for v in list(rgb)[:3])
+    o = PALETTE_OFFSET + 4 * int(slot)
+    out[o:o + 4] = bytes([b, g, r, 0xFF])
+    return bytes(out)
 
 
 def build_lighting_read():
@@ -148,6 +231,22 @@ def build_key_rgb(key_id, r, g, b):
     return frame(CMD_KEY_RGB, [OP_WRITE, key_id, r, g, b], fill=0xFF)
 
 
+def build_key_rgb_batch(records):
+    """COMMUNITY-TESTED (nieruuu19): several keys per frame, [0x01] +
+    (key id, r, g, b) records, up to 14 per frame, the payload exactly as
+    long as its records, 0xFF fill. The vendor driver wrote one key per
+    frame in the capture (build_key_rgb); this is the form the fork sends."""
+    recs = [(int(k) & 0xFF, int(r) & 0xFF, int(g) & 0xFF, int(b) & 0xFF)
+            for k, (r, g, b) in records]
+    out = []
+    for i in range(0, len(recs), RECORDS_PER_FRAME):
+        payload = [OP_WRITE]
+        for rec in recs[i:i + RECORDS_PER_FRAME]:
+            payload += list(rec)
+        out.append(frame(CMD_KEY_RGB, payload, fill=0xFF))
+    return out
+
+
 def build_key_rgb_read(key_ids=KEY_ORDER):
     """CAPTURED per-key colour read requests: [0x00] + (key, 0, 0, 0) records,
     14 per frame, unused records (0xFF, 0, 0, 0), 0xFF fill."""
@@ -163,23 +262,39 @@ def build_key_config_read(prop, key_ids=KEY_ORDER):
                           pad=(0xFF, 0xFF, 0xFF, 0x00), fill=0x00)
 
 
-# Property ids — SOURCE-ONLY (fork). The capture reads properties 0..25 of
-# every key but never writes one, so none of these is confirmed.
+# Property ids. The capture READS properties 0..25 of every key (CAPTURED
+# requests) but never writes one; ids, meanings and the write frame are
+# COMMUNITY-TESTED (nieruuu19).
 PROP_REMAP = 0x00
 PROP_ACTUATION = 0x04                  # micrometres
 PROP_ACTUATION_2 = 0x05                # the fork writes the same value here too
 PROP_MODE = 0x08                       # (touch mode << 4) | advanced-key type
 PROP_RT_PRESS = 0x14                   # micrometres
 PROP_RT_RELEASE = 0x15                 # micrometres
+PROP_DEAD_TOP = 0x16                   # press dead band, micrometres
+PROP_DEAD_BOTTOM = 0x17                # release dead band, micrometres
+TOUCH_GLOBAL = 0                       # the key follows the board-wide table
 TOUCH_FIXED = 1
 TOUCH_RAPID = 2
+ADV_NONE = 0
+ADV_SOCD = 8                           # advanced-key nibble of a key in a SOCD pair
 TRAVEL_MIN_MM = 0.10                   # driver log: 最小行程 0.10
 TRAVEL_MAX_MM = 3.40                   # driver log: 最大行程 3.40
+DEAD_MAX_UM = 1000
+DEAD_DEFAULT_UM = 200                  # the fork's value for a key whose own is unknown
+STANDARD_RT_DEAD_GAP_UM = 10           # Standard RT: press dead band = actuation - 0.01 mm
+STANDARD_RT_DEAD_MIN_UM = 50
+STANDARD_RT_DEAD_MAX_UM = 3390
+# The app's trigger modes (Api._TRIGGER_MODES).
+MODE_FIXED = 0
+MODE_RT_STANDARD = 12
+MODE_RT_CONTINUOUS = 13
 
 
 def build_key_config_write(records):
-    """SOURCE-ONLY: [0x01] + (key, prop, lo, hi) records, 14 per frame, the
-    payload exactly as long as its records (the fork's LayoutDataPack)."""
+    """COMMUNITY-TESTED (nieruuu19): [0x01] + (key, prop, lo, hi) records, 14
+    per frame, the payload exactly as long as its records (the fork's
+    LayoutDataPack)."""
     out = []
     recs = [(k & 0xFF, p & 0xFF, int(v) & 0xFFFF) for k, p, v in records]
     for i in range(0, len(recs), RECORDS_PER_FRAME):
@@ -190,22 +305,81 @@ def build_key_config_write(records):
     return out
 
 
-def mm_to_um(mm):
-    return int(round(max(TRAVEL_MIN_MM, min(TRAVEL_MAX_MM, float(mm))) * 1000))
+def mm_to_um(mm, lo_mm=TRAVEL_MIN_MM, hi_mm=TRAVEL_MAX_MM):
+    return int(round(max(lo_mm, min(hi_mm, float(mm))) * 1000))
 
 
-def actuation_records(key_ids, travel_mm, rapid=False, press_mm=0.05, release_mm=0.05):
-    """SOURCE-ONLY records for fixed actuation, or single rapid trigger with
-    separate press/release distances (the fork's minimal path; its dead-zone
-    rewrites are deliberately not ported)."""
-    act = mm_to_um(travel_mm)
-    mode = ((TOUCH_RAPID if rapid else TOUCH_FIXED) & 0x03) << 4
+def mode_value(touch, adv):
+    """Property 0x08: touch mode in the high nibble, advanced-key type in the low."""
+    return ((int(touch) & 0x0F) << 4) | (int(adv) & 0x0F)
+
+
+def split_mode(value):
+    """(touch mode, advanced-key type) of a property 0x08 value."""
+    return (int(value) >> 4) & 0x0F, int(value) & 0x0F
+
+
+def standard_rt_dead_um(travel_um):
+    """Standard RT pins the press dead band 0.01 mm above the actuation point
+    (the fork, after the vendor driver)."""
+    return _clamp(int(travel_um) - STANDARD_RT_DEAD_GAP_UM,
+                  STANDARD_RT_DEAD_MIN_UM, STANDARD_RT_DEAD_MAX_UM)
+
+
+def dead_um(um):
+    return _clamp(um, 0, DEAD_MAX_UM)
+
+
+def actuation_records(key_ids, travel_mm, mode=MODE_FIXED, adv_by_key=None,
+                      press_mm=None, release_mm=None, dead_by_key=None,
+                      lo_mm=TRAVEL_MIN_MM, hi_mm=TRAVEL_MAX_MM):
+    """COMMUNITY-TESTED (nieruuu19) records for one trigger write.
+
+    `mode` is the app's trigger mode: 0 fixed, 12 Standard rapid trigger,
+    13 Continuous rapid trigger. Standard and Continuous are the same touch
+    mode on the wire; the press dead band tells them apart (Standard pins it
+    just above the actuation point, Continuous keeps the user's).
+
+    `adv_by_key` {key id: advanced-key nibble} is REQUIRED for every key: the
+    mode property carries the key's advanced binding (SOCD, macro, ...) in
+    its low nibble, and writing 0 there drops it. A missing key raises
+    KeyError; the caller reads the board first.
+
+    `press_mm` / `release_mm` None leaves the stored rapid-trigger pair
+    alone. `dead_by_key` {key id: (top um, bottom um)} is written for fixed
+    and Continuous keys that have an entry; Standard RT writes its own top."""
+    mode = int(mode)
+    if mode not in (MODE_FIXED, MODE_RT_STANDARD, MODE_RT_CONTINUOUS):
+        raise ValueError(f"unknown trigger mode {mode}")
+    if adv_by_key is None:
+        raise KeyError("adv_by_key is required: read the board's key modes first")
+    act = mm_to_um(travel_mm, lo_mm, hi_mm)
+    rapid = mode != MODE_FIXED
+    touch = TOUCH_RAPID if rapid else TOUCH_FIXED
     recs = []
     for k in key_ids:
-        recs += [(k, PROP_MODE, mode), (k, PROP_ACTUATION, act), (k, PROP_ACTUATION_2, act)]
-        if rapid:
+        recs += [(k, PROP_MODE, mode_value(touch, adv_by_key[k])),
+                 (k, PROP_ACTUATION, act), (k, PROP_ACTUATION_2, act)]
+        if mode == MODE_RT_STANDARD:
+            recs.append((k, PROP_DEAD_TOP, standard_rt_dead_um(act)))
+        elif dead_by_key and k in dead_by_key:
+            top, bottom = dead_by_key[k]
+            recs += [(k, PROP_DEAD_TOP, dead_um(top)), (k, PROP_DEAD_BOTTOM, dead_um(bottom))]
+        if rapid and press_mm is not None and release_mm is not None:
             recs += [(k, PROP_RT_PRESS, int(round(max(0.01, float(press_mm)) * 1000))),
                      (k, PROP_RT_RELEASE, int(round(max(0.01, float(release_mm)) * 1000)))]
+    return recs
+
+
+def deadband_records(dead_by_key, skip_top=()):
+    """COMMUNITY-TESTED (nieruuu19): (key, 0x16, top um), (key, 0x17, bottom um)
+    per key, 0..1000 um. Keys in `skip_top` (Standard RT, whose top is pinned
+    to the actuation point) get only the bottom record."""
+    recs = []
+    for k, (top, bottom) in dead_by_key.items():
+        if k not in skip_top:
+            recs.append((k, PROP_DEAD_TOP, dead_um(top)))
+        recs.append((k, PROP_DEAD_BOTTOM, dead_um(bottom)))
     return recs
 
 
@@ -240,6 +414,98 @@ def build_global_travel_read():
 def build_hid_matrix_read(page):
     """CAPTURED HID-matrix read, two layer pages per frame ([0, 2p, 2p+1])."""
     return frame(CMD_HID_MATRIX, [0x00, 2 * page, 2 * page + 1])
+
+
+# ---- replies ------------------------------------------- COMMUNITY-TESTED (nieruuu19)
+# The capture holds only what the vendor driver SENT. Every reply layout below
+# is the fork's, which its author ran against their board.
+REPLY_MAGICS = (MAGIC, MAGIC | 0x80)
+PROTOCOL_SOCD_V4 = (1, 0, 7)           # first protocol version with the 11-byte SOCD frame
+
+
+def strip_report_id(report):
+    """A read may or may not carry the report id (0x00) in front."""
+    r = list(report or [])
+    if len(r) == FRAME_LEN + 1 and r[0] == REPORT_ID:
+        r = r[1:]
+    return r
+
+
+def reply_body(report, cmd):
+    """The payload of a reply to `cmd`, or None when `report` is not one:
+    magic 0x5C or 0xDC, command (bit 7 ignored) = `cmd`, and a length that
+    fits the report."""
+    r = strip_report_id(report)
+    if len(r) < 5 or r[0] not in REPLY_MAGICS:
+        return None
+    if (r[2] & 0x7F) != (cmd & 0x7F):
+        return None
+    n = r[1]
+    if n < 1 or n > FRAME_LEN - 4 or len(r) < 4 + n:
+        return None
+    return r[4:4 + n]
+
+
+def parse_key_config_reply(body):
+    """[(key id, property, value)] from a 0x23 reply body: 4-byte records
+    (key, prop, lo, hi) from body[1]; padding (key 0 / 0xFF, prop 0xFF) is
+    skipped."""
+    out = []
+    for i in range(1, len(body) - 3, 4):
+        key, prop = body[i], body[i + 1]
+        if key in (0x00, 0xFF) or prop == 0xFF:
+            continue
+        out.append((key, prop, body[i + 2] | (body[i + 3] << 8)))
+    return out
+
+
+def parse_version(body):
+    """(major, minor, patch) from a CMD_SYS sub 1 reply body, or None."""
+    if len(body) < 4 or body[1] != 0x01:
+        return None
+    return (body[3] & 0x0F, (body[2] >> 4) & 0x0F, body[2] & 0x0F)
+
+
+def parse_travel_limits(body):
+    """{"precision_mm", "min_mm", "max_mm"} from a CMD_SYS sub 0x25 reply
+    body, or None (also for a reply whose range is empty)."""
+    if len(body) < 7 or body[1] != 0x25:
+        return None
+    lo = (body[3] | (body[4] << 8)) / 1000.0
+    hi = (body[5] | (body[6] << 8)) / 1000.0
+    if not 0 < lo < hi:
+        return None
+    return {"precision_mm": body[2] / 1000.0, "min_mm": lo, "max_mm": hi}
+
+
+def parse_device_name(body):
+    """The device name from a CMD_SYS sub 0x26 reply body, or None."""
+    if len(body) < 3 or body[1] != 0x26:
+        return None
+    raw = bytes(body[2:34]).split(b"\x00", 1)[0]
+    return raw.decode("utf-8", "ignore").strip() or None
+
+
+def parse_lighting_reply(body):
+    """The board's lighting state from a 0x18 reply body, or None when the
+    body is too short to hold it (< 43 bytes). `block` (payload 1..36) and
+    `sleep_min` / `static_mode` / `color_slot` are what a write must send
+    back to leave them unchanged; `color_slot` is None on a 43-byte reply."""
+    if len(body) < 43:
+        return None
+    flags = body[37]
+    return {
+        "block": bytes(body[1:37]),
+        "power": bool(flags & LIGHT_FLAG_POWER),
+        "direction": bool(flags & LIGHT_FLAG_DIRECTION),
+        "super_response": bool(flags & LIGHT_FLAG_SUPER_RESPONSE),
+        "brightness": body[38],
+        "mode": body[39],
+        "speed": body[40],
+        "sleep_min": body[41],
+        "static_mode": body[42],
+        "color_slot": body[43] if len(body) > 43 else None,
+    }
 
 
 # ---- live travel matrix (0x12) ------------------------------------------ SOURCE-ONLY
@@ -280,8 +546,33 @@ def parse_travel_reply(data, half):
     return out
 
 
-# ---- SOCD (0x2C) --------------------------------------------------------- SOURCE-ONLY
-def build_socd(key1_id, key2_id, model):
-    """SOURCE-ONLY (fork SOCDV4Pack): [1, k1, k2, k1, 0, k2, 0, mode, 0, 0, 0]."""
-    k1, k2 = key1_id & 0xFF, key2_id & 0xFF
-    return frame(CMD_SOCD, [OP_WRITE, k1, k2, k1, 0, k2, 0, int(model) & 0xFF, 0, 0, 0])
+# ---- SOCD (0x2C) --------------------------------------- COMMUNITY-TESTED (nieruuu19)
+SOCD_MODELS = (1, 2, 3, 4)             # the app's "Model N": last input, key 1, key 2, neutral
+SOCD_DELAY_MAX_MS = 50
+SOCD_BIND_POSITION = 0                 # pair the two physical keys
+SOCD_BIND_VALUES = 1                   # pair two key values
+
+
+def build_socd(key1_id, key2_id, model, bind=SOCD_BIND_POSITION, delay_ms=0,
+               value1=None, value2=None):
+    """COMMUNITY-TESTED (nieruuu19), protocol 1.0.7 and later:
+    [1, key1, key2, value1 u16, value2 u16, bind, mode, delay u16].
+
+    `model` is the app's Model 1..4; the wire mode is model - 1 (0 last input
+    priority, 1 key 1 priority, 2 key 2 priority, 3 neutral). Anything else
+    raises ValueError. Position binding sends zero in both value slots; value
+    binding sends the two key ids unless `value1` / `value2` say otherwise.
+    `delay_ms` is clamped to 0..50."""
+    model = int(model)
+    if model not in SOCD_MODELS:
+        raise ValueError(f"SOCD model must be 1..4, got {model}")
+    k1, k2 = int(key1_id) & 0xFF, int(key2_id) & 0xFF
+    bind = SOCD_BIND_VALUES if int(bind) else SOCD_BIND_POSITION
+    if bind == SOCD_BIND_POSITION:
+        v1 = v2 = 0
+    else:
+        v1 = (k1 if value1 is None else int(value1)) & 0xFFFF
+        v2 = (k2 if value2 is None else int(value2)) & 0xFFFF
+    delay = _clamp(delay_ms, 0, SOCD_DELAY_MAX_MS)
+    return frame(CMD_SOCD, [OP_WRITE, k1, k2, v1 & 0xFF, v1 >> 8, v2 & 0xFF, v2 >> 8,
+                            bind, model - 1, delay & 0xFF, delay >> 8])
