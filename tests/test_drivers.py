@@ -1592,11 +1592,14 @@ def test_api_list_boards_shared_vidpid_sibling_not_marked_connected(monkeypatch)
     # shared-VID:PID siblings of the Win60 must NOT read as connected
     assert by_slug["aula-kp-te153"]["connected"] is False
     assert by_slug["aula-win68-he"]["connected"] is False
-    # the user-facing picker contract: exactly these four are offered, and the
-    # two MINI 60 HE PRO entries stay offered while NOT connected
+    # the user-facing picker contract: exactly these are offered, and the
+    # two MINI 60 HE PRO entries stay offered while NOT connected. The last
+    # three joined on 2026-11-12 as community-tested boards (see
+    # tests/test_boards.py::test_unsupported_boards_are_never_offered).
     offered = {b["slug"] for b in out["boards"] if b["offered"]}
     assert offered == {"aula-win60-he", "aula-win68-he",
-                       "aula-mini60he-pro", "aula-mini60he-pro-24g"}
+                       "aula-mini60he-pro", "aula-mini60he-pro-24g",
+                       "aula-f75-he", "aula-f75-he-24g"}
     assert by_slug["aula-mini60he-pro"]["connected"] is False
     assert by_slug["aula-mini60he-pro-24g"]["connected"] is False
 

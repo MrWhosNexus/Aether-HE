@@ -32,6 +32,22 @@
       "lighting": "wip",
       "actuation": "wip",
       "status": "Bring-up — auto-detected, shares the Win60 protocol; full 68-key layout and live travel confirmed from an owner's capture (#20), settings not yet round-tripped on hardware"
+    },
+    {
+      "slug": "aula-f75-he",
+      "name": "AULA F75 HE (wired)",
+      "switches": "Hall-effect",
+      "lighting": true,
+      "actuation": true,
+      "status": "Community-tested (xpLayA read-backs), not maintainer-verified — speaks the MINI 60 HE PRO protocol; no live travel; dead zones and macros need `AETHER_EXPERIMENTAL=f75`"
+    },
+    {
+      "slug": "aula-f75-he-24g",
+      "name": "AULA F75 HE (2.4 GHz dongle)",
+      "switches": "Hall-effect",
+      "lighting": true,
+      "actuation": true,
+      "status": "Community-tested (xpLayA read-backs) over RF — firmware effects only, no host streaming; battery level shown; same limits as wired"
     }
   ],
   "recognized": [
@@ -63,11 +79,6 @@
     {
       "slug": "aula-mini68he-max",
       "name": "Aula MINI68 HE MAX",
-      "reason": "listed by the vendor driver, no capture"
-    },
-    {
-      "slug": "aula-f75-he",
-      "name": "AULA F75 HE",
       "reason": "listed by the vendor driver, no capture"
     },
     {

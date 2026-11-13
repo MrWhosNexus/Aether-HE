@@ -177,6 +177,25 @@ def test_only_captured_boards_are_drivable():
     the vendor driver says they speak the same protocol, but none of them
     has a capture, so none of them is drivable.
 
+    DOCUMENTED EXCEPTION (2026-11-12, owner decision): aula-f75-he and
+    aula-f75-he-24g are drivable on CONTRIBUTOR evidence, not on a capture
+    of ours. A contributor (xpLayA fork) probed a physical AULA F75 HE over
+    the cable and over its 2.4 GHz receiver and committed the raw replies;
+    they live in tests/fixtures/f75/ and tests/test_f75.py replays them:
+      * the 0x10 reply reports 38A6:2729 on both links, in the reply shape
+        protocol_mini60 already parses;
+      * the 0x12 key table holds the vendor layout's HID usage in 67 of the
+        80 layout slots (F1-F12 empty, Fn differs by convention);
+      * the dongle's 0x10 reply has the same battery bytes at the same
+        offsets as OUR OWN MINI 60 HE PRO dongle capture.
+    That is an owner claim with artifacts, weaker than a vendor capture and
+    recorded as such: the entries say "community-tested, not
+    maintainer-verified", and the writes nobody ran on an F75 (dead zone
+    0x21, macros 0x15/0x25) are refused by the driver unless
+    AETHER_EXPERIMENTAL=f75 is set (tests/test_f75.py). No protocol code
+    was added for the board. This does NOT relax the rule for the other
+    38A6 siblings (MINI 68 HE family): they have no artifacts at all.
+
     DELIBERATE EXCEPTION (2026-07-20): aula-win68-he and aula-kp-te153 are
     drivable without a board-specific capture. This is NOT the shared-VID
     fallacy, and here is the evidence (audited in
@@ -222,7 +241,8 @@ def test_only_captured_boards_are_drivable():
                 "aula-win60he-pro", "aula-mini60he-pro",  # own decoded protocol
                 "aula-mini60he-pro-24g",  # own dongle captures + HW-verified 0xFF60 transport (see docstring)
                 "aula-win68-he", "aula-kp-te153",  # 2E3C:C365 shared-identity exception (see docstring)
-                "aula-win68he-max"}  # own capture: tests/fixtures/magnet_win68max_tx.txt (#7), golden-tested
+                "aula-win68he-max",  # own capture: tests/fixtures/magnet_win68max_tx.txt (#7), golden-tested
+                "aula-f75-he", "aula-f75-he-24g"}  # contributor read-backs, tests/fixtures/f75/ (see docstring)
     for p in reg.profiles:
         if p.slug in captured:
             assert p.drivable, f"{p.slug} should be drivable"
@@ -249,10 +269,15 @@ def test_frame_len_declared_in_raw_registry():
     by_slug = {b["slug"]: b for b in raw["boards"]}
     assert by_slug["aula-mini60he-pro"]["frameLen"] == 64
     assert by_slug["aula-mini60he-pro-24g"]["frameLen"] == 32
-    # no other board declares a frame length yet — the wired 64 default
+    # the AULA F75 HE rides the same driver at the same two sizes
+    # (contributor-reported: 64-byte wired, 32-byte over its receiver)
+    assert by_slug["aula-f75-he"]["frameLen"] == 64
+    assert by_slug["aula-f75-he-24g"]["frameLen"] == 32
+    # no other board declares a frame length — the wired 64 default
     # covers everything else, so nothing changes for existing boards
     for slug, b in by_slug.items():
-        if slug not in ("aula-mini60he-pro", "aula-mini60he-pro-24g"):
+        if slug not in ("aula-mini60he-pro", "aula-mini60he-pro-24g",
+                        "aula-f75-he", "aula-f75-he-24g"):
             assert "frameLen" not in b, f"{slug} unexpectedly declares frameLen"
 
 
@@ -346,7 +371,6 @@ def test_hfd_sibling_identity_entries_present():
         "aula-mini68he": (0x38A6, 0x2722),
         "aula-mini68he-pro": (0x38A6, 0x2723),
         "aula-mini68he-max": (0x38A6, 0x2724),
-        "aula-f75-he": (0x38A6, 0x2729),
         "aula-mini60he-max-24g": (0x0C45, 0xFEFC),
     }
     for slug, (vid, pid) in expected.items():
@@ -740,8 +764,14 @@ def test_unsupported_boards_are_never_offered():
     # kp-te153 and win60he-pro were removed from the offered set on 2026-07-21:
     # both are drivable by family/capture, but no physical example of either has
     # ever been driven by Aether. mini60he-max is out for the same reason.
+    # 2026-11-12 (owner decision): two community-tested entries joined. Each
+    # is driven by a contributor who owns one, none by a maintainer, and the
+    # registry and README say so: the AULA F75 HE over cable and dongle
+    # (xpLayA read-backs, tests/fixtures/f75/) and the WIN 68 HE Max
+    # (nieruuu19, vendor-driver capture #7).
     assert offered == {"aula-win60-he", "aula-win68-he",
-                       "aula-mini60he-pro", "aula-mini60he-pro-24g"}
+                       "aula-mini60he-pro", "aula-mini60he-pro-24g",
+                       "aula-f75-he", "aula-f75-he-24g"}
     for p in reg.profiles:
         if not p.drivable:
             assert p.offered is False, f"{p.slug} has no protocol but is offered"
