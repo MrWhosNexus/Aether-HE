@@ -657,11 +657,63 @@ def parse_device_info(reply):
     offsets, and notably reports the WIRED keyboard identity 0x80A2 even
     over the 0xFEFE receiver (the RF bridge is transparent; the firmware
     answers). Further reply fields (fw version at [16..17] — 53 01 = V1.53
-    on both transports — work mode, …) are decoded in HFD_SDK_DECODE.md §3
-    but not parsed here."""
+    on both transports — work mode, battery) are parsed by
+    parse_device_status below."""
     vid = reply[12] | (reply[13] << 8)
     pid = reply[14] | (reply[15] << 8)
     return vid, pid
+
+
+#: Shortest offset-0 0x10 reply that still carries the status bytes: the
+#: 8-byte header + payload[0..18]. Both transports' first chunk is longer.
+DEVICE_STATUS_MIN_LEN = PAYLOAD_START + 19
+#: payload[16] value seen on the 2.4 GHz link in BOTH dongle captures.
+WORK_MODE_WIRELESS = 0x02
+
+
+def parse_device_status(reply):
+    """Firmware version, work mode, battery level and charge flag from the
+    OFFSET-0 0x10 reply. Frame offsets (= SDK payload offset + 8):
+
+      [16..17] firmware, LE16 BCD-ish: 53 01 -> 0x0153 -> "1.53"
+      [24]     work mode   (payload[16])
+      [25]     battery %   (payload[17])
+      [26]     charge flag (payload[18]); 1 or 2 = charging
+
+    CONFIRMED-BY-CAPTURE over the 2.4 GHz dongle only: the MINI 60 HE PRO
+    handshake capture (webhid-capture-dongle-handshake.json) carries
+    `02 64 00` at payload 16..18 (wireless, 100 %, not charging), and a
+    contributor's AULA F75 HE dongle read (tests/fixtures/f75/
+    dongle_info.json) shows the same three bytes at the same offsets.
+    The charging values 1/2 are SOURCE-ONLY (vendor getBaseInfo; both
+    captures show 0). WIRED IS NOT A BATTERY READING: the wired capture has
+    0x0A / 0x10 at payload 16/17, so callers must only present this over
+    the dongle -- drivers/mini60.Mini60Driver.device_status() enforces it.
+
+    Accepts the bare frame or one with a leading 0x00 report id. Raises
+    ValueError for anything that is not an offset-0 0x10 reply long enough
+    to hold the fields. A battery byte above 100 is returned as None rather
+    than as a bogus percentage."""
+    r = list(reply or ())
+    if len(r) > 1 and r[0] == 0x00 and r[1] == REPLY_MAGIC:
+        r = r[1:]
+    if len(r) < DEVICE_STATUS_MIN_LEN:
+        raise ValueError(
+            f"0x10 reply too short for the status fields "
+            f"({len(r)} < {DEVICE_STATUS_MIN_LEN} bytes)")
+    if r[0] != REPLY_MAGIC or r[1] != CMD_DEVICE_INFO:
+        raise ValueError("not a 0x10 device-info reply")
+    if (r[3] | (r[4] << 8)) != 0:
+        raise ValueError("status fields ride in the offset-0 chunk only")
+    lo, hi = r[16], r[17]
+    battery = r[25]
+    return {
+        "firmware": lo | (hi << 8),
+        "version": f"{hi}.{(lo >> 4) * 10 + (lo & 0x0F):02d}",
+        "work_mode": r[24],
+        "battery": battery if battery <= 100 else None,
+        "charging": r[26] in (1, 2),
+    }
 
 
 # ---------------- generic paged table reads (0x11 / 0x12 / 0x14 / 0x17) ----------------
