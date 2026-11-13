@@ -568,8 +568,8 @@
     },
     {
       "slug": "aula-win68he-max",
-      "_offerNote": "offerInUi false (2026-11-04): drivable from a vendor-driver capture, but no WIN 68 HE Max has ever been driven by Aether. It is detected and driven when plugged in (lighting / per-key colour); it joins the picker after a bring-up run of docs/HARDWARE_TEST_CHECKLIST.md 'WIN 68 HE Max bring-up' (issue #7).",
-      "offerInUi": false,
+      "_offerNote": "offerInUi true (2026-11-12, owner decision): COMMUNITY-TESTED (nieruuu19), not maintainer-verified. The contributor owns the board, supplied the vendor-driver capture (issue #7) and drives it from their fork; no maintainer owns one. Captured lighting / per-key colour ship on; what the capabilities block marks 'wip' is still gated in drivers/magnet.py.",
+      "offerInUi": true,
       "name": "Aula WIN 68 HE Max",
       "vid": "0x1CA2",
       "pid": "0x1901",

@@ -48,6 +48,14 @@
       "lighting": true,
       "actuation": true,
       "status": "Community-tested (xpLayA read-backs) over RF — firmware effects only, no host streaming; battery level shown; same limits as wired"
+    },
+    {
+      "slug": "aula-win68he-max",
+      "name": "Aula WIN 68 HE Max",
+      "switches": "Hall-effect",
+      "lighting": true,
+      "actuation": "wip",
+      "status": "Community-tested (nieruuu19), not maintainer-verified — lighting and per-key colour from a vendor-driver capture (#7); actuation, live travel and SOCD need `AETHER_EXPERIMENTAL=magnet`"
     }
   ],
   "recognized": [
@@ -90,11 +98,6 @@
       "slug": "aula-win60he-max",
       "name": "Aula Win60 HE Max",
       "reason": "layout added, needs captures (#5)"
-    },
-    {
-      "slug": "aula-win68he-max",
-      "name": "Aula WIN 68 HE Max",
-      "reason": "protocol decoded from a vendor-driver capture (#7): lighting and per-key colour drive when plugged in; actuation, live travel and SOCD wait for a hardware bring-up. Not offered in the picker until then."
     },
     {
       "slug": "aula-win60he-pro",

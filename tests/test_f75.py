@@ -196,6 +196,7 @@ def test_entries_say_community_tested_not_verified():
         assert "not maintainer-verified" in raw[slug]["_note"]
         assert "HARDWARE-VERIFIED" not in blob
         assert "UNVERIFIED" in raw[slug]["lighting"]["_note"]   # mode names
+    assert "COMMUNITY-TESTED (nieruuu19)" in raw["aula-win68he-max"]["_offerNote"]
 
 
 def test_tri_mode_is_a_different_board_and_keeps_its_own_layout():

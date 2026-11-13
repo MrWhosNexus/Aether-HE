@@ -764,14 +764,14 @@ def test_unsupported_boards_are_never_offered():
     # kp-te153 and win60he-pro were removed from the offered set on 2026-07-21:
     # both are drivable by family/capture, but no physical example of either has
     # ever been driven by Aether. mini60he-max is out for the same reason.
-    # 2026-11-12 (owner decision): two community-tested entries joined. Each
+    # 2026-11-12 (owner decision): three community-tested boards joined. Each
     # is driven by a contributor who owns one, none by a maintainer, and the
     # registry and README say so: the AULA F75 HE over cable and dongle
     # (xpLayA read-backs, tests/fixtures/f75/) and the WIN 68 HE Max
     # (nieruuu19, vendor-driver capture #7).
     assert offered == {"aula-win60-he", "aula-win68-he",
                        "aula-mini60he-pro", "aula-mini60he-pro-24g",
-                       "aula-f75-he", "aula-f75-he-24g"}
+                       "aula-f75-he", "aula-f75-he-24g", "aula-win68he-max"}
     for p in reg.profiles:
         if not p.drivable:
             assert p.offered is False, f"{p.slug} has no protocol but is offered"

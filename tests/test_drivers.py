@@ -1599,7 +1599,7 @@ def test_api_list_boards_shared_vidpid_sibling_not_marked_connected(monkeypatch)
     offered = {b["slug"] for b in out["boards"] if b["offered"]}
     assert offered == {"aula-win60-he", "aula-win68-he",
                        "aula-mini60he-pro", "aula-mini60he-pro-24g",
-                       "aula-f75-he", "aula-f75-he-24g"}
+                       "aula-f75-he", "aula-f75-he-24g", "aula-win68he-max"}
     assert by_slug["aula-mini60he-pro"]["connected"] is False
     assert by_slug["aula-mini60he-pro-24g"]["connected"] is False
 
