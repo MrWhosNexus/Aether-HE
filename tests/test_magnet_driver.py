@@ -339,7 +339,7 @@ def test_key_writes_refuse_when_the_key_table_was_never_read():
                      lambda: d.set_socd([])):
             with pytest.raises(RuntimeError):
                 call()
-        assert not [f for f in _frames(b) if f[4] == pm.OP_WRITE]
+        assert b.writes == []                            # refused without any traffic
 
 
 def test_a_silent_board_connects_quickly_and_reads_nothing():

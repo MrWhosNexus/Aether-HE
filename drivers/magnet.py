@@ -245,17 +245,18 @@ class MagnetDriver(BoardDriver):
         return True
 
     def _require_key_modes(self, refresh=False):
-        """The key-mode table, read now if it is missing (or `refresh`).
-        Raises RuntimeError when the board never gave one: a 0x23 mode write
-        without it would drop advanced-key bindings."""
-        if refresh or not self._modes:
+        """The key-mode table connect() read. Raises RuntimeError, with no
+        traffic, when the board never gave one: a 0x23 mode write without it
+        would drop advanced-key bindings (reconnect to read again).
+        `refresh` re-reads it first and keeps the old table if that fails."""
+        if not self._modes:
+            raise RuntimeError(
+                f"{self.name}: the keys' current modes were not read at connect, so "
+                "nothing was written (a blind write would drop SOCD / macro bindings)")
+        if refresh:
             modes = self._read_prop(pm.PROP_MODE)
             if modes is not None:
                 self._modes = {k: pm.split_mode(v) for k, v in modes.items()}
-        if not self._modes:
-            raise RuntimeError(
-                f"{self.name}: could not read the keys' current modes, so nothing "
-                "was written (a blind write would drop SOCD / macro bindings)")
         return self._modes
 
     def _travel_range(self):
