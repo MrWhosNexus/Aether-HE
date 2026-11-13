@@ -3419,7 +3419,14 @@ def _apply_experimental_flags(env=None):
     flags = {f.strip().lower() for f in
              ((os.environ if env is None else env).get("AETHER_EXPERIMENTAL") or "").split(",")}
     import drivers.magnet
+    import drivers.mini60
     drivers.magnet.MagnetDriver.experimental = "magnet" in flags
+    # AETHER_EXPERIMENTAL=f75: the AULA F75 HE's dead zone and macros, which
+    # no F75 owner has run (everything else on the F75 ships on).
+    drivers.mini60.Mini60Driver.experimental_f75 = "f75" in flags
+    if "f75" in flags:
+        log.warning("EXPERIMENTAL: AULA F75 HE dead zone and macros enabled "
+                    "(never run on an F75)")
     if "magnet" in flags:
         log.warning("EXPERIMENTAL: WIN 68 HE Max live travel stream enabled "
                     "(unverified frames, bring-up only)")
