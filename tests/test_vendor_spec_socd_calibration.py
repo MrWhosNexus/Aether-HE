@@ -210,20 +210,22 @@ def _socd_api(driver):
 
 
 @pytest.mark.parametrize("number", [1, 2, 3, 4])
-def test_magnet_receives_the_model_number_unchanged(number):
-    """drivers/magnet.py passes `model` straight into the frame. It got 1..4
-    before the Win60 fix and must still: a zero-based value shifted it."""
+def test_magnet_converts_the_model_number_in_its_own_driver(number):
+    """The bridge hands drivers/magnet.py Model 1..4. The WIN 68 HE Max wire
+    mode is zero-based at payload byte 8 (bind at byte 7); the conversion
+    lives in protocol_magnet.build_socd, nowhere above the driver."""
     import protocol_magnet as pm
     from drivers.magnet import MagnetDriver
 
     sent = []
-    d = MagnetDriver.__new__(MagnetDriver)
-    d.experimental = True
+    d = MagnetDriver(None, None)
+    d._modes = {k: (pm.TOUCH_FIXED, pm.ADV_NONE) for k in pm.KEY_ORDER}
+    d._read_prop = lambda prop: None
     d._send_all = lambda frames: sent.extend(frames)
-    d._require_experimental = lambda feature: None
     api = _socd_api(d)
     assert api.set_socd([{"model": number, "key1": "A", "key2": "D"}])["ok"]
     assert sent == [pm.build_socd(0x04, 0x07, number)]
+    assert sent[0][4 + 7] == 0 and sent[0][4 + 8] == number - 1
 
 
 @pytest.mark.parametrize("number", [1, 2, 3, 4])

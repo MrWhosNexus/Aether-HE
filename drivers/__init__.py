@@ -10,6 +10,11 @@ by `profile.protocol` (the registry field naming the packet-builder module):
                                        32-byte frames; ONE driver, the frame
                                        size comes from the registry frameLen
                                        via drivers.mini60.frame_len_for_profile)
+                                       The AULA F75 HE (38A6:2729 wired,
+                                       0C45:FEFE "AULA F75 HE Dongle") rides
+                                       the same driver; the writes nobody ran
+                                       on an F75 are gated per slug there
+                                       (AETHER_EXPERIMENTAL=f75)
     "protocol_sonix"  -> NullDriver   (module exists, no driver yet — its
                                        frames were FALSIFIED on the 80A2;
                                        safer inert than wrong)

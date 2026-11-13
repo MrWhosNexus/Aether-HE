@@ -1847,8 +1847,9 @@ class Api:
         `model` is the UI's "Model N" NUMBER (1..4) for every board. Turning
         it into a wire byte is the driver's job, because the byte differs per
         board: Win60Driver sends N - 1 (and refuses anything outside 1..4
-        before a frame is written); the MINI 60 and magnet drivers take N as
-        is, as they always have."""
+        before a frame is written); MagnetDriver (WIN 68 HE Max) also sends
+        N - 1, at its own frame offset, and refuses outside 1..4; the MINI 60
+        driver takes N as is, as it always has."""
         if not self.km:
             return {"ok": False, "error": "no keymap"}
         try:
@@ -3412,15 +3413,22 @@ def _report_update_health(window, tries=30, pause=1.0):
 
 
 def _apply_experimental_flags(env=None):
-    """AETHER_EXPERIMENTAL=magnet turns on the WIN 68 HE Max driver's
-    SOURCE-ONLY features (actuation, live travel, SOCD) for a hardware
-    bring-up tester. Off by default; nothing else reads it."""
+    """AETHER_EXPERIMENTAL=magnet turns on the WIN 68 HE Max driver's one
+    remaining SOURCE-ONLY feature, the 0x12 live travel stream, for a
+    hardware bring-up tester. Off by default; nothing else reads it."""
     flags = {f.strip().lower() for f in
              ((os.environ if env is None else env).get("AETHER_EXPERIMENTAL") or "").split(",")}
     import drivers.magnet
+    import drivers.mini60
     drivers.magnet.MagnetDriver.experimental = "magnet" in flags
+    # AETHER_EXPERIMENTAL=f75: the AULA F75 HE's dead zone and macros, which
+    # no F75 owner has run (everything else on the F75 ships on).
+    drivers.mini60.Mini60Driver.experimental_f75 = "f75" in flags
+    if "f75" in flags:
+        log.warning("EXPERIMENTAL: AULA F75 HE dead zone and macros enabled "
+                    "(never run on an F75)")
     if "magnet" in flags:
-        log.warning("EXPERIMENTAL: WIN 68 HE Max actuation/travel/SOCD enabled "
+        log.warning("EXPERIMENTAL: WIN 68 HE Max live travel stream enabled "
                     "(unverified frames, bring-up only)")
 
 

@@ -299,6 +299,7 @@ def test_design_code_alignment_is_total_only_at_exactly_61_keys():
             oversized[os.path.basename(p)] = n
     assert oversized == {
         "aula-f75.json": 81,
+        "aula-f75he.json": 80,
         "aula-kp-te153-si2851ukkzheargb.json": 69,
         "aula-win68he-max.json": 68,
         "aula-win68he-si2828heargb.json": 68,

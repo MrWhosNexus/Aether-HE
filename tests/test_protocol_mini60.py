@@ -1126,6 +1126,67 @@ def test_wireless_device_info_reply_reports_wired_identity():
         assert r[16:18] == [0x53, 0x01]
 
 
+def test_device_status_from_the_dongle_handshake_capture():
+    # golden (handshake capture IN frames) - payload[16..18] of the offset-0
+    # 0x10 reply over the DONGLE is `02 64 00`: work mode 2 (wireless),
+    # battery 100 %, not charging. Firmware 53 01 = 0x0153 = V1.53.
+    replies = [r for r in h_ins(pm.CMD_DEVICE_INFO)
+               if (r[3] | (r[4] << 8)) == 0 and r[0] == pm.REPLY_MAGIC]
+    assert replies
+    for r in replies:
+        assert r[24:27] == [0x02, 0x64, 0x00]
+        st = pm.parse_device_status(r)
+        assert st == {"firmware": 0x0153, "version": "1.53",
+                      "work_mode": pm.WORK_MODE_WIRELESS, "battery": 100,
+                      "charging": False}
+        # a hidapi build that prepends the report id parses the same
+        assert pm.parse_device_status([0x00] + r) == st
+
+
+def test_device_status_from_the_f75_dongle_fixture():
+    # contributor read-back (tests/fixtures/f75/dongle_info.json), NOT a
+    # vendor capture: the F75 HE's receiver answers in the same shape, with
+    # the board's WIRED identity and the same three status bytes.
+    with open(os.path.join(ROOT, "tests", "fixtures", "f75",
+                           "dongle_info.json"), encoding="utf-8") as fh:
+        fx = json.load(fh)
+    assert list(bytes.fromhex(fx["request"])) == pm.build_device_info(frame_len=W)
+    r = list(bytes.fromhex(fx["reply"]))
+    assert len(r) == W
+    assert pm.parse_device_info(r) == (0x38A6, 0x2729)
+    st = pm.parse_device_status(r)
+    assert (st["firmware"], st["version"]) == (0x0155, "1.55")
+    assert (st["work_mode"], st["battery"], st["charging"]) == (2, 100, False)
+
+
+def test_device_status_charging_flag_and_guards():
+    r = list(bytes.fromhex(
+        "551018000000000000000012a63829275501000011000f000264000000000000"))
+    for flag, want in ((0, False), (1, True), (2, True), (3, False)):
+        r[26] = flag                     # 1/2 = charging is SOURCE-ONLY
+        assert pm.parse_device_status(r)["charging"] is want
+    r[26] = 0
+    r[25] = 0xC8                         # not a percentage -> None, never 200 %
+    assert pm.parse_device_status(r)["battery"] is None
+    import pytest
+    for bad in ([], r[:20],                       # too short
+                [0xAA] + r[1:],                   # a request, not a reply
+                r[:1] + [0x13] + r[2:],           # another command's reply
+                r[:3] + [0x18] + r[4:]):          # not the offset-0 chunk
+        with pytest.raises(ValueError):
+            pm.parse_device_status(bad)
+
+
+def test_wired_status_bytes_are_not_a_battery_reading():
+    # WHY the driver only exposes this over the dongle: the WIRED capture's
+    # 0x10 reply carries 0x0A / 0x10 at the same offsets. The parser reports
+    # what is there; drivers/mini60.device_status() refuses to present it.
+    r = ins(pm.CMD_DEVICE_INFO)[0]
+    assert r[24:26] == [0x0A, 0x10]
+    st = pm.parse_device_status(r)
+    assert st["work_mode"] != pm.WORK_MODE_WIRELESS and st["battery"] == 0x10
+
+
 def test_wireless_handshake_light_read_golden():
     # golden (handshake capture) — upgrades the transcribed 0x13 literal to
     # a file-backed golden: AA 13 10 00 00 00 01 00 at 32 bytes, and the

@@ -1,0 +1,819 @@
+{
+  "_meta": {
+    "board": "AULA F75 HE (wired)",
+    "vid": "38A6",
+    "pid": "2729",
+    "formFactor": "75%",
+    "switch": "Hall-effect",
+    "protocolFamily": "hfd-aa (0xAA/0x55 64-byte frames, protocol_mini60)",
+    "issues": [],
+    "status": "experimental",
+    "provisionalIndices": false,
+    "indicesStatus": "SOURCE-ONLY from vendor layout `t`; cross-checked against a contributor's 0x12 key-table read (xpLayA fork fixture, tests/fixtures/f75/backup.json), not maintainer-verified",
+    "provenance": "Generated 2026-10-21 from the vendor hub.aulacn.com driver bundle: geometry + keyValue from the F75 layout array `t` (80 keys; info-Ce0byjrM.js initDeviceLayout selects `t` for PID 10025 = 0x2729) and names/HID usages from master key map `y` in docs/context/issue-6-mini60-pro-raw/driver_src/HFD-D07mGRx8.js -- the same method that produced the hardware-verified aula-mini60he-pro.json. Names follow the existing layouts' code->name convention.",
+    "note": "index = the firmware keyValue (stride-16 matrix shared with the MINI 60 HE PRO: Esc=0, F1-F12 = 1-12, number row 16-28 + Backspace 92, Tab row 32-44 + Backslash 60, Caps row 48-59 + Enter 76, Shift row 64-75, bottom row 80-91; nav column Del 106 / PgUp 105 / PgDn 108 / End 107). The rotary knob is not part of the vendor layout and is not modelled. hidCode 0xfa for Fn is the Aether convention. KNOWN GAPS: the firmware key table holds usage 0xAF in the Fn slot (85), and its F1-F12 base records (1-12) are empty (firmware default); the table also populates 30 slots outside this layout (shared full-size defaults such as the numpad) which are deliberately not drawn. tests/test_f75.py pins all of this against the contributor read-back."
+  },
+  "type": "us",
+  "keys": [
+    {
+      "index": "0",
+      "name": "Esc",
+      "code": "Escape",
+      "hidCode": "29",
+      "width": "50",
+      "height": "50",
+      "x": "20",
+      "y": "20"
+    },
+    {
+      "index": "1",
+      "name": "F1",
+      "code": "F1",
+      "hidCode": "3A",
+      "width": "50",
+      "height": "50",
+      "x": "117",
+      "y": "20"
+    },
+    {
+      "index": "2",
+      "name": "F2",
+      "code": "F2",
+      "hidCode": "3B",
+      "width": "50",
+      "height": "50",
+      "x": "171",
+      "y": "20"
+    },
+    {
+      "index": "3",
+      "name": "F3",
+      "code": "F3",
+      "hidCode": "3C",
+      "width": "50",
+      "height": "50",
+      "x": "225",
+      "y": "20"
+    },
+    {
+      "index": "4",
+      "name": "F4",
+      "code": "F4",
+      "hidCode": "3D",
+      "width": "50",
+      "height": "50",
+      "x": "279",
+      "y": "20"
+    },
+    {
+      "index": "5",
+      "name": "F5",
+      "code": "F5",
+      "hidCode": "3E",
+      "width": "50",
+      "height": "50",
+      "x": "371",
+      "y": "20"
+    },
+    {
+      "index": "6",
+      "name": "F6",
+      "code": "F6",
+      "hidCode": "3F",
+      "width": "50",
+      "height": "50",
+      "x": "425",
+      "y": "20"
+    },
+    {
+      "index": "7",
+      "name": "F7",
+      "code": "F7",
+      "hidCode": "40",
+      "width": "50",
+      "height": "50",
+      "x": "479",
+      "y": "20"
+    },
+    {
+      "index": "8",
+      "name": "F8",
+      "code": "F8",
+      "hidCode": "41",
+      "width": "50",
+      "height": "50",
+      "x": "533",
+      "y": "20"
+    },
+    {
+      "index": "9",
+      "name": "F9",
+      "code": "F9",
+      "hidCode": "42",
+      "width": "50",
+      "height": "50",
+      "x": "625",
+      "y": "20"
+    },
+    {
+      "index": "10",
+      "name": "F10",
+      "code": "F10",
+      "hidCode": "43",
+      "width": "50",
+      "height": "50",
+      "x": "679",
+      "y": "20"
+    },
+    {
+      "index": "11",
+      "name": "F11",
+      "code": "F11",
+      "hidCode": "44",
+      "width": "50",
+      "height": "50",
+      "x": "733",
+      "y": "20"
+    },
+    {
+      "index": "12",
+      "name": "F12",
+      "code": "F12",
+      "hidCode": "45",
+      "width": "50",
+      "height": "50",
+      "x": "787",
+      "y": "20"
+    },
+    {
+      "index": "16",
+      "name": "` ~",
+      "code": "Backquote",
+      "hidCode": "35",
+      "width": "50",
+      "height": "50",
+      "x": "20",
+      "y": "75"
+    },
+    {
+      "index": "17",
+      "name": "1!",
+      "code": "Digit1",
+      "hidCode": "1E",
+      "width": "50",
+      "height": "50",
+      "x": "75",
+      "y": "75"
+    },
+    {
+      "index": "18",
+      "name": "2@",
+      "code": "Digit2",
+      "hidCode": "1F",
+      "width": "50",
+      "height": "50",
+      "x": "130",
+      "y": "75"
+    },
+    {
+      "index": "19",
+      "name": "3#",
+      "code": "Digit3",
+      "hidCode": "20",
+      "width": "50",
+      "height": "50",
+      "x": "185",
+      "y": "75"
+    },
+    {
+      "index": "20",
+      "name": "4$",
+      "code": "Digit4",
+      "hidCode": "21",
+      "width": "50",
+      "height": "50",
+      "x": "240",
+      "y": "75"
+    },
+    {
+      "index": "21",
+      "name": "5%",
+      "code": "Digit5",
+      "hidCode": "22",
+      "width": "50",
+      "height": "50",
+      "x": "295",
+      "y": "75"
+    },
+    {
+      "index": "22",
+      "name": "6^",
+      "code": "Digit6",
+      "hidCode": "23",
+      "width": "50",
+      "height": "50",
+      "x": "350",
+      "y": "75"
+    },
+    {
+      "index": "23",
+      "name": "7&",
+      "code": "Digit7",
+      "hidCode": "24",
+      "width": "50",
+      "height": "50",
+      "x": "405",
+      "y": "75"
+    },
+    {
+      "index": "24",
+      "name": "8*",
+      "code": "Digit8",
+      "hidCode": "25",
+      "width": "50",
+      "height": "50",
+      "x": "460",
+      "y": "75"
+    },
+    {
+      "index": "25",
+      "name": "9(",
+      "code": "Digit9",
+      "hidCode": "26",
+      "width": "50",
+      "height": "50",
+      "x": "515",
+      "y": "75"
+    },
+    {
+      "index": "26",
+      "name": "0)",
+      "code": "Digit0",
+      "hidCode": "27",
+      "width": "50",
+      "height": "50",
+      "x": "570",
+      "y": "75"
+    },
+    {
+      "index": "27",
+      "name": "-_",
+      "code": "Minus",
+      "hidCode": "2D",
+      "width": "50",
+      "height": "50",
+      "x": "625",
+      "y": "75"
+    },
+    {
+      "index": "28",
+      "name": "=+",
+      "code": "Equal",
+      "hidCode": "2E",
+      "width": "50",
+      "height": "50",
+      "x": "680",
+      "y": "75"
+    },
+    {
+      "index": "92",
+      "name": "Back",
+      "code": "Backspace",
+      "hidCode": "2A",
+      "width": "113",
+      "height": "50",
+      "x": "735",
+      "y": "75"
+    },
+    {
+      "index": "106",
+      "name": "Del",
+      "code": "Delete",
+      "hidCode": "4C",
+      "width": "50",
+      "height": "50",
+      "x": "853",
+      "y": "75"
+    },
+    {
+      "index": "32",
+      "name": "Tab",
+      "code": "Tab",
+      "hidCode": "2B",
+      "width": "78",
+      "height": "50",
+      "x": "20",
+      "y": "130"
+    },
+    {
+      "index": "33",
+      "name": "Q",
+      "code": "KeyQ",
+      "hidCode": "14",
+      "width": "50",
+      "height": "50",
+      "x": "103",
+      "y": "130"
+    },
+    {
+      "index": "34",
+      "name": "W",
+      "code": "KeyW",
+      "hidCode": "1A",
+      "width": "50",
+      "height": "50",
+      "x": "158",
+      "y": "130"
+    },
+    {
+      "index": "35",
+      "name": "E",
+      "code": "KeyE",
+      "hidCode": "08",
+      "width": "50",
+      "height": "50",
+      "x": "213",
+      "y": "130"
+    },
+    {
+      "index": "36",
+      "name": "R",
+      "code": "KeyR",
+      "hidCode": "15",
+      "width": "50",
+      "height": "50",
+      "x": "268",
+      "y": "130"
+    },
+    {
+      "index": "37",
+      "name": "T",
+      "code": "KeyT",
+      "hidCode": "17",
+      "width": "50",
+      "height": "50",
+      "x": "323",
+      "y": "130"
+    },
+    {
+      "index": "38",
+      "name": "Y",
+      "code": "KeyY",
+      "hidCode": "1C",
+      "width": "50",
+      "height": "50",
+      "x": "378",
+      "y": "130"
+    },
+    {
+      "index": "39",
+      "name": "U",
+      "code": "KeyU",
+      "hidCode": "18",
+      "width": "50",
+      "height": "50",
+      "x": "433",
+      "y": "130"
+    },
+    {
+      "index": "40",
+      "name": "I",
+      "code": "KeyI",
+      "hidCode": "0C",
+      "width": "50",
+      "height": "50",
+      "x": "488",
+      "y": "130"
+    },
+    {
+      "index": "41",
+      "name": "O",
+      "code": "KeyO",
+      "hidCode": "12",
+      "width": "50",
+      "height": "50",
+      "x": "543",
+      "y": "130"
+    },
+    {
+      "index": "42",
+      "name": "P",
+      "code": "KeyP",
+      "hidCode": "13",
+      "width": "50",
+      "height": "50",
+      "x": "598",
+      "y": "130"
+    },
+    {
+      "index": "43",
+      "name": "[{",
+      "code": "BracketLeft",
+      "hidCode": "2F",
+      "width": "50",
+      "height": "50",
+      "x": "653",
+      "y": "130"
+    },
+    {
+      "index": "44",
+      "name": "]}",
+      "code": "BracketRight",
+      "hidCode": "30",
+      "width": "50",
+      "height": "50",
+      "x": "708",
+      "y": "130"
+    },
+    {
+      "index": "60",
+      "name": "\\|",
+      "code": "Backslash",
+      "hidCode": "31",
+      "width": "85",
+      "height": "50",
+      "x": "763",
+      "y": "130"
+    },
+    {
+      "index": "105",
+      "name": "PgUp",
+      "code": "PageUp",
+      "hidCode": "4B",
+      "width": "50",
+      "height": "50",
+      "x": "853",
+      "y": "130"
+    },
+    {
+      "index": "48",
+      "name": "Caps",
+      "code": "CapsLock",
+      "hidCode": "39",
+      "width": "97",
+      "height": "50",
+      "x": "20",
+      "y": "185"
+    },
+    {
+      "index": "49",
+      "name": "A",
+      "code": "KeyA",
+      "hidCode": "04",
+      "width": "50",
+      "height": "50",
+      "x": "122",
+      "y": "185"
+    },
+    {
+      "index": "50",
+      "name": "S",
+      "code": "KeyS",
+      "hidCode": "16",
+      "width": "50",
+      "height": "50",
+      "x": "177",
+      "y": "185"
+    },
+    {
+      "index": "51",
+      "name": "D",
+      "code": "KeyD",
+      "hidCode": "07",
+      "width": "50",
+      "height": "50",
+      "x": "232",
+      "y": "185"
+    },
+    {
+      "index": "52",
+      "name": "F",
+      "code": "KeyF",
+      "hidCode": "09",
+      "width": "50",
+      "height": "50",
+      "x": "287",
+      "y": "185"
+    },
+    {
+      "index": "53",
+      "name": "G",
+      "code": "KeyG",
+      "hidCode": "0A",
+      "width": "50",
+      "height": "50",
+      "x": "342",
+      "y": "185"
+    },
+    {
+      "index": "54",
+      "name": "H",
+      "code": "KeyH",
+      "hidCode": "0B",
+      "width": "50",
+      "height": "50",
+      "x": "397",
+      "y": "185"
+    },
+    {
+      "index": "55",
+      "name": "J",
+      "code": "KeyJ",
+      "hidCode": "0D",
+      "width": "50",
+      "height": "50",
+      "x": "452",
+      "y": "185"
+    },
+    {
+      "index": "56",
+      "name": "K",
+      "code": "KeyK",
+      "hidCode": "0E",
+      "width": "50",
+      "height": "50",
+      "x": "507",
+      "y": "185"
+    },
+    {
+      "index": "57",
+      "name": "L",
+      "code": "KeyL",
+      "hidCode": "0F",
+      "width": "50",
+      "height": "50",
+      "x": "562",
+      "y": "185"
+    },
+    {
+      "index": "58",
+      "name": ";:",
+      "code": "Semicolon",
+      "hidCode": "33",
+      "width": "50",
+      "height": "50",
+      "x": "617",
+      "y": "185"
+    },
+    {
+      "index": "59",
+      "name": "\" '",
+      "code": "Quote",
+      "hidCode": "34",
+      "width": "50",
+      "height": "50",
+      "x": "672",
+      "y": "185"
+    },
+    {
+      "index": "76",
+      "name": "Enter",
+      "code": "Enter",
+      "hidCode": "28",
+      "width": "121",
+      "height": "50",
+      "x": "727",
+      "y": "185"
+    },
+    {
+      "index": "108",
+      "name": "PgDn",
+      "code": "PageDown",
+      "hidCode": "4E",
+      "width": "50",
+      "height": "50",
+      "x": "853",
+      "y": "185"
+    },
+    {
+      "index": "64",
+      "name": "L-Shift",
+      "code": "ShiftLeft",
+      "hidCode": "E1",
+      "width": "120",
+      "height": "50",
+      "x": "20",
+      "y": "240"
+    },
+    {
+      "index": "65",
+      "name": "Z",
+      "code": "KeyZ",
+      "hidCode": "1D",
+      "width": "50",
+      "height": "50",
+      "x": "145",
+      "y": "240"
+    },
+    {
+      "index": "66",
+      "name": "X",
+      "code": "KeyX",
+      "hidCode": "1B",
+      "width": "50",
+      "height": "50",
+      "x": "200",
+      "y": "240"
+    },
+    {
+      "index": "67",
+      "name": "C",
+      "code": "KeyC",
+      "hidCode": "06",
+      "width": "50",
+      "height": "50",
+      "x": "255",
+      "y": "240"
+    },
+    {
+      "index": "68",
+      "name": "V",
+      "code": "KeyV",
+      "hidCode": "19",
+      "width": "50",
+      "height": "50",
+      "x": "310",
+      "y": "240"
+    },
+    {
+      "index": "69",
+      "name": "B",
+      "code": "KeyB",
+      "hidCode": "05",
+      "width": "50",
+      "height": "50",
+      "x": "365",
+      "y": "240"
+    },
+    {
+      "index": "70",
+      "name": "N",
+      "code": "KeyN",
+      "hidCode": "11",
+      "width": "50",
+      "height": "50",
+      "x": "420",
+      "y": "240"
+    },
+    {
+      "index": "71",
+      "name": "M",
+      "code": "KeyM",
+      "hidCode": "10",
+      "width": "50",
+      "height": "50",
+      "x": "475",
+      "y": "240"
+    },
+    {
+      "index": "72",
+      "name": ",<",
+      "code": "Comma",
+      "hidCode": "36",
+      "width": "50",
+      "height": "50",
+      "x": "530",
+      "y": "240"
+    },
+    {
+      "index": "73",
+      "name": ".>",
+      "code": "Period",
+      "hidCode": "37",
+      "width": "50",
+      "height": "50",
+      "x": "585",
+      "y": "240"
+    },
+    {
+      "index": "74",
+      "name": "/?",
+      "code": "Slash",
+      "hidCode": "38",
+      "width": "50",
+      "height": "50",
+      "x": "640",
+      "y": "240"
+    },
+    {
+      "index": "75",
+      "name": "R-Shift",
+      "code": "ShiftRight",
+      "hidCode": "E5",
+      "width": "98",
+      "height": "50",
+      "x": "695",
+      "y": "240"
+    },
+    {
+      "index": "90",
+      "name": "Up",
+      "code": "ArrowUp",
+      "hidCode": "52",
+      "width": "50",
+      "height": "50",
+      "x": "798",
+      "y": "240"
+    },
+    {
+      "index": "107",
+      "name": "End",
+      "code": "End",
+      "hidCode": "4D",
+      "width": "50",
+      "height": "50",
+      "x": "853",
+      "y": "240"
+    },
+    {
+      "index": "80",
+      "name": "L-Ctrl",
+      "code": "ControlLeft",
+      "hidCode": "E0",
+      "width": "75",
+      "height": "50",
+      "x": "20",
+      "y": "295"
+    },
+    {
+      "index": "81",
+      "name": "L-Win",
+      "code": "MetaLeft",
+      "hidCode": "E3",
+      "width": "75",
+      "height": "50",
+      "x": "100",
+      "y": "295"
+    },
+    {
+      "index": "82",
+      "name": "L-Alt",
+      "code": "AltLeft",
+      "hidCode": "E2",
+      "width": "75",
+      "height": "50",
+      "x": "180",
+      "y": "295"
+    },
+    {
+      "index": "83",
+      "name": "Space",
+      "code": "Space",
+      "hidCode": "2C",
+      "width": "290",
+      "height": "50",
+      "x": "260",
+      "y": "295"
+    },
+    {
+      "index": "85",
+      "name": "Fn",
+      "code": "KeyFn",
+      "hidCode": "0xfa",
+      "width": "75",
+      "height": "50",
+      "x": "555",
+      "y": "295"
+    },
+    {
+      "index": "87",
+      "name": "R-Ctrl",
+      "code": "ControlRight",
+      "hidCode": "E4",
+      "width": "75",
+      "height": "50",
+      "x": "635",
+      "y": "295"
+    },
+    {
+      "index": "88",
+      "name": "Lt",
+      "code": "ArrowLeft",
+      "hidCode": "50",
+      "width": "50",
+      "height": "50",
+      "x": "743",
+      "y": "295"
+    },
+    {
+      "index": "89",
+      "name": "Dn",
+      "code": "ArrowDown",
+      "hidCode": "51",
+      "width": "50",
+      "height": "50",
+      "x": "798",
+      "y": "295"
+    },
+    {
+      "index": "91",
+      "name": "Rt",
+      "code": "ArrowRight",
+      "hidCode": "4F",
+      "width": "50",
+      "height": "50",
+      "x": "853",
+      "y": "295"
+    }
+  ]
+}
