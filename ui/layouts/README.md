@@ -44,6 +44,7 @@ have sent actuation settings to the wrong keys.
 | `aula-win60he-pro.json` | Aula WIN 60 HE Pro (SayoDevice) | 8089:0009 | 60% | PROVISIONAL | scaffold from issue #3; Win60-carryover indices. |
 | `aula-win68he-max.json` | Aula win68 HE Max | 1CA2:1901 | 65% | PROVISIONAL | scaffold from issue #7; standard ANSI 65% guess — verify against issue photos at bring-up. |
 | `aula-f75.json` | Aula F75 Tri-Mode | 258A:010C | 75% | PROVISIONAL | scaffold from issue #8. |
+| `aula-f75he.json` | AULA F75 HE (wired + 2.4 GHz dongle) | 38A6:2729 | 75% | SOURCE-ONLY, contributor cross-checked | vendor SDK layout array `t` + master map `y` (80 keys, stride-16 keyValues like the MINI 60 HE PRO). Adapted from the xpLayA fork. Cross-checked against that contributor's 0x12 key-table read (`tests/fixtures/f75/backup.json`): 67 of 80 slots hold the layout's HID usage; F1-F12 base records are empty and the Fn slot (85) holds 0xAF where Aether uses 0xfa. Not maintainer-verified. The knob is not modelled. A different board from the Tri-Mode above. |
 
 All files pass `python tools/validate_keymap.py ui/layouts/*.json` and are
 covered by `tests/test_layouts.py` (slot sets, HID anchors, vendor-verbatim

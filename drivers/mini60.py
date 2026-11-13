@@ -73,6 +73,19 @@ module's NEVER-SEND list, and the vendor wipes stored calibration before
 starting it so it was never exercised), travel stream (0x60
 unimplemented), board-side gamepad mode (no such command in the HFD SDK).
 
+SECOND BOARD, SAME DRIVER: the AULA F75 HE (wired 38A6:2729 at 64-byte
+frames, its 2.4GHz receiver 0C45:FEFE "AULA F75 HE Dongle" at 32-byte
+frames). COMMUNITY-TESTED, not maintainer-verified: a contributor (xpLayA
+fork, 2026-10-21/23, firmware V1.55) round-tripped 0x23 lighting, 0x24
+per-key colours, 0x27 actuation / rapid trigger, the 0x22 key table (remap,
+TGL, MT, RS, SOCD) and 0x28 DKS on the physical board over both links, and
+the 0x32 host stream over the cable; the read-backs are committed under
+tests/fixtures/f75/. Those ship on. What nobody has run on an F75 stays
+behind AETHER_EXPERIMENTAL=f75 (see UNVERIFIED_FEATURES_BY_SLUG): the 0x21
+dead-zone write and the 0x15/0x25 macro table. No class is added for it -
+the registry profile carries every difference (frame size, layout, mode
+table, hostEngine).
+
 INFERRED (not hardware-verified) items in this file are marked inline:
   * the 0x13 reply field offsets (mirror of the CONFIRMED 0x23 write block;
     the protocol agent round-tripped mode/brightness/speed through it);
@@ -208,6 +221,21 @@ class Mini60Driver(BoardDriver):
     MACRO_MAX_REPEAT = 0xFF
     MACRO_PLAY_MODES = (0, 1, 2)
 
+    #: Per-board features this driver implements but that NOBODY has run on
+    #: that board. They are refused (UnsupportedFeature, supports() False)
+    #: unless the matching experimental flag is on. The MINI 60 HE PRO has no
+    #: entry: everything in FEATURES is captured or hardware-verified there.
+    #: F75 HE evidence = the contributor read-backs in tests/fixtures/f75/
+    #: (see the module docstring); the 0x21 config write and the 0x15/0x25
+    #: macro table were never sent to one.
+    UNVERIFIED_FEATURES_BY_SLUG = {
+        "aula-f75-he": frozenset({"deadband", "macros"}),
+        "aula-f75-he-24g": frozenset({"deadband", "macros"}),
+    }
+    #: Set True only for a hardware bring-up (AETHER_EXPERIMENTAL=f75, read
+    #: in app_web._apply_experimental_flags). Off by default.
+    experimental_f75 = False
+
     def __init__(self, profile, device, lock=None):
         super().__init__(profile, device, lock)
         # Frame size from the board profile (registry frameLen; wired 64
@@ -235,6 +263,24 @@ class Mini60Driver(BoardDriver):
     @property
     def name(self):
         return getattr(self.profile, "name", None) or "Aula Mini 60 HE Pro (wired)"
+
+    # ---- per-board experimental gating ----
+    def _gated_features(self):
+        """Features withheld on THIS board right now (empty for the MINI,
+        and for an F75 once AETHER_EXPERIMENTAL=f75 is set)."""
+        if self.experimental_f75:
+            return frozenset()
+        return self.UNVERIFIED_FEATURES_BY_SLUG.get(
+            getattr(self.profile, "slug", None), frozenset())
+
+    def supports(self, feature):
+        return feature in self.FEATURES and feature not in self._gated_features()
+
+    def _require_verified(self, feature):
+        """Refuse BEFORE any frame is built: a write nobody has run on this
+        board must cost zero bytes on the wire unless the tester opted in."""
+        if feature in self._gated_features():
+            self._unsupported(feature)
 
     # ---- frame IO ----
     def _guard(self, frame):
@@ -361,6 +407,34 @@ class Mini60Driver(BoardDriver):
         if vid is None:
             raise IOError(f"{self.name}: no offset-0 device-info reply")
         return {"vid": vid, "pid": pid, "vidPid": f"{vid:04X}:{pid:04X}"}
+
+    def device_status(self):
+        """Battery / work mode / firmware from the 0x10 reply, or None on
+        the wired link.
+
+        Dongle only (frame_len 32): CONFIRMED-BY-CAPTURE there on the MINI
+        60 HE PRO and matched by a contributor's F75 HE dongle read (see
+        pm.parse_device_status). Over the cable the same bytes are NOT a
+        battery reading (the wired capture has 0x10 at the battery offset),
+        so this returns None without sending anything rather than show a
+        made-up percentage. `charging` is SOURCE-ONLY (both captures show
+        0). A board asleep on RF does not answer: that raises IOError like
+        every other read."""
+        if self.frame_len != pm.FRAME_LEN_WIRELESS:
+            return None
+        self._drain()
+        status = None
+        for f in pm.build_device_info_frames(self.frame_len):
+            rep = self._transact(f)
+            if (f[3] | (f[4] << 8)) == 0:
+                status = pm.parse_device_status(rep)
+        if status is None:
+            raise IOError(f"{self.name}: no offset-0 device-info reply")
+        return {"battery": status["battery"],
+                "charging": status["charging"],
+                "workMode": status["work_mode"],
+                "wireless": status["work_mode"] == pm.WORK_MODE_WIRELESS,
+                "firmware": status["version"]}
 
     # ---- lighting (0x23 write / 0x13 read) ----
     def _color_mode_for(self, mode_byte):
@@ -638,6 +712,7 @@ class Mini60Driver(BoardDriver):
         zone at payload offset 8 is CONFIRMED-BY-CAPTURE (via
         pm.set_deadzone); bottom at offset 9 is SOURCE-ONLY (SDK field map,
         parity plan §2)."""
+        self._require_verified("deadband")
         if top_mm is None and bottom_mm is None:
             raise ValueError("no dead-zone values given")
         # Atomic across the 64-byte config read -> patch -> write (see
@@ -730,6 +805,7 @@ class Mini60Driver(BoardDriver):
         mode 2 ("press again to end") is accepted but NOT CAPTURED.
         (`_context` = the whole-layer keymap context the Api passes for the
         Win60; a key-table board needs none of it.)"""
+        self._require_verified("macros")
         self._patch_key_record(
             key_index,
             pm.key_record_macro(macro_index,
@@ -767,6 +843,7 @@ class Mini60Driver(BoardDriver):
     def _read_macros(self):
         """All stored macros as {slot: events}. All-or-nothing: any missing
         page or body chunk raises (mandatory before any 0x25 write)."""
+        self._require_verified("macros")
         header = self._read_table(pm.build_macro_read_frames(self.frame_len),
                                   pm.MACRO_HEADER_SIZE)
         self._drain()
@@ -797,6 +874,7 @@ class Mini60Driver(BoardDriver):
         rewrites the 400-byte header and every body on each save (a
         partial header write would orphan the other macros' offsets), and
         so does this. A failed read aborts before any write."""
+        self._require_verified("macros")
         idx = int(index)
         if not 0 <= idx < pm.MACRO_SLOTS:
             raise ValueError(f"macro slot must be 0..{pm.MACRO_SLOTS - 1}")

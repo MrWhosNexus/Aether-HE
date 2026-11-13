@@ -1,0 +1,5 @@
+{
+  "_comment": "0x10 reply over the 2.4 GHz receiver (0C45:FEFE, usage page 0xFF60, 32-byte reports), 2026-10-22. The board reports its wired ID 38A6:2729, V1.55; payload[16]=02 work mode (wireless), [17]=0x64 battery 100 %, [18]=00 not charging.",
+  "request": "aa10180000000000000000000000000000000000000000000000000000000000",
+  "reply": "551018000000000000000012a63829275501000011000f000264000000000000"
+}
